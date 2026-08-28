@@ -569,3 +569,67 @@ must fail with an explanation rather than silently replacing it.
 
 Provider ranking occurs only among providers that satisfy all applicable
 hard constraints.
+
+## 23. Resolution Requests
+
+A resolution request represents a user's or subsystem's request for a
+specific capability.
+
+A request may optionally specify:
+
+- Preferred provider
+- Required provider
+
+### Required Provider
+
+A required provider is an explicit requirement.
+
+Example:
+
+    capability:
+      audio
+
+    required-provider:
+      audio.pipewire
+
+The resolver must select the required provider if it is available and
+compatible.
+
+If the required provider cannot satisfy the request, resolution must
+fail.
+
+The resolver must not silently substitute another provider.
+
+### Preferred Provider
+
+A preferred provider expresses a user preference rather than a hard
+requirement.
+
+Example:
+
+    capability:
+      audio
+
+    preferred-provider:
+      audio.pipewire
+
+The resolver should select the preferred provider when it is compatible.
+
+If the preferred provider is unavailable or incompatible, the resolver
+may select another compatible provider.
+
+The result must explain that the preferred provider could not be used.
+
+### Priority
+
+Provider selection follows:
+
+    Required provider
+        >
+    Preferred provider
+        >
+    Other compatible providers
+
+Hard constraints are evaluated before preference ranking.
+
+Explicit requirements must never be silently overridden.
