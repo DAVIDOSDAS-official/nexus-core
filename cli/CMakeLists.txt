@@ -5,4 +5,5 @@ add_executable(nexus
 target_link_libraries(nexus
     PRIVATE
         nexus_core
+        nexus_system
 )

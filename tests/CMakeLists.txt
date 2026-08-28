@@ -5,11 +5,15 @@ add_executable(component_test
     unit/capability_test.cpp
     unit/resolver_test.cpp
     unit/dependency_graph_test.cpp
+    unit/control_file_test.cpp
+    unit/dependency_expression_test.cpp
+    unit/dpkg_source_test.cpp
 )
 
 target_link_libraries(component_test
     PRIVATE
         nexus_core
+        nexus_system
         GTest::gtest_main
 )
 

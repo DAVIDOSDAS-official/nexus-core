@@ -56,4 +56,30 @@ const std::vector<Capability>& Component::recommendedCapabilities() const {
     return recommends_;
 }
 
+std::string toString(ComponentType type) {
+    switch (type) {
+        case ComponentType::Kernel:         return "Kernel";
+        case ComponentType::Bootloader:     return "Bootloader";
+        case ComponentType::Desktop:        return "Desktop";
+        case ComponentType::Compositor:     return "Compositor";
+        case ComponentType::DisplayServer:  return "DisplayServer";
+        case ComponentType::Audio:          return "Audio";
+        case ComponentType::Filesystem:     return "Filesystem";
+        case ComponentType::Driver:         return "Driver";
+        case ComponentType::PackageManager: return "PackageManager";
+        case ComponentType::PackageSource:  return "PackageSource";
+        case ComponentType::Service:        return "Service";
+        case ComponentType::Security:       return "Security";
+        case ComponentType::Networking:     return "Networking";
+        case ComponentType::Development:    return "Development";
+        case ComponentType::Utility:        return "Utility";
+        case ComponentType::Application:    return "Application";
+        case ComponentType::Library:        return "Library";
+        case ComponentType::Toolchain:      return "Toolchain";
+        case ComponentType::Profile:        return "Profile";
+    }
+
+    return "Unknown";
+}
+
 }

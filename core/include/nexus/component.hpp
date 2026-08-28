@@ -29,6 +29,8 @@ enum class ComponentType {
     Profile
 };
 
+std::string toString(ComponentType type);
+
 class Component {
 public:
     Component(
@@ -51,10 +53,6 @@ public:
     const std::vector<Capability>& requiredCapabilities() const;
     const std::vector<Capability>& recommendedCapabilities() const;
 
-    void addRequirement(const Capability& capability);
-
-    const std::vector<Capability>& requirements() const;
-
 private:
     std::string id_;
     std::string name_;
@@ -64,7 +62,6 @@ private:
     std::vector<Capability> provides_;
     std::vector<Capability> requires_;
     std::vector<Capability> recommends_;
-    std::vector<Capability> requirements_;
 };
 
 }
