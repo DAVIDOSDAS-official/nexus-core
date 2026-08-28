@@ -8,6 +8,7 @@ add_executable(component_test
     unit/control_file_test.cpp
     unit/dependency_expression_test.cpp
     unit/dpkg_source_test.cpp
+    unit/version_test.cpp
 )
 
 target_link_libraries(component_test
