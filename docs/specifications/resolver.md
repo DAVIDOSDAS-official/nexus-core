@@ -432,3 +432,140 @@ and, if it can:
 
 It must favor correctness, safety, transparency, and user control over
 automatic convenience.
+
+## 22. Provider Selection
+
+When multiple components provide the same capability, the resolver must
+evaluate all compatible providers before selecting one.
+
+The resolver must NOT select a provider merely because it appears first
+in the component database.
+
+Provider selection follows this priority:
+
+    1. Explicit user requirement
+    2. Explicit user preference
+    3. Hardware compatibility
+    4. Required version constraints
+    5. System/profile preference
+    6. Nexus default policy
+
+An explicit user requirement must not be replaced by another provider
+unless the requested provider makes the configuration impossible.
+
+### Example
+
+Available providers:
+
+    PipeWire
+      provides:
+        - audio
+
+    PulseAudio
+      provides:
+        - audio
+
+    JACK
+      provides:
+        - audio
+
+If the user explicitly selects:
+
+    audio = pipewire
+
+the resolver must select PipeWire.
+
+If the user does not select a provider, the resolver may evaluate all
+compatible providers and select one according to the active system policy.
+
+### Provider Selection Result
+
+The resolver should identify:
+
+- Requested capability
+- Candidate providers
+- Rejected providers
+- Rejection reasons
+- Selected provider
+- Selection reason
+
+Example:
+
+    Capability:
+      audio
+
+    Candidates:
+      - PipeWire
+      - PulseAudio
+      - JACK
+
+    Selected:
+      PipeWire
+
+    Reason:
+      PipeWire is the preferred compatible provider for the active
+      system profile.
+
+### Ambiguity
+
+If multiple providers are equally valid and no preference can
+distinguish them, the resolver should not make an arbitrary choice.
+
+Instead it should return an explicit ambiguous-resolution result.
+
+Example:
+
+    RESOLUTION REQUIRES USER DECISION
+
+    Capability:
+      audio
+
+    Compatible providers:
+      - PipeWire
+      - PulseAudio
+
+    Reason:
+      No provider has sufficient priority to be selected automatically.
+
+The user may then explicitly select a provider.
+
+### Determinism
+
+Provider selection must be deterministic.
+
+Given identical:
+
+- User configuration
+- Component metadata
+- Hardware state
+- Repository state
+- System profile
+- Resolver version
+
+the same provider must be selected.
+
+### Explainability
+
+Every provider selection must have a machine-readable reason.
+
+The CLI and GUI should eventually be able to display this reason to
+the user.
+
+The resolver must never hide an automatic provider selection.
+
+### Hard Constraints
+
+Hardware compatibility, version constraints, and explicit conflicts are
+hard constraints rather than selection preferences.
+
+A provider that fails a hard constraint must be rejected before provider
+ranking occurs.
+
+The resolver must not compensate for an incompatible provider by assigning
+it a lower priority or silently selecting a different provider.
+
+If the user explicitly requested the incompatible provider, resolution
+must fail with an explanation rather than silently replacing it.
+
+Provider ranking occurs only among providers that satisfy all applicable
+hard constraints.
