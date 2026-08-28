@@ -3,6 +3,7 @@ add_library(nexus_core
     src/component.cpp
     src/capability.cpp
     src/resolver.cpp
+    src/dependency_graph.cpp
 )
 
 target_include_directories(nexus_core

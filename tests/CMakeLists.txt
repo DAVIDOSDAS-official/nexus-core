@@ -4,6 +4,7 @@ add_executable(component_test
     unit/component_test.cpp
     unit/capability_test.cpp
     unit/resolver_test.cpp
+    unit/dependency_graph_test.cpp
 )
 
 target_link_libraries(component_test
