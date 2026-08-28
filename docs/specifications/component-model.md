@@ -247,3 +247,106 @@ before asking:
 
 This allows users to combine technologies from different Linux ecosystems
 without requiring Nexus Core to treat those ecosystems as identical.
+
+## 16. Dependencies
+
+A component may declare dependencies on components or capabilities.
+
+Dependencies represent functionality that must be available for the
+component to operate correctly.
+
+A dependency may reference:
+
+- A specific component
+- A capability
+- A minimum version
+- A maximum version
+- A version range
+- A hardware capability
+
+### Capability Dependency
+
+A component should prefer capability dependencies when a specific
+implementation is not required.
+
+Example:
+
+    KDE Plasma
+    requires:
+      - graphical-session
+
+The resolver may satisfy this dependency with any compatible component
+providing:
+
+    graphical-session
+
+### Component Dependency
+
+A component may require a specific implementation when necessary.
+
+Example:
+
+    component.example
+    requires:
+      - library.specific
+
+Specific component dependencies must not be replaced by unrelated
+implementations.
+
+### Recursive Resolution
+
+Dependencies may themselves contain dependencies.
+
+Example:
+
+    KDE
+      requires:
+        graphical-session
+
+    Wayland
+      requires:
+        drm
+
+    DRM provider
+      requires:
+        linux-kernel
+
+The resolver must recursively evaluate the dependency tree until all
+requirements are satisfied or resolution fails.
+
+### Cycles
+
+The dependency system must detect circular dependencies.
+
+Example:
+
+    Component A
+      requires:
+        Component B
+
+    Component B
+      requires:
+        Component A
+
+A circular dependency must produce a resolution error rather than
+causing infinite recursion.
+
+### Dependency Graph
+
+The resolver should internally represent dependencies as a graph.
+
+Example:
+
+    KDE
+     |
+     v
+    Wayland
+     |
+     v
+    DRM
+     |
+     v
+    Linux Kernel
+
+The graph must preserve enough information to explain why each
+component was selected.

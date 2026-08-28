@@ -42,3 +42,26 @@ TEST(ComponentTest, StoresCapabilitiesCorrectly) {
 
     EXPECT_EQ(kde.recommendedCapabilities()[0].name(), "pipewire");
 }
+
+TEST(ComponentTest, StoresRequiredCapabilitiesCorrectly) {
+    nexus::Component kde(
+        "desktop.kde",
+        "KDE Plasma",
+        "6.0",
+        nexus::ComponentType::Desktop
+    );
+
+    kde.addRequiredCapability(
+        nexus::Capability("graphical-session")
+    );
+
+    kde.addRequiredCapability(
+        nexus::Capability("audio")
+    );
+
+    const auto& requirements = kde.requiredCapabilities();
+
+    ASSERT_EQ(requirements.size(), 2);
+    EXPECT_EQ(requirements[0].name(), "graphical-session");
+    EXPECT_EQ(requirements[1].name(), "audio");
+}
