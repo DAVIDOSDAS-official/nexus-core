@@ -5,14 +5,18 @@
 
 namespace nexus {
 
+enum class ResolutionPlanStatus {
+    Ready,
+    Failed
+};
+
 struct ResolutionPlan {
+    ResolutionPlanStatus status;
+    std::string reason;
+
     std::vector<std::string> install;
     std::vector<std::string> remove;
     std::vector<std::string> configure;
-
-    // Components are ordered so dependencies appear
-    // before the components that require them.
-    std::vector<std::string> installOrder;
 };
 
 }

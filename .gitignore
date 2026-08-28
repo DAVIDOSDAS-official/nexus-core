@@ -16,3 +16,4 @@ CTestTestfile.cmake
 .DS_Store
 *.swp
 *.swo
+build/

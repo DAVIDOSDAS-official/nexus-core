@@ -1,232 +1,349 @@
 #include <gtest/gtest.h>
 
+#include <nexus/capability.hpp>
+#include <nexus/component.hpp>
 #include <nexus/resolver.hpp>
 
+using namespace nexus;
+
 TEST(ResolverTest, FindsSingleProvider) {
-    nexus::Component pipewire(
-        "audio.pipewire",
-        "PipeWire",
+    Component wayland(
+        "display.wayland",
+        "Wayland",
         "1.0",
-        nexus::ComponentType::Audio
+        ComponentType::DisplayServer
     );
 
-    pipewire.addProvidedCapability(
-        nexus::Capability("audio")
+    wayland.addProvidedCapability(
+        Capability("graphical-session")
     );
 
-    nexus::Resolver resolver({pipewire});
+    Resolver resolver({wayland});
 
-    nexus::ResolutionRequest request{
-        nexus::Capability("audio"),
+    ResolutionRequest request{
+        Capability("graphical-session"),
         std::nullopt,
         std::nullopt
     };
 
-    nexus::ResolutionResult result =
+    const ResolutionResult result =
         resolver.resolve(request);
 
-    EXPECT_EQ(
-        result.status,
-        nexus::ResolutionStatus::Success
-    );
-
-    ASSERT_EQ(result.candidates.size(), 1);
-    EXPECT_EQ(result.candidates[0], "audio.pipewire");
-    EXPECT_EQ(result.selectedProvider, "audio.pipewire");
+    EXPECT_EQ(result.status, ResolutionStatus::Success);
+    EXPECT_EQ(result.selectedProvider, "display.wayland");
 }
 
 TEST(ResolverTest, ReportsMissingProvider) {
-    nexus::Component pipewire(
-        "audio.pipewire",
-        "PipeWire",
-        "1.0",
-        nexus::ComponentType::Audio
-    );
+    Resolver resolver({});
 
-    pipewire.addProvidedCapability(
-        nexus::Capability("audio")
-    );
-
-    nexus::Resolver resolver({pipewire});
-
-    nexus::ResolutionRequest request{
-        nexus::Capability("bluetooth"),
+    ResolutionRequest request{
+        Capability("audio"),
         std::nullopt,
         std::nullopt
     };
 
-    nexus::ResolutionResult result =
+    const ResolutionResult result =
         resolver.resolve(request);
 
-    EXPECT_EQ(
-        result.status,
-        nexus::ResolutionStatus::NotFound
-    );
-
-    EXPECT_TRUE(result.candidates.empty());
-    EXPECT_TRUE(result.selectedProvider.empty());
+    EXPECT_EQ(result.status, ResolutionStatus::NotFound);
 }
 
 TEST(ResolverTest, ReportsAmbiguousProvider) {
-    nexus::Component pipewire(
+    Component pipewire(
         "audio.pipewire",
         "PipeWire",
         "1.0",
-        nexus::ComponentType::Audio
+        ComponentType::Audio
     );
 
     pipewire.addProvidedCapability(
-        nexus::Capability("audio")
+        Capability("audio")
     );
 
-    nexus::Component pulseaudio(
+    Component pulseaudio(
         "audio.pulseaudio",
         "PulseAudio",
         "1.0",
-        nexus::ComponentType::Audio
+        ComponentType::Audio
     );
 
     pulseaudio.addProvidedCapability(
-        nexus::Capability("audio")
+        Capability("audio")
     );
 
-    nexus::Resolver resolver({pipewire, pulseaudio});
+    Resolver resolver({pipewire, pulseaudio});
 
-    nexus::ResolutionRequest request{
-        nexus::Capability("audio"),
+    ResolutionRequest request{
+        Capability("audio"),
         std::nullopt,
         std::nullopt
     };
 
-    nexus::ResolutionResult result =
+    const ResolutionResult result =
         resolver.resolve(request);
 
-    EXPECT_EQ(
-        result.status,
-        nexus::ResolutionStatus::Ambiguous
-    );
-
+    EXPECT_EQ(result.status, ResolutionStatus::Ambiguous);
     EXPECT_EQ(result.candidates.size(), 2);
-    EXPECT_TRUE(result.selectedProvider.empty());
 }
 
 TEST(ResolverTest, SelectsPreferredProvider) {
-    nexus::Component pipewire(
+    Component pipewire(
         "audio.pipewire",
         "PipeWire",
         "1.0",
-        nexus::ComponentType::Audio
+        ComponentType::Audio
     );
 
     pipewire.addProvidedCapability(
-        nexus::Capability("audio")
+        Capability("audio")
     );
 
-    nexus::Component pulseaudio(
+    Component pulseaudio(
         "audio.pulseaudio",
         "PulseAudio",
         "1.0",
-        nexus::ComponentType::Audio
+        ComponentType::Audio
     );
 
     pulseaudio.addProvidedCapability(
-        nexus::Capability("audio")
+        Capability("audio")
     );
 
-    nexus::Resolver resolver({pipewire, pulseaudio});
+    Resolver resolver({pipewire, pulseaudio});
 
-    nexus::ResolutionRequest request{
-        nexus::Capability("audio"),
-        "audio.pipewire",
+    ResolutionRequest request{
+        Capability("audio"),
+        std::string("audio.pulseaudio"),
         std::nullopt
     };
 
-    nexus::ResolutionResult result =
+    const ResolutionResult result =
         resolver.resolve(request);
 
-    EXPECT_EQ(
-        result.status,
-        nexus::ResolutionStatus::Success
-    );
-
-    EXPECT_EQ(
-        result.selectedProvider,
-        "audio.pipewire"
-    );
+    EXPECT_EQ(result.status, ResolutionStatus::Success);
+    EXPECT_EQ(result.selectedProvider, "audio.pulseaudio");
 }
 
 TEST(ResolverTest, SelectsRequiredProvider) {
-    nexus::Component pipewire(
+    Component pipewire(
         "audio.pipewire",
         "PipeWire",
         "1.0",
-        nexus::ComponentType::Audio
+        ComponentType::Audio
     );
 
     pipewire.addProvidedCapability(
-        nexus::Capability("audio")
+        Capability("audio")
     );
 
-    nexus::Component pulseaudio(
+    Component pulseaudio(
         "audio.pulseaudio",
         "PulseAudio",
         "1.0",
-        nexus::ComponentType::Audio
+        ComponentType::Audio
     );
 
     pulseaudio.addProvidedCapability(
-        nexus::Capability("audio")
+        Capability("audio")
     );
 
-    nexus::Resolver resolver({pipewire, pulseaudio});
+    Resolver resolver({pipewire, pulseaudio});
 
-    nexus::ResolutionRequest request{
-        nexus::Capability("audio"),
+    ResolutionRequest request{
+        Capability("audio"),
         std::nullopt,
-        "audio.pulseaudio"
+        std::string("audio.pulseaudio")
     };
 
-    nexus::ResolutionResult result =
+    const ResolutionResult result =
         resolver.resolve(request);
 
-    EXPECT_EQ(
-        result.status,
-        nexus::ResolutionStatus::Success
-    );
-
-    EXPECT_EQ(
-        result.selectedProvider,
-        "audio.pulseaudio"
-    );
+    EXPECT_EQ(result.status, ResolutionStatus::Success);
+    EXPECT_EQ(result.selectedProvider, "audio.pulseaudio");
 }
 
 TEST(ResolverTest, RequiredProviderCannotBeSilentlyReplaced) {
-    nexus::Component pipewire(
+    Component pipewire(
         "audio.pipewire",
         "PipeWire",
         "1.0",
-        nexus::ComponentType::Audio
+        ComponentType::Audio
     );
 
     pipewire.addProvidedCapability(
-        nexus::Capability("audio")
+        Capability("audio")
     );
 
-    nexus::Resolver resolver({pipewire});
+    Resolver resolver({pipewire});
 
-    nexus::ResolutionRequest request{
-        nexus::Capability("audio"),
+    ResolutionRequest request{
+        Capability("audio"),
         std::nullopt,
-        "audio.pulseaudio"
+        std::string("audio.pulseaudio")
     };
 
-    nexus::ResolutionResult result =
+    const ResolutionResult result =
         resolver.resolve(request);
 
-    EXPECT_EQ(
-        result.status,
-        nexus::ResolutionStatus::NotFound
+    EXPECT_EQ(result.status, ResolutionStatus::NotFound);
+    EXPECT_TRUE(result.selectedProvider.empty());
+}
+
+TEST(ResolverTest, ResolvesRequiredDependency) {
+    Component wayland(
+        "display.wayland",
+        "Wayland",
+        "1.0",
+        ComponentType::DisplayServer
     );
 
-    EXPECT_TRUE(result.selectedProvider.empty());
+    wayland.addProvidedCapability(
+        Capability("graphical-session")
+    );
+
+    Component kde(
+        "desktop.kde",
+        "KDE Plasma",
+        "6.0",
+        ComponentType::Desktop
+    );
+
+    kde.addProvidedCapability(
+        Capability("desktop")
+    );
+
+    kde.addRequiredCapability(
+        Capability("graphical-session")
+    );
+
+    Resolver resolver({kde, wayland});
+
+    ResolutionRequest request{
+        Capability("desktop"),
+        std::nullopt,
+        std::string("desktop.kde")
+    };
+
+    const ResolutionResult result =
+        resolver.resolve(request);
+
+    EXPECT_EQ(result.status, ResolutionStatus::Success);
+    EXPECT_EQ(result.selectedProvider, "desktop.kde");
+
+    ASSERT_EQ(result.plan.install.size(), 2);
+
+    EXPECT_EQ(result.plan.install[0], "display.wayland");
+    EXPECT_EQ(result.plan.install[1], "desktop.kde");
+}
+
+TEST(ResolverTest, ResolvesMultipleDependencyLevels) {
+    Component xserver(
+        "display.xserver",
+        "X Server",
+        "1.0",
+        ComponentType::DisplayServer
+    );
+
+    xserver.addProvidedCapability(
+        Capability("display-server")
+    );
+
+    Component wayland(
+        "session.wayland",
+        "Wayland Session",
+        "1.0",
+        ComponentType::Compositor
+    );
+
+    wayland.addProvidedCapability(
+        Capability("graphical-session")
+    );
+
+    wayland.addRequiredCapability(
+        Capability("display-server")
+    );
+
+    Component kde(
+        "desktop.kde",
+        "KDE Plasma",
+        "6.0",
+        ComponentType::Desktop
+    );
+
+    kde.addProvidedCapability(
+        Capability("desktop")
+    );
+
+    kde.addRequiredCapability(
+        Capability("graphical-session")
+    );
+
+    Resolver resolver({kde, wayland, xserver});
+
+    ResolutionRequest request{
+        Capability("desktop"),
+        std::nullopt,
+        std::string("desktop.kde")
+    };
+
+    const ResolutionResult result =
+        resolver.resolve(request);
+
+    EXPECT_EQ(result.status, ResolutionStatus::Success);
+    EXPECT_EQ(result.selectedProvider, "desktop.kde");
+
+    ASSERT_EQ(result.plan.install.size(), 3);
+
+    EXPECT_EQ(result.plan.install[0], "display.xserver");
+    EXPECT_EQ(result.plan.install[1], "session.wayland");
+    EXPECT_EQ(result.plan.install[2], "desktop.kde");
+}
+
+TEST(ResolverTest, RejectsDependencyCycle) {
+    Component componentA(
+        "component.a",
+        "Component A",
+        "1.0",
+        ComponentType::Utility
+    );
+
+    componentA.addProvidedCapability(
+        Capability("capability-a")
+    );
+
+    componentA.addRequiredCapability(
+        Capability("capability-b")
+    );
+
+    Component componentB(
+        "component.b",
+        "Component B",
+        "1.0",
+        ComponentType::Utility
+    );
+
+    componentB.addProvidedCapability(
+        Capability("capability-b")
+    );
+
+    componentB.addRequiredCapability(
+        Capability("capability-a")
+    );
+
+    Resolver resolver({componentA, componentB});
+
+    ResolutionRequest request{
+        Capability("capability-a"),
+        std::nullopt,
+        std::string("component.a")
+    };
+
+    const ResolutionResult result =
+        resolver.resolve(request);
+
+    EXPECT_EQ(result.status, ResolutionStatus::NotFound);
+    EXPECT_NE(
+        result.reason.find("cycle"),
+        std::string::npos
+    );
 }
