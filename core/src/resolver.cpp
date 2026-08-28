@@ -15,7 +15,8 @@ ResolutionResult Resolver::resolve(
         ResolutionStatus::NotFound,
         "",
         {},
-        ""
+        "",
+        {}
     };
 
     for (const Component& component : components_) {
@@ -24,6 +25,7 @@ ResolutionResult Resolver::resolve(
 
             if (provided.name() == request.capability.name()) {
                 result.candidates.push_back(component.id());
+                break;
             }
         }
     }
@@ -47,6 +49,8 @@ ResolutionResult Resolver::resolve(
                 result.reason =
                     "The required provider was found.";
 
+                result.plan.install.push_back(candidate);
+
                 return result;
             }
         }
@@ -69,6 +73,8 @@ ResolutionResult Resolver::resolve(
                 result.reason =
                     "The preferred provider was selected.";
 
+                result.plan.install.push_back(candidate);
+
                 return result;
             }
         }
@@ -86,6 +92,10 @@ ResolutionResult Resolver::resolve(
     result.selectedProvider = result.candidates.front();
     result.reason =
         "Exactly one compatible provider was found.";
+
+    result.plan.install.push_back(
+        result.selectedProvider
+    );
 
     return result;
 }
