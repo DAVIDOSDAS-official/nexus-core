@@ -6,7 +6,9 @@
 #include <vector>
 
 #include <nexus/component.hpp>
+#include <nexus/conflict_detector.hpp>
 #include <nexus/system/dpkg_source.hpp>
+#include <nexus/system/version.hpp>
 
 namespace {
 
@@ -25,6 +27,7 @@ void printUsage() {
         << "    nexus why <component>\n"
         << "    nexus inspect <component>\n"
         << "    nexus gaps [kind]\n"
+        << "    nexus conflicts\n"
         << "\n"
         << "Options:\n"
         << "    --status <path>   dpkg status file\n"
@@ -264,6 +267,42 @@ int commandInspect(
     return 0;
 }
 
+int commandConflicts(const DpkgSourceResult& result) {
+    const nexus::ConflictDetector detector(
+        [](const std::string& left, const std::string& right) {
+            return nexus::system::compareVersions(left, right);
+        }
+    );
+
+    std::size_t declared = 0;
+
+    for (const Component& component : result.components) {
+        declared += component.conflicts().size();
+    }
+
+    std::cout
+        << "Components:          " << result.components.size() << "\n"
+        << "Declared conflicts:  " << declared << "\n\n";
+
+    const auto conflicts = detector.detect(result.components);
+
+    if (conflicts.empty()) {
+        std::cout
+            << "No active conflicts.\n"
+            << "Every declared conflict refers to something that is\n"
+            << "either not installed or at a version that is allowed.\n";
+        return 0;
+    }
+
+    std::cout << "Active conflicts (" << conflicts.size() << "):\n\n";
+
+    for (const nexus::Conflict& conflict : conflicts) {
+        std::cout << "    " << conflict.reason << "\n";
+    }
+
+    return 1;
+}
+
 int commandGaps(
     const DpkgSourceResult& result,
     const std::string& kindFilter
@@ -360,6 +399,10 @@ int main(int argc, char** argv) {
             }
 
             return commandInspect(result, argument);
+        }
+
+        if (command == "conflicts") {
+            return commandConflicts(result);
         }
 
         if (command == "gaps") {

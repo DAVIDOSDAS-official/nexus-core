@@ -4,21 +4,14 @@
 #include <string>
 #include <vector>
 
+#include <nexus/constraint.hpp>
+
 namespace nexus::system {
 
-// Debian version relations, as they appear in control files.
-enum class VersionRelation {
-    Earlier,          // <<
-    EarlierOrEqual,   // <=
-    Exactly,          // =
-    LaterOrEqual,     // >=
-    Later             // >>
-};
-
-struct VersionConstraint {
-    VersionRelation relation;
-    std::string version;
-};
+// Version relations live in core: every package ecosystem has them,
+// only the comparison algorithm is Debian-specific.
+using nexus::VersionConstraint;
+using nexus::VersionRelation;
 
 // A single alternative inside a dependency clause,
 // for example: base-passwd (>= 3.6.1)
@@ -53,8 +46,6 @@ std::vector<DependencyTerm> parseProvidesField(
     const std::string& field
 );
 
-std::string toString(VersionRelation relation);
-std::string toString(const VersionConstraint& constraint);
 std::string toString(const DependencyTerm& term);
 std::string toString(const DependencyClause& clause);
 

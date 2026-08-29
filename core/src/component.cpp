@@ -56,6 +56,14 @@ const std::vector<Capability>& Component::recommendedCapabilities() const {
     return recommends_;
 }
 
+void Component::addConflict(Constraint constraint) {
+    conflicts_.push_back(std::move(constraint));
+}
+
+const std::vector<Constraint>& Component::conflicts() const {
+    return conflicts_;
+}
+
 std::string toString(ComponentType type) {
     switch (type) {
         case ComponentType::Kernel:         return "Kernel";

@@ -158,7 +158,7 @@ TEST(DpkgSourceTest, RecordsVersionConstraintsAsModelGaps) {
     EXPECT_EQ(countGaps(result, ModelGapKind::VersionConstraint), 1u);
 }
 
-TEST(DpkgSourceTest, RecordsConflictsAsModelGaps) {
+TEST(DpkgSourceTest, StoresConflictsOnTheComponent) {
     const auto result = loadFixture(
         "Package: binutils\n"
         "Status: install ok installed\n"
@@ -167,7 +167,15 @@ TEST(DpkgSourceTest, RecordsConflictsAsModelGaps) {
         "Breaks: aptitude (<< 0.8.10)\n"
     );
 
-    EXPECT_EQ(countGaps(result, ModelGapKind::Conflict), 2u);
+    ASSERT_EQ(result.components.size(), 1u);
+
+    const auto& conflicts = result.components[0].conflicts();
+
+    ASSERT_EQ(conflicts.size(), 2u);
+    EXPECT_EQ(conflicts[0].capability, "binutils-multiarch");
+    ASSERT_TRUE(conflicts[0].version.has_value());
+    EXPECT_EQ(conflicts[0].version->version, "2.27-8");
+    EXPECT_EQ(conflicts[1].capability, "aptitude");
 }
 
 TEST(DpkgSourceTest, RecordsVersionedProvidesAsAModelGap) {

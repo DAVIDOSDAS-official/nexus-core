@@ -9,6 +9,7 @@ add_executable(component_test
     unit/dependency_expression_test.cpp
     unit/dpkg_source_test.cpp
     unit/version_test.cpp
+    unit/conflict_detector_test.cpp
 )
 
 target_link_libraries(component_test

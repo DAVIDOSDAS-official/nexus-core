@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include <nexus/constraint.hpp>
+
 namespace nexus::system {
 
 namespace {
@@ -150,17 +152,26 @@ DpkgSourceResult DpkgSource::loadFromStanzas(
             }
         }
 
+        // Conflicts and Breaks are now first-class: the component
+        // model can hold them, so they are no longer recorded as gaps.
         for (const char* field : {"conflicts", "breaks"}) {
             if (!stanza.has(field)) {
                 continue;
             }
 
-            result.gaps.push_back(ModelGap{
-                name,
-                ModelGapKind::Conflict,
-                field,
-                stanza.value(field)
-            });
+            for (const DependencyClause& clause :
+                 parseDependencyField(stanza.value(field))) {
+
+                for (const DependencyTerm& term : clause.alternatives) {
+                    if (term.constraint) {
+                        component.addConflict(
+                            Constraint(term.name, *term.constraint)
+                        );
+                    } else {
+                        component.addConflict(Constraint(term.name));
+                    }
+                }
+            }
         }
 
         result.components.push_back(std::move(component));
@@ -220,8 +231,6 @@ std::string toString(ModelGapKind kind) {
             return "version-constraint";
         case ModelGapKind::VersionedProvides:
             return "versioned-provides";
-        case ModelGapKind::Conflict:
-            return "conflict";
         case ModelGapKind::PreDependency:
             return "pre-dependency";
     }

@@ -20,7 +20,6 @@ enum class ModelGapKind {
     Alternatives,        // "a | b"  — the model has no OR
     VersionConstraint,   // "a (>= 1.0)" — capabilities are unversioned
     VersionedProvides,   // "Provides: a (= 1.0)"
-    Conflict,            // Conflicts / Breaks — the model has no conflicts
     PreDependency        // Pre-Depends — the model has no ordering strength
 };
 
