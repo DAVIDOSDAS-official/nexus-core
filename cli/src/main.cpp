@@ -29,7 +29,8 @@ void printUsage() {
         << "    nexus inspect <component>\n"
         << "    nexus gaps [kind]\n"
         << "    nexus conflicts\n"
-        << "    nexus solve <capability> [--prefer id] [--require id]\n"
+        << "    nexus solve <capability> [--arch a] [--prefer id]\n"
+        << "                             [--require id]\n"
         << "\n"
         << "Options:\n"
         << "    --status <path>   dpkg status file\n"
@@ -226,9 +227,12 @@ int commandInspect(
     }
 
     std::cout
-        << "ID:       " << component->id() << "\n"
-        << "Version:  " << component->version() << "\n"
-        << "Type:     " << toString(component->type()) << "\n";
+        << "ID:        " << component->id() << "\n"
+        << "Version:   " << component->version() << "\n"
+        << "Type:      " << toString(component->type()) << "\n"
+        << "Arch:      " << component->architecture()
+        << "  (multi-arch: "
+        << nexus::toString(component->multiArch()) << ")\n";
 
     std::cout << "\nProvides:\n";
 
@@ -309,7 +313,8 @@ int commandSolve(
     const DpkgSourceResult& result,
     const std::string& capability,
     const std::string& prefer,
-    const std::string& require
+    const std::string& require,
+    const std::string& architecture
 ) {
     nexus::Solver solver(
         result.components,
@@ -321,6 +326,7 @@ int commandSolve(
     );
 
     nexus::SolverRequest request;
+    request.architecture = architecture;
     request.requirements.push_back(
         nexus::Requirement(nexus::Constraint(capability))
     );
@@ -337,6 +343,8 @@ int commandSolve(
 
     std::cout
         << "Request:     " << capability << "\n"
+        << "Arch:        "
+        << (architecture.empty() ? "(any)" : architecture) << "\n"
         << "Status:      " << toString(solution.status) << "\n"
         << "Decisions:   " << solution.decisions << "\n"
         << "Backtracks:  " << solution.backtracks << "\n\n";
@@ -411,11 +419,18 @@ int main(int argc, char** argv) {
     std::string statusPath = "/var/lib/dpkg/status";
     std::string prefer;
     std::string require;
+    std::string arch;
     std::vector<std::string> positional;
 
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         if (arguments[index] == "--status" && index + 1 < arguments.size()) {
             statusPath = arguments[index + 1];
+            index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--arch" && index + 1 < arguments.size()) {
+            arch = arguments[index + 1];
             index += 1;
             continue;
         }
@@ -488,7 +503,8 @@ int main(int argc, char** argv) {
                 return 2;
             }
 
-            return commandSolve(result, argument, prefer, require);
+            return commandSolve(
+                result, argument, prefer, require, arch);
         }
 
         if (command == "conflicts") {

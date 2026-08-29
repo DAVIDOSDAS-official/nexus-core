@@ -50,9 +50,12 @@ public:
 
     // Whether a component satisfies a constraint: it must provide the
     // capability, and its version must meet any version condition.
+    // requesterArchitecture may be empty, meaning the caller is not
+    // tracking architecture; the check then ignores it entirely.
     bool matches(
         const Component& component,
-        const Constraint& constraint
+        const Constraint& constraint,
+        const std::string& requesterArchitecture = {}
     ) const;
 
     bool hasComparator() const;

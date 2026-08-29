@@ -33,6 +33,10 @@ struct Constraint {
     std::string capability;
     std::optional<VersionConstraint> version;
 
+    // An explicit ":amd64" or ":any" written on the dependency.
+    // Absent means "whatever architecture the requester is".
+    std::optional<std::string> architecture;
+
     Constraint() = default;
 
     explicit Constraint(std::string capabilityName)

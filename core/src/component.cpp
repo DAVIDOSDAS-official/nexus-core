@@ -42,6 +42,22 @@ void Component::addRequiredCapability(Capability capability) {
     );
 }
 
+void Component::setArchitecture(std::string architecture) {
+    architecture_ = std::move(architecture);
+}
+
+const std::string& Component::architecture() const {
+    return architecture_;
+}
+
+void Component::setMultiArch(MultiArch value) {
+    multiArch_ = value;
+}
+
+MultiArch Component::multiArch() const {
+    return multiArch_;
+}
+
 void Component::addRequirement(Requirement requirement) {
     requirements_.push_back(std::move(requirement));
 }

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <utility>
 #include <set>
 #include <utility>
 
@@ -52,10 +53,11 @@ SolverResult Solver::solve(const SolverRequest& request) const {
 
     // Is this requirement already met by something we have chosen?
     const auto alreadySatisfied =
-        [&](const Requirement& requirement) -> bool {
+        [&](const Requirement& requirement,
+            const std::string& arch) -> bool {
             for (const Constraint& option : requirement.alternatives) {
                 for (const Component* chosen : state.selected) {
-                    if (detector_.matches(*chosen, option)) {
+                    if (detector_.matches(*chosen, option, arch)) {
                         return true;
                     }
                 }
@@ -65,17 +67,25 @@ SolverResult Solver::solve(const SolverRequest& request) const {
         };
 
     // Recursive backtracking search over a work list of requirements.
-    std::function<bool(std::vector<Requirement>)> search =
-        [&](std::vector<Requirement> pending) -> bool {
+    // Each pending item carries the architecture of the component
+    // that asked for it, because "libfoo" from an amd64 package means
+    // libfoo:amd64 unless the provider is marked foreign.
+    using Pending = std::pair<Requirement, std::string>;
+
+    std::function<bool(std::vector<Pending>)> search =
+        [&](std::vector<Pending> pending) -> bool {
             if (pending.empty()) {
                 return true;
             }
 
-            const Requirement requirement = pending.front();
+            const Requirement requirement = pending.front().first;
+            const std::string requesterArchitecture =
+                pending.front().second;
 
             pending.erase(pending.begin());
 
-            if (requirement.empty() || alreadySatisfied(requirement)) {
+            if (requirement.empty() ||
+                alreadySatisfied(requirement, requesterArchitecture)) {
                 return search(pending);
             }
 
@@ -97,7 +107,10 @@ SolverResult Solver::solve(const SolverRequest& request) const {
                     requirement.alternatives[index];
 
                 for (const Component& component : components_) {
-                    if (!detector_.matches(component, option)) {
+                    if (!detector_.matches(
+                            component,
+                            option,
+                            requesterArchitecture)) {
                         continue;
                     }
 
@@ -245,12 +258,16 @@ SolverResult Solver::solve(const SolverRequest& request) const {
                 });
 
                 // The chosen component brings its own requirements.
-                std::vector<Requirement> next = pending;
+                std::vector<Pending> next = pending;
 
-                const auto& theirs =
-                    candidate.component->requirements();
+                for (const Requirement& theirs :
+                     candidate.component->requirements()) {
 
-                next.insert(next.end(), theirs.begin(), theirs.end());
+                    next.push_back(Pending{
+                        theirs,
+                        candidate.component->architecture()
+                    });
+                }
 
                 if (search(next)) {
                     return true;
@@ -272,7 +289,13 @@ SolverResult Solver::solve(const SolverRequest& request) const {
             return false;
         };
 
-    const bool solved = search(request.requirements);
+    std::vector<Pending> initial;
+
+    for (const Requirement& requirement : request.requirements) {
+        initial.push_back(Pending{requirement, request.architecture});
+    }
+
+    const bool solved = search(initial);
 
     SolverResult result;
 

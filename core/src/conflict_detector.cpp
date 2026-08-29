@@ -71,12 +71,21 @@ bool ConflictDetector::hasComparator() const {
 
 bool ConflictDetector::matches(
     const Component& component,
-    const Constraint& constraint
+    const Constraint& constraint,
+    const std::string& requesterArchitecture
 ) const {
     const std::string* version =
         providedVersion(component, constraint.capability);
 
     if (version == nullptr) {
+        return false;
+    }
+
+    if (!architectureSatisfies(
+            component.architecture(),
+            component.multiArch(),
+            constraint.architecture,
+            requesterArchitecture)) {
         return false;
     }
 

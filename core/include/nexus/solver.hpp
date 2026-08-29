@@ -45,6 +45,10 @@ struct SolverResult {
 struct SolverRequest {
     std::vector<Requirement> requirements;
 
+    // The architecture the top-level requirements are being resolved
+    // for. Empty means architecture is not considered at all.
+    std::string architecture;
+
     // capability name -> component id. A preference is a tie-breaker;
     // a requirement is absolute and will never be silently replaced.
     std::map<std::string, std::string> preferred;

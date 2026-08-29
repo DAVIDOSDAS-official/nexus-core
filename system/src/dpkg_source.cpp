@@ -1,5 +1,6 @@
 #include <nexus/system/dpkg_source.hpp>
 
+#include <map>
 #include <utility>
 
 #include <nexus/constraint.hpp>
@@ -23,20 +24,13 @@ void recordClauseGaps(
     const std::vector<DependencyClause>& clauses,
     std::vector<ModelGap>& gaps
 ) {
-    // Alternatives and version conditions are both represented now.
-    // Only architecture qualifiers remain unmodelled.
-    for (const DependencyClause& clause : clauses) {
-        for (const DependencyTerm& term : clause.alternatives) {
-            if (term.architecture) {
-                gaps.push_back(ModelGap{
-                    componentId,
-                    ModelGapKind::ArchitectureQualifier,
-                    field,
-                    toString(term) + ":" + *term.architecture
-                });
-            }
-        }
-    }
+    // Alternatives, version conditions and architecture qualifiers
+    // are all represented now. Nothing in a dependency field is
+    // discarded, so nothing is recorded here.
+    (void)componentId;
+    (void)field;
+    (void)clauses;
+    (void)gaps;
 }
 
 }
@@ -58,6 +52,19 @@ DpkgSourceResult DpkgSource::loadFromStanzas(
 ) const {
     DpkgSourceResult result;
 
+    // A package name is normally unique. When the same name is
+    // installed for more than one architecture (libc6:amd64 and
+    // libc6:i386), the plain name is ambiguous and the id has to be
+    // qualified. Names that are unique keep their plain form so that
+    // ordinary lookups are unaffected.
+    std::map<std::string, int> nameCounts;
+
+    for (const ControlStanza& stanza : stanzas) {
+        if (isInstalled(stanza) && !stanza.value("package").empty()) {
+            nameCounts[stanza.value("package")] += 1;
+        }
+    }
+
     for (const ControlStanza& stanza : stanzas) {
         result.stanzasRead += 1;
 
@@ -68,11 +75,26 @@ DpkgSourceResult DpkgSource::loadFromStanzas(
             continue;
         }
 
+        std::string architecture = stanza.value("architecture");
+
+        if (architecture.empty()) {
+            architecture = kArchitectureAll;
+        }
+
+        const std::string id = (nameCounts[name] > 1)
+            ? name + ":" + architecture
+            : name;
+
         Component component(
-            name,
+            id,
             name,
             stanza.value("version"),
             classifySection(stanza.value("section"))
+        );
+
+        component.setArchitecture(architecture);
+        component.setMultiArch(
+            parseMultiArch(stanza.value("multi-arch"))
         );
 
         // A package always provides its own name as a capability.
@@ -120,13 +142,13 @@ DpkgSourceResult DpkgSource::loadFromStanzas(
                 std::vector<Constraint> options;
 
                 for (const DependencyTerm& term : clause.alternatives) {
-                    if (term.constraint) {
-                        options.push_back(
-                            Constraint(term.name, *term.constraint)
-                        );
-                    } else {
-                        options.push_back(Constraint(term.name));
-                    }
+                    Constraint option = term.constraint
+                        ? Constraint(term.name, *term.constraint)
+                        : Constraint(term.name);
+
+                    option.architecture = term.architecture;
+
+                    options.push_back(std::move(option));
                 }
 
                 if (!options.empty()) {
@@ -233,8 +255,6 @@ ComponentType classifySection(const std::string& section) {
 
 std::string toString(ModelGapKind kind) {
     switch (kind) {
-        case ModelGapKind::ArchitectureQualifier:
-            return "architecture-qualifier";
         case ModelGapKind::PreDependency:
             return "pre-dependency";
     }

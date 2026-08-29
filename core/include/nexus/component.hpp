@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <nexus/capability.hpp>
+#include <nexus/architecture.hpp>
 #include <nexus/constraint.hpp>
 #include <nexus/requirement.hpp>
 
@@ -57,6 +58,15 @@ public:
 
     // Components this one cannot coexist with.
     // Full requirements, alternatives preserved.
+    // Architecture defaults to "all", which satisfies anything.
+    void setArchitecture(std::string architecture);
+
+    const std::string& architecture() const;
+
+    void setMultiArch(MultiArch value);
+
+    MultiArch multiArch() const;
+
     void addRequirement(Requirement requirement);
 
     const std::vector<Requirement>& requirements() const;
@@ -73,6 +83,8 @@ private:
 
     std::vector<Capability> provides_;
     std::vector<Requirement> requirements_;
+    std::string architecture_ = kArchitectureAll;
+    MultiArch multiArch_ = MultiArch::No;
     std::vector<Capability> recommends_;
     std::vector<Constraint> conflicts_;
 };

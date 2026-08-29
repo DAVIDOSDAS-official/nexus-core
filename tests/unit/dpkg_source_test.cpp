@@ -244,6 +244,71 @@ TEST(DpkgSourceTest, NoLongerGuessesBetweenAlternatives) {
     EXPECT_TRUE(result.gaps.empty());
 }
 
+TEST(DpkgSourceTest, ReadsArchitectureAndMultiArch) {
+    const auto result = loadFixture(
+        "Package: libc6\n"
+        "Status: install ok installed\n"
+        "Architecture: amd64\n"
+        "Multi-Arch: same\n"
+        "Version: 2.39\n"
+    );
+
+    ASSERT_EQ(result.components.size(), 1u);
+    EXPECT_EQ(result.components[0].architecture(), "amd64");
+    EXPECT_EQ(result.components[0].multiArch(), nexus::MultiArch::Same);
+}
+
+TEST(DpkgSourceTest, QualifiesIdsOnlyWhenTheNameIsAmbiguous) {
+    const auto result = loadFixture(
+        "Package: libc6\n"
+        "Status: install ok installed\n"
+        "Architecture: amd64\n"
+        "Multi-Arch: same\n"
+        "Version: 2.39\n"
+        "\n"
+        "Package: libc6\n"
+        "Status: install ok installed\n"
+        "Architecture: i386\n"
+        "Multi-Arch: same\n"
+        "Version: 2.39\n"
+        "\n"
+        "Package: apt\n"
+        "Status: install ok installed\n"
+        "Architecture: amd64\n"
+        "Version: 2.8.3\n"
+    );
+
+    ASSERT_EQ(result.components.size(), 3u);
+    EXPECT_EQ(result.components[0].id(), "libc6:amd64");
+    EXPECT_EQ(result.components[1].id(), "libc6:i386");
+
+    // Unambiguous names keep their plain form.
+    EXPECT_EQ(result.components[2].id(), "apt");
+
+    // Both still provide the plain capability name.
+    EXPECT_EQ(result.components[0].name(), "libc6");
+    EXPECT_EQ(result.components[1].name(), "libc6");
+}
+
+TEST(DpkgSourceTest, KeepsArchitectureQualifiersOnRequirements) {
+    const auto result = loadFixture(
+        "Package: app\n"
+        "Status: install ok installed\n"
+        "Architecture: amd64\n"
+        "Version: 1.0\n"
+        "Depends: libc6:i386, libfoo:any\n"
+    );
+
+    ASSERT_EQ(result.components.size(), 1u);
+
+    const auto& requirements = result.components[0].requirements();
+
+    ASSERT_EQ(requirements.size(), 2u);
+    ASSERT_TRUE(requirements[0].alternatives[0].architecture.has_value());
+    EXPECT_EQ(*requirements[0].alternatives[0].architecture, "i386");
+    EXPECT_EQ(*requirements[1].alternatives[0].architecture, "any");
+}
+
 TEST(DpkgSourceTest, MissingStatusFileThrows) {
     const DpkgSource source("/nonexistent/dpkg/status");
 

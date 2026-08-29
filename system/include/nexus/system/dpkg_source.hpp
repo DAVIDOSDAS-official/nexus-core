@@ -17,8 +17,7 @@ namespace nexus::system {
 // quietly drops constraints would violate the project's own rule
 // against hiding system behaviour from the user.
 enum class ModelGapKind {
-    ArchitectureQualifier,  // "libc6:amd64" — the model is arch-blind
-    PreDependency           // Pre-Depends — no ordering strength
+    PreDependency   // Pre-Depends — the model has no ordering strength
 };
 
 struct ModelGap {

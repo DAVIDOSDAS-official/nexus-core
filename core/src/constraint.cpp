@@ -24,12 +24,17 @@ std::string toString(const VersionConstraint& constraint) {
 }
 
 std::string toString(const Constraint& constraint) {
-    if (constraint.isUnversioned()) {
-        return constraint.capability;
+    std::string text = constraint.capability;
+
+    if (constraint.architecture) {
+        text += ":" + *constraint.architecture;
     }
 
-    return constraint.capability +
-           " (" + toString(*constraint.version) + ")";
+    if (!constraint.isUnversioned()) {
+        text += " (" + toString(*constraint.version) + ")";
+    }
+
+    return text;
 }
 
 }
