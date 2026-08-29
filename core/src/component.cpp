@@ -42,6 +42,10 @@ void Component::addRequiredCapability(Capability capability) {
     );
 }
 
+void Component::setId(std::string id) {
+    id_ = std::move(id);
+}
+
 void Component::setArchitecture(std::string architecture) {
     architecture_ = std::move(architecture);
 }

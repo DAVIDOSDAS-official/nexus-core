@@ -207,3 +207,21 @@ TEST(MergeAvailableTest, UnsatisfiableBecomesSatisfiableWithArchive) {
     EXPECT_EQ(result.status, SolverStatus::Success);
     EXPECT_EQ(result.selected.size(), 2u);
 }
+
+// Each source assigns ids in isolation. A name unambiguous within one
+// source can collide once two are merged, so identity has to be
+// settled over the whole universe, not per source.
+TEST(MergeAvailableTest, IdsAreRequalifiedAcrossSources) {
+    Component installed64("libc6", "libc6", "2.39", ComponentType::Library);
+    installed64.setArchitecture("amd64");
+
+    Component available32("libc6", "libc6", "2.39", ComponentType::Library);
+    available32.setArchitecture("i386");
+
+    const auto merged = mergeAvailable({installed64}, {available32});
+
+    ASSERT_EQ(merged.size(), 2u);
+    EXPECT_NE(merged[0].id(), merged[1].id());
+    EXPECT_EQ(merged[0].id(), "libc6:amd64");
+    EXPECT_EQ(merged[1].id(), "libc6:i386");
+}

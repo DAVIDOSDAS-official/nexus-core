@@ -43,6 +43,7 @@ void printUsage() {
         << "    --profiles <dir>  profile directory\n"
         << "    --arch <arch>     target architecture\n"
         << "    --with-available  also read apt package indexes\n"
+        << "    --explain         reason for every component, not just choices\n"
         << "    --lists <dir>     apt lists directory\n"
         << "                      (default: /var/lib/dpkg/status)\n"
         << "\n"
@@ -364,7 +365,8 @@ int commandSolve(
     const std::string& capability,
     const std::string& prefer,
     const std::string& require,
-    const std::string& architecture
+    const std::string& architecture,
+    bool explain
 ) {
     nexus::Solver solver = buildSolver(universe);
 
@@ -404,10 +406,44 @@ int commandSolve(
         return 1;
     }
 
+    std::size_t choices = 0;
+
+    for (const nexus::SolverStep& step : solution.steps) {
+        if (step.alternativesConsidered > 1) {
+            choices += 1;
+        }
+    }
+
     std::cout
         << "Selected " << solution.selected.size()
-        << " component(s).\n\n"
-        << "Why each one:\n";
+        << " component(s); " << choices
+        << " involved a real choice.\n";
+
+    if (!explain) {
+        // A few hundred lines of "only component providing X" buries
+        // the handful of lines that actually say something.
+        if (choices > 0) {
+            std::cout << "\nWhere there was a choice:\n";
+
+            for (const nexus::SolverStep& step : solution.steps) {
+                if (step.alternativesConsidered <= 1) {
+                    continue;
+                }
+
+                std::cout
+                    << "    " << step.selected << "\n"
+                    << "        " << step.reason << "\n";
+            }
+        }
+
+        std::cout
+            << "\nUse --explain for the reason behind every "
+            << "component.\n";
+
+        return 0;
+    }
+
+    std::cout << "\nWhy each one:\n";
 
     for (const nexus::SolverStep& step : solution.steps) {
         std::cout << "    " << step.selected;
@@ -655,12 +691,18 @@ int main(int argc, char** argv) {
     std::string profileDir = "components/profiles";
     std::string listsDir = "/var/lib/apt/lists";
     bool withAvailable = false;
+    bool explain = false;
     std::vector<std::string> positional;
 
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         if (arguments[index] == "--status" && index + 1 < arguments.size()) {
             statusPath = arguments[index + 1];
             index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--explain") {
+            explain = true;
             continue;
         }
 
@@ -799,7 +841,7 @@ int main(int argc, char** argv) {
             }
 
             return commandSolve(
-                universe, argument, prefer, require, arch);
+                universe, argument, prefer, require, arch, explain);
         }
 
         if (command == "conflicts") {

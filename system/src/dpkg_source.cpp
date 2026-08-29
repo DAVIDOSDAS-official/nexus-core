@@ -4,6 +4,7 @@
 #include <utility>
 
 #include <nexus/constraint.hpp>
+#include <nexus/system/identity.hpp>
 #include <nexus/requirement.hpp>
 
 namespace nexus::system {
@@ -52,19 +53,6 @@ DpkgSourceResult DpkgSource::loadFromStanzas(
 ) const {
     DpkgSourceResult result;
 
-    // A package name is normally unique. When the same name is
-    // installed for more than one architecture (libc6:amd64 and
-    // libc6:i386), the plain name is ambiguous and the id has to be
-    // qualified. Names that are unique keep their plain form so that
-    // ordinary lookups are unaffected.
-    std::map<std::string, int> nameCounts;
-
-    for (const ControlStanza& stanza : stanzas) {
-        if (isInstalled(stanza) && !stanza.value("package").empty()) {
-            nameCounts[stanza.value("package")] += 1;
-        }
-    }
-
     for (const ControlStanza& stanza : stanzas) {
         result.stanzasRead += 1;
 
@@ -81,12 +69,8 @@ DpkgSourceResult DpkgSource::loadFromStanzas(
             architecture = kArchitectureAll;
         }
 
-        const std::string id = (nameCounts[name] > 1)
-            ? name + ":" + architecture
-            : name;
-
         Component component(
-            id,
+            name,
             name,
             stanza.value("version"),
             classifySection(stanza.value("section"))
@@ -206,6 +190,8 @@ DpkgSourceResult DpkgSource::loadFromStanzas(
 
         result.components.push_back(std::move(component));
     }
+
+    qualifyAmbiguousIds(result.components);
 
     return result;
 }

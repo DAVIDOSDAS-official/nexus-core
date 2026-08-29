@@ -59,6 +59,11 @@ public:
     // Components this one cannot coexist with.
     // Full requirements, alternatives preserved.
     // Architecture defaults to "all", which satisfies anything.
+    // Ids are assigned by whichever source built the component, and
+    // may need requalifying once components from several sources are
+    // combined.
+    void setId(std::string id);
+
     void setArchitecture(std::string architecture);
 
     const std::string& architecture() const;

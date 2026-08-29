@@ -321,3 +321,182 @@ TEST(SolverTest, ReportsHittingTheDecisionLimit) {
     // reported, neither is silently treated as success.
     EXPECT_NE(result.status, SolverStatus::Success);
 }
+
+// A foreign-marked component satisfies any architecture, so several
+// builds of one package can all be eligible for an unqualified
+// requirement. The requester's own architecture must win, and it must
+// win by rule rather than by whichever the index listed first.
+TEST(SolverTest, NativeArchitectureWinsAmongForeignCandidates) {
+    Component app = make("app");
+    app.addRequirement(Requirement(Constraint("curl")));
+
+    Component curl32("curl:i386", "curl", "8.5", ComponentType::Utility);
+    curl32.setArchitecture("i386");
+    curl32.setMultiArch(nexus::MultiArch::Foreign);
+    curl32.addProvidedCapability(Capability("curl"));
+
+    Component curl64("curl:amd64", "curl", "8.5", ComponentType::Utility);
+    curl64.setArchitecture("amd64");
+    curl64.setMultiArch(nexus::MultiArch::Foreign);
+    curl64.addProvidedCapability(Capability("curl"));
+
+    Component root = make("app");
+    root.setArchitecture("amd64");
+    root.addRequirement(Requirement(Constraint("curl")));
+
+    // i386 listed first, so index order alone would pick the wrong one.
+    Solver solver({root, curl32, curl64}, debianDetector());
+
+    SolverRequest request;
+    request.architecture = "amd64";
+    request.requirements.push_back(Requirement(Constraint("app")));
+
+    const auto result = solver.solve(request);
+
+    ASSERT_EQ(result.status, SolverStatus::Success);
+    EXPECT_TRUE(contains(result.selected, "curl:amd64"));
+    EXPECT_FALSE(contains(result.selected, "curl:i386"));
+}
+
+TEST(SolverTest, ReasonNamesWhatWasPassedOver) {
+    Component root = make("app");
+    root.setArchitecture("amd64");
+    root.addRequirement(Requirement(Constraint("curl")));
+
+    Component curl32("curl:i386", "curl", "8.5", ComponentType::Utility);
+    curl32.setArchitecture("i386");
+    curl32.setMultiArch(nexus::MultiArch::Foreign);
+    curl32.addProvidedCapability(Capability("curl"));
+
+    Component curl64("curl:amd64", "curl", "8.5", ComponentType::Utility);
+    curl64.setArchitecture("amd64");
+    curl64.setMultiArch(nexus::MultiArch::Foreign);
+    curl64.addProvidedCapability(Capability("curl"));
+
+    Solver solver({root, curl32, curl64}, debianDetector());
+
+    SolverRequest request;
+    request.architecture = "amd64";
+    request.requirements.push_back(Requirement(Constraint("app")));
+
+    const auto result = solver.solve(request);
+
+    ASSERT_EQ(result.status, SolverStatus::Success);
+
+    bool explained = false;
+
+    for (const auto& step : result.steps) {
+        if (step.selected != "curl:amd64") {
+            continue;
+        }
+
+        // It must say what it rejected, not claim it was the only one.
+        EXPECT_NE(step.reason.find("curl:i386"), std::string::npos);
+        EXPECT_EQ(step.reason.find("only component"), std::string::npos);
+        explained = true;
+    }
+
+    EXPECT_TRUE(explained);
+}
+
+// Regression: architecture used to be compared before alternative
+// order, so a native-architecture provider of a late alternative beat
+// an arch-independent provider of the first one. On a real system that
+// turned "hunspell-en-us | ... | ispell-dictionary" into a Bulgarian
+// dictionary.
+TEST(SolverTest, AlternativeOrderOutranksArchitecture) {
+    Component root = make("app");
+    root.setArchitecture("amd64");
+    root.addRequirement(Requirement(std::vector<Constraint>{
+        Constraint("english-dictionary"),
+        Constraint("any-dictionary")
+    }));
+
+    // First alternative, but architecture independent.
+    Component english(
+        "hunspell-en-us", "hunspell-en-us", "1.0",
+        ComponentType::Application
+    );
+    english.setArchitecture(nexus::kArchitectureAll);
+    english.addProvidedCapability(Capability("english-dictionary"));
+
+    // Second alternative, but native architecture.
+    Component other("ibulgarian", "ibulgarian", "1.0",
+                    ComponentType::Application);
+    other.setArchitecture("amd64");
+    other.addProvidedCapability(Capability("any-dictionary"));
+
+    Solver solver({root, other, english}, debianDetector());
+
+    SolverRequest request;
+    request.architecture = "amd64";
+    request.requirements.push_back(Requirement(Constraint("app")));
+
+    const auto result = solver.solve(request);
+
+    ASSERT_EQ(result.status, SolverStatus::Success);
+    EXPECT_TRUE(contains(result.selected, "hunspell-en-us"));
+    EXPECT_FALSE(contains(result.selected, "ibulgarian"));
+}
+
+// Architecture preference has three tiers: an exact build beats an
+// arch-independent one, which beats a foreign build of another
+// architecture. Anything less leaves the choice to index order.
+TEST(SolverTest, ExactArchitectureBeatsArchIndependent) {
+    Component root = make("app");
+    root.setArchitecture("amd64");
+    root.addRequirement(Requirement(Constraint("tool")));
+
+    Component anywhere("tool:all", "tool", "2.0",
+                       ComponentType::Application);
+    anywhere.setArchitecture(nexus::kArchitectureAll);
+    anywhere.addProvidedCapability(Capability("tool"));
+
+    Component exact("tool:amd64", "tool", "2.0",
+                    ComponentType::Application);
+    exact.setArchitecture("amd64");
+    exact.addProvidedCapability(Capability("tool"));
+
+    // arch-independent listed first, so order alone would pick it.
+    Solver solver({root, anywhere, exact}, debianDetector());
+
+    SolverRequest request;
+    request.architecture = "amd64";
+    request.requirements.push_back(Requirement(Constraint("app")));
+
+    const auto result = solver.solve(request);
+
+    ASSERT_EQ(result.status, SolverStatus::Success);
+    EXPECT_TRUE(contains(result.selected, "tool:amd64"));
+    EXPECT_FALSE(contains(result.selected, "tool:all"));
+}
+
+// An Architecture: all component still beats a foreign build of a
+// different architecture.
+TEST(SolverTest, ArchIndependentIsNotPenalisedAgainstNative) {
+    Component root = make("app");
+    root.setArchitecture("amd64");
+    root.addRequirement(Requirement(Constraint("tool")));
+
+    Component anywhere("tool:all", "tool", "2.0",
+                       ComponentType::Application);
+    anywhere.setArchitecture(nexus::kArchitectureAll);
+    anywhere.addProvidedCapability(Capability("tool"));
+
+    Component foreign("tool:i386", "tool", "2.0",
+                      ComponentType::Application);
+    foreign.setArchitecture("i386");
+    foreign.setMultiArch(nexus::MultiArch::Foreign);
+    foreign.addProvidedCapability(Capability("tool"));
+
+    Solver solver({root, foreign, anywhere}, debianDetector());
+
+    SolverRequest request;
+    request.architecture = "amd64";
+    request.requirements.push_back(Requirement(Constraint("app")));
+
+    const auto result = solver.solve(request);
+
+    ASSERT_EQ(result.status, SolverStatus::Success);
+    EXPECT_TRUE(contains(result.selected, "tool:all"));
+}

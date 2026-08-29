@@ -14,6 +14,7 @@
 #include <nexus/system/control_file.hpp>
 #include <nexus/system/dependency_expression.hpp>
 #include <nexus/system/dpkg_source.hpp>
+#include <nexus/system/identity.hpp>
 #include <nexus/system/version.hpp>
 
 namespace nexus::system {
@@ -315,6 +316,8 @@ AptSourceResult AptSource::load() const {
         }
     }
 
+    qualifyAmbiguousIds(result.components);
+
     return result;
 }
 
@@ -341,6 +344,11 @@ std::vector<Component> mergeAvailable(
 
         merged.push_back(component);
     }
+
+    // Ids were assigned by each source in isolation. A name that is
+    // unambiguous within one source can collide once the two are
+    // combined, so identity is settled here, over the whole universe.
+    qualifyAmbiguousIds(merged);
 
     return merged;
 }

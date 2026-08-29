@@ -314,3 +314,56 @@ TEST(ArchitectureIntegrationTest, SolvingForI386PicksThe32BitLibrary) {
 
     EXPECT_TRUE(saw32);
 }
+
+// Regression: the solver used to track selections by component id.
+// Two builds of the same package share a name, so once the 64-bit one
+// was chosen the 32-bit one looked already satisfied and was silently
+// dropped -- exactly the failure multi-arch exists to prevent.
+TEST(ArchitectureIntegrationTest, BothArchitecturesCanBeSelected) {
+    std::istringstream input(
+        "Package: game\n"
+        "Status: install ok installed\n"
+        "Architecture: amd64\n"
+        "Version: 1.0\n"
+        "Depends: libc6, libc6:i386\n"
+        "\n"
+        "Package: libc6\n"
+        "Status: install ok installed\n"
+        "Architecture: amd64\n"
+        "Multi-Arch: same\n"
+        "Version: 2.39\n"
+        "\n"
+        "Package: libc6\n"
+        "Status: install ok installed\n"
+        "Architecture: i386\n"
+        "Multi-Arch: same\n"
+        "Version: 2.39\n"
+    );
+
+    const nexus::system::DpkgSource source;
+    const auto loaded = source.loadFromStanzas(
+        nexus::system::parseControlStream(input)
+    );
+
+    Solver solver(loaded.components, debianDetector());
+
+    SolverRequest request;
+    request.architecture = "amd64";
+    request.requirements.push_back(Requirement(Constraint("game")));
+
+    const auto result = solver.solve(request);
+
+    ASSERT_EQ(result.status, SolverStatus::Success);
+    ASSERT_EQ(result.selected.size(), 3u);
+
+    bool saw64 = false;
+    bool saw32 = false;
+
+    for (const std::string& id : result.selected) {
+        saw64 = saw64 || id == "libc6:amd64";
+        saw32 = saw32 || id == "libc6:i386";
+    }
+
+    EXPECT_TRUE(saw64);
+    EXPECT_TRUE(saw32);
+}

@@ -12,8 +12,11 @@ namespace nexus {
 namespace {
 
 struct SearchState {
-    std::vector<const Component*> selected;
-    std::set<std::string> selectedIds;
+    // Tracked by index rather than id. Identity is the source's
+    // business; the solver must not silently merge two distinct
+    // components that happen to share a name.
+    std::vector<std::size_t> selected;
+    std::set<std::size_t> selectedIndices;
     std::vector<SolverStep> steps;
     std::size_t decisions = 0;
     std::size_t backtracks = 0;
@@ -34,16 +37,28 @@ void Solver::buildIndex() {
     for (std::size_t index = 0; index < components_.size(); ++index) {
         const Component& component = components_[index];
 
-        byCapability_[component.id()].push_back(index);
+        // A component is reachable by its id, its name, and every
+        // capability it provides -- and those overlap, since a
+        // package normally provides its own name. Inserting the same
+        // index twice under one key would make a single provider look
+        // like a choice between two.
+        const auto add = [&](const std::string& key) {
+            std::vector<std::size_t>& entries = byCapability_[key];
 
-        if (component.name() != component.id()) {
-            byCapability_[component.name()].push_back(index);
-        }
+            if (!entries.empty() && entries.back() == index) {
+                return;
+            }
+
+            entries.push_back(index);
+        };
+
+        add(component.id());
+        add(component.name());
 
         for (const Capability& capability :
              component.providedCapabilities()) {
 
-            byCapability_[capability.name()].push_back(index);
+            add(capability.name());
         }
     }
 }
@@ -64,12 +79,12 @@ SolverResult Solver::solve(const SolverRequest& request) const {
 
     // Components already selected, as values, for conflict checking.
     const auto selectedComponents =
-        [&state]() -> std::vector<Component> {
+        [&state, this]() -> std::vector<Component> {
             std::vector<Component> result;
             result.reserve(state.selected.size());
 
-            for (const Component* component : state.selected) {
-                result.push_back(*component);
+            for (std::size_t position : state.selected) {
+                result.push_back(components_[position]);
             }
 
             return result;
@@ -80,8 +95,9 @@ SolverResult Solver::solve(const SolverRequest& request) const {
         [&](const Requirement& requirement,
             const std::string& arch) -> bool {
             for (const Constraint& option : requirement.alternatives) {
-                for (const Component* chosen : state.selected) {
-                    if (detector_.matches(*chosen, option, arch)) {
+                for (std::size_t position : state.selected) {
+                    if (detector_.matches(
+                            components_[position], option, arch)) {
                         return true;
                     }
                 }
@@ -116,6 +132,7 @@ SolverResult Solver::solve(const SolverRequest& request) const {
             // Gather every component that satisfies any alternative,
             // keeping the declared order of the alternatives.
             struct Candidate {
+                std::size_t position;
                 const Component* component;
                 const Constraint* option;
                 std::size_t rank;
@@ -148,6 +165,7 @@ SolverResult Solver::solve(const SolverRequest& request) const {
                     }
 
                     candidates.push_back(Candidate{
+                        position,
                         &component,
                         &option,
                         index
@@ -213,7 +231,52 @@ SolverResult Solver::solve(const SolverRequest& request) const {
                         return leftWins;
                     }
 
-                    return left.rank < right.rank;
+                    // The order of alternatives is the packager's
+                    // stated preference and outranks everything below.
+                    // Architecture only breaks ties *within* one
+                    // alternative -- otherwise a native-architecture
+                    // provider of the fifth alternative would beat an
+                    // arch-independent provider of the first.
+                    if (left.rank != right.rank) {
+                        return left.rank < right.rank;
+                    }
+
+                    // Within a single alternative, several builds of
+                    // one package can be eligible: a foreign-marked
+                    // component satisfies any architecture. Prefer the
+                    // requester's own, rather than whichever the index
+                    // listed first. Arch-independent components count
+                    // as native; they are not a worse answer.
+                    if (!requesterArchitecture.empty()) {
+                        // Three tiers, most specific first:
+                        //   0  built for exactly this architecture
+                        //   1  architecture independent
+                        //   2  another architecture, eligible only
+                        //      because it is marked foreign
+                        const auto tier =
+                            [&](const Component& component) {
+                                if (component.architecture() ==
+                                    requesterArchitecture) {
+                                    return 0;
+                                }
+
+                                if (component.architecture() ==
+                                    kArchitectureAll) {
+                                    return 1;
+                                }
+
+                                return 2;
+                            };
+
+                        const int leftTier = tier(*left.component);
+                        const int rightTier = tier(*right.component);
+
+                        if (leftTier != rightTier) {
+                            return leftTier < rightTier;
+                        }
+                    }
+
+                    return false;
                 }
             );
 
@@ -227,7 +290,7 @@ SolverResult Solver::solve(const SolverRequest& request) const {
 
                 state.decisions += 1;
 
-                if (state.selectedIds.count(candidate.component->id())) {
+                if (state.selectedIndices.count(candidate.position)) {
                     return search(pending);
                 }
 
@@ -246,14 +309,59 @@ SolverResult Solver::solve(const SolverRequest& request) const {
                     continue;
                 }
 
-                state.selected.push_back(candidate.component);
-                state.selectedIds.insert(candidate.component->id());
+                state.selected.push_back(candidate.position);
+                state.selectedIndices.insert(candidate.position);
+
+                // Everything else that could have satisfied this
+                // requirement, so the reason can say what was passed
+                // over instead of silently claiming there was no
+                // choice.
+                std::vector<std::string> rejected;
+
+                for (const Candidate& other : candidates) {
+                    if (other.position == candidate.position) {
+                        continue;
+                    }
+
+                    rejected.push_back(other.component->id());
+
+                    if (rejected.size() >= 3) {
+                        break;
+                    }
+                }
+
+                const auto listRejected = [&rejected]() {
+                    std::string text;
+
+                    for (std::size_t i = 0; i < rejected.size(); ++i) {
+                        if (i > 0) {
+                            text += ", ";
+                        }
+
+                        text += rejected[i];
+                    }
+
+                    return text;
+                };
 
                 std::string reason;
 
                 if (candidates.size() == 1) {
                     reason = "only component providing " +
                              toString(*candidate.option);
+                } else if (!requirement.hasChoice()) {
+                    // One alternative, several components able to
+                    // satisfy it -- usually different architectures
+                    // of the same package.
+                    reason = "chosen over " + listRejected() +
+                             " for " + toString(*candidate.option);
+
+                    if (!requesterArchitecture.empty() &&
+                        candidate.component->architecture() ==
+                            requesterArchitecture) {
+                        reason += " (matches " +
+                                  requesterArchitecture + ")";
+                    }
                 } else if (!firstAttempt) {
                     reason = "chosen after earlier alternatives for " +
                              toString(requirement) + " failed";
@@ -316,7 +424,7 @@ SolverResult Solver::solve(const SolverRequest& request) const {
 
                 // Undo and try the next alternative.
                 state.selected.pop_back();
-                state.selectedIds.erase(candidate.component->id());
+                state.selectedIndices.erase(candidate.position);
                 state.steps.pop_back();
                 state.backtracks += 1;
 
@@ -344,8 +452,8 @@ SolverResult Solver::solve(const SolverRequest& request) const {
     result.decisions = state.decisions;
     result.backtracks = state.backtracks;
 
-    for (const Component* component : state.selected) {
-        result.selected.push_back(component->id());
+    for (std::size_t position : state.selected) {
+        result.selected.push_back(components_[position].id());
     }
 
     if (solved) {
