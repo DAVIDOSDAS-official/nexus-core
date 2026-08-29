@@ -1,6 +1,7 @@
 #pragma once
 
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -53,6 +54,12 @@ struct SolverRequest {
     // a requirement is absolute and will never be silently replaced.
     std::map<std::string, std::string> preferred;
     std::map<std::string, std::string> required;
+
+    // Components to favour wherever they can satisfy something,
+    // without naming the capability. This is what a hardware-derived
+    // preference needs: "on this machine prefer the Mesa driver"
+    // rather than "for capability X prefer Y".
+    std::set<std::string> preferredComponents;
 };
 
 // Resolves requirements against a set of available components,

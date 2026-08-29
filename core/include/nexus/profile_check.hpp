@@ -26,6 +26,13 @@ struct ProfileReport {
 
     std::vector<ProfileItem> items;
 
+    // Conditional preferences whose condition held on this machine,
+    // and those that did not. Both are reported: a preference that
+    // silently did not apply is indistinguishable from one that was
+    // never written.
+    std::vector<std::string> appliedPreferences;
+    std::vector<std::string> inactivePreferences;
+
     std::size_t satisfied = 0;
     std::size_t missing = 0;
 

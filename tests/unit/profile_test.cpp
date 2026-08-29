@@ -230,3 +230,111 @@ TEST(ProfileCheckTest, ReportsWhatSatisfiedEachRequirement) {
     EXPECT_EQ(report.items[0].provided.front(), "kde");
     EXPECT_EQ(report.items[0].provided.size(), 2u);
 }
+
+// A conditional preference lets a profile say what to use on an
+// NVIDIA machine without the user having to know they are on one.
+
+TEST(ProfileFileTest, ParsesConditionalPreferences) {
+    const auto result = parse(
+        "Profile: gaming\n"
+        "Requires: vulkan\n"
+        "Prefers-When: gpu-vendor-amd -> mesa-vulkan-drivers,\n"
+        " gpu-vendor-nvidia -> nvidia-driver-libs\n"
+    );
+
+    ASSERT_EQ(result.profiles.size(), 1u);
+
+    const auto& conditionals = result.profiles[0].conditionalPreferences;
+
+    ASSERT_EQ(conditionals.size(), 2u);
+    EXPECT_EQ(conditionals[0].when, "gpu-vendor-amd");
+    EXPECT_EQ(conditionals[0].prefer, "mesa-vulkan-drivers");
+    EXPECT_EQ(conditionals[1].when, "gpu-vendor-nvidia");
+    EXPECT_EQ(conditionals[1].prefer, "nvidia-driver-libs");
+}
+
+TEST(ProfileFileTest, ReportsMalformedConditionalPreferences) {
+    const auto result = parse(
+        "Profile: broken\n"
+        "Requires: a\n"
+        "Prefers-When: no-arrow-here\n"
+    );
+
+    ASSERT_EQ(result.profiles.size(), 1u);
+    EXPECT_TRUE(result.profiles[0].conditionalPreferences.empty());
+    EXPECT_FALSE(result.problems.empty());
+}
+
+namespace {
+
+// Two drivers, either of which satisfies the requirement, plus a
+// component standing in for detected hardware.
+std::vector<Component> machineWith(const std::string& gpuCapability) {
+    Component mesa = make("mesa-vulkan-drivers");
+    mesa.addProvidedCapability(nexus::Capability("vulkan"));
+
+    Component nvidia = make("nvidia-driver-libs");
+    nvidia.addProvidedCapability(nexus::Capability("vulkan"));
+
+    Component hardware = make("system-hardware");
+    hardware.addProvidedCapability(nexus::Capability(gpuCapability));
+
+    return {mesa, nvidia, hardware};
+}
+
+Profile vulkanProfile() {
+    Profile profile;
+
+    profile.name = "gaming";
+    profile.requirements.push_back(Requirement(Constraint("vulkan")));
+    profile.conditionalPreferences.push_back(
+        nexus::ConditionalPreference{
+            "gpu-vendor-nvidia", "nvidia-driver-libs"
+        }
+    );
+
+    return profile;
+}
+
+}
+
+TEST(ProfileCheckTest, HardwareSelectsTheDriverOnAnNvidiaMachine) {
+    const auto report = checkProfile(
+        vulkanProfile(),
+        solverOver(machineWith("gpu-vendor-nvidia"))
+    );
+
+    ASSERT_TRUE(report.complete());
+    EXPECT_EQ(report.items[0].provided.front(), "nvidia-driver-libs");
+    ASSERT_EQ(report.appliedPreferences.size(), 1u);
+    EXPECT_TRUE(report.inactivePreferences.empty());
+}
+
+// Same profile, different machine, different answer -- and nothing
+// about the profile changed.
+TEST(ProfileCheckTest, TheSameProfileChoosesMesaOnAnAmdMachine) {
+    const auto report = checkProfile(
+        vulkanProfile(),
+        solverOver(machineWith("gpu-vendor-amd"))
+    );
+
+    ASSERT_TRUE(report.complete());
+    EXPECT_EQ(report.items[0].provided.front(), "mesa-vulkan-drivers");
+    EXPECT_TRUE(report.appliedPreferences.empty());
+    ASSERT_EQ(report.inactivePreferences.size(), 1u);
+}
+
+// A preference that quietly did not apply is indistinguishable from
+// one that was never written, so both outcomes are reported.
+TEST(ProfileCheckTest, ReportsPreferencesThatDidNotApply) {
+    const auto report = checkProfile(
+        vulkanProfile(),
+        solverOver(machineWith("gpu-vendor-intel"))
+    );
+
+    ASSERT_EQ(report.inactivePreferences.size(), 1u);
+    EXPECT_NE(
+        report.inactivePreferences[0].find("gpu-vendor-nvidia"),
+        std::string::npos
+    );
+}

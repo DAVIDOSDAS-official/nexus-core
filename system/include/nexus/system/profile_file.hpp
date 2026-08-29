@@ -18,6 +18,7 @@ namespace nexus::system {
 //     Enables-Architectures: i386
 //     Requires: steam, mesa-vulkan-drivers | nvidia-driver-libs
 //     Prefers: audio=pipewire, display-server=wayland
+//     Prefers-When: gpu-vendor-nvidia -> nvidia-driver-libs
 //     Requires-Exactly: java=openjdk-21-jre
 //
 // Parsing never throws on a malformed field; problems are collected

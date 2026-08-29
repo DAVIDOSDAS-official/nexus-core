@@ -145,6 +145,36 @@ Profile fromStanza(
         problems
     );
 
+    // Prefers-When: <capability> -> <component>, <capability> -> <component>
+    for (const std::string& entry :
+         splitList(stanza.value("prefers-when"))) {
+
+        const std::size_t arrow = entry.find("->");
+
+        if (arrow == std::string::npos) {
+            problems.push_back(
+                profile.name + ": Prefers-When entry '" + entry +
+                "' is not in capability -> component form"
+            );
+            continue;
+        }
+
+        ConditionalPreference conditional;
+
+        conditional.when = trim(entry.substr(0, arrow));
+        conditional.prefer = trim(entry.substr(arrow + 2));
+
+        if (conditional.when.empty() || conditional.prefer.empty()) {
+            problems.push_back(
+                profile.name + ": Prefers-When entry '" + entry +
+                "' has an empty side"
+            );
+            continue;
+        }
+
+        profile.conditionalPreferences.push_back(conditional);
+    }
+
     readMapping(
         "Requires-Exactly",
         stanza.value("requires-exactly"),

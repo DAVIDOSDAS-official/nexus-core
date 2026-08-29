@@ -9,3 +9,6 @@ Requires: steam-installer | steam,
  gamemode,
  gpu-vendor-amd | gpu-vendor-intel | gpu-vendor-nvidia
 Prefers: audio=pipewire
+Prefers-When: gpu-vendor-amd -> mesa-vulkan-drivers,
+ gpu-vendor-intel -> mesa-vulkan-drivers,
+ gpu-vendor-nvidia -> nvidia-driver-libs

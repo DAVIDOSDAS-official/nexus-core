@@ -220,12 +220,18 @@ SolverResult Solver::solve(const SolverRequest& request) const {
                         request.preferred.find(right.option->capability);
 
                     const bool leftWins =
-                        leftPreferred != request.preferred.end() &&
-                        leftPreferred->second == left.component->id();
+                        (leftPreferred != request.preferred.end() &&
+                         leftPreferred->second ==
+                             left.component->id()) ||
+                        request.preferredComponents.count(
+                            left.component->id()) > 0;
 
                     const bool rightWins =
-                        rightPreferred != request.preferred.end() &&
-                        rightPreferred->second == right.component->id();
+                        (rightPreferred != request.preferred.end() &&
+                         rightPreferred->second ==
+                             right.component->id()) ||
+                        request.preferredComponents.count(
+                            right.component->id()) > 0;
 
                     if (leftWins != rightWins) {
                         return leftWins;
@@ -388,6 +394,11 @@ SolverResult Solver::solve(const SolverRequest& request) const {
 
                     reason = "preferred provider for " +
                              candidate.option->capability;
+                } else if (request.preferredComponents.count(
+                               candidate.component->id()) > 0 &&
+                           candidates.size() > 1) {
+
+                    reason = "preferred on this machine";
                 }
 
                 state.steps.push_back(SolverStep{

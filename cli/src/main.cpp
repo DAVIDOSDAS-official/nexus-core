@@ -638,7 +638,25 @@ int commandProfile(
         << "Profile:     " << report.profile << "\n"
         << "             " << report.description << "\n"
         << "Satisfied:   " << report.satisfied
-        << " of " << report.items.size() << "\n\n";
+        << " of " << report.items.size() << "\n";
+
+    if (!report.appliedPreferences.empty()) {
+        std::cout << "\nApplied for this machine:\n";
+
+        for (const std::string& applied : report.appliedPreferences) {
+            std::cout << "    " << applied << "\n";
+        }
+    }
+
+    if (!report.inactivePreferences.empty()) {
+        std::cout << "\nNot applicable here:\n";
+
+        for (const std::string& idle : report.inactivePreferences) {
+            std::cout << "    " << idle << "\n";
+        }
+    }
+
+    std::cout << "\n";
 
     for (const nexus::ProfileItem& item : report.items) {
         if (item.satisfied) {
