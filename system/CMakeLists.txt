@@ -6,6 +6,7 @@ add_library(nexus_system
     src/profile_file.cpp
     src/apt_source.cpp
     src/identity.cpp
+    src/auto_installed.cpp
 )
 
 target_include_directories(nexus_system

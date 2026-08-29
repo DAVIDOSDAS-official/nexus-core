@@ -2,12 +2,15 @@
 #include <exception>
 #include <iostream>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
 #include <nexus/component.hpp>
 #include <nexus/conflict_detector.hpp>
 #include <nexus/profile_check.hpp>
+#include <nexus/removal.hpp>
+#include <nexus/system/auto_installed.hpp>
 #include <nexus/solver.hpp>
 #include <nexus/hardware/hardware.hpp>
 #include <nexus/system/apt_source.hpp>
@@ -33,6 +36,7 @@ void printUsage() {
         << "    nexus inspect <component>\n"
         << "    nexus gaps [kind]\n"
         << "    nexus conflicts\n"
+        << "    nexus remove <component>\n"
         << "    nexus hardware\n"
         << "    nexus profile list\n"
         << "    nexus profile show <name>\n"
@@ -462,6 +466,83 @@ int commandSolve(
 }
 
 
+int commandRemove(
+    const std::vector<Component>& installed,
+    const std::string& target,
+    const std::string& statesPath,
+    const std::string& architecture
+) {
+    const auto automatic =
+        nexus::system::readAutoInstalled(statesPath);
+
+    if (automatic.empty()) {
+        std::cerr
+            << "Warning: no auto-installed record found at "
+            << statesPath << ".\n"
+            << "Every package looks explicitly wanted, so nothing "
+            << "will appear removable.\n\n";
+    }
+
+    // Roots are what was asked for: installed, minus what apt says
+    // came along automatically.
+    std::set<std::string> roots;
+
+    for (const Component& component : installed) {
+        const std::string key =
+            component.name() + ":" + component.architecture();
+
+        if (automatic.count(key) == 0) {
+            roots.insert(component.id());
+        }
+    }
+
+    const auto plan = nexus::planRemoval(
+        target, installed, roots, buildSolver(installed), architecture);
+
+    std::cout
+        << "Target:     " << plan.target << "\n"
+        << "Roots:      " << roots.size()
+        << " explicitly wanted component(s)\n\n";
+
+    if (!plan.possible) {
+        std::cout << plan.reason << "\n";
+
+        if (!plan.requiredBy.empty()) {
+            std::cout << "\nStill required by:\n";
+
+            std::size_t shown = 0;
+
+            for (const std::string& id : plan.requiredBy) {
+                std::cout << "    " << id << "\n";
+
+                if (++shown >= 10) {
+                    std::cout
+                        << "    ... and "
+                        << (plan.requiredBy.size() - shown)
+                        << " more\n";
+                    break;
+                }
+            }
+        }
+
+        return 1;
+    }
+
+    std::cout
+        << "Would remove " << plan.removed.size()
+        << " component(s):\n\n"
+        << "    " << plan.target << "  (requested)\n";
+
+    for (const std::string& id : plan.orphaned) {
+        std::cout << "    " << id << "  (nothing else needs it)\n";
+    }
+
+    std::cout
+        << "\nNothing has been changed; this command only reports.\n";
+
+    return 0;
+}
+
 int commandHardware(const nexus::hardware::HardwareInfo& info) {
     std::cout << "Graphics:\n";
 
@@ -762,6 +843,7 @@ int main(int argc, char** argv) {
     std::string profileDir = "components/profiles";
     std::string listsDir = "/var/lib/apt/lists";
     std::string sysfsRoot = "/";
+    std::string statesPath = "/var/lib/apt/extended_states";
     bool withAvailable = false;
     bool explain = false;
     std::vector<std::string> positional;
@@ -780,6 +862,12 @@ int main(int argc, char** argv) {
 
         if (arguments[index] == "--with-available") {
             withAvailable = true;
+            continue;
+        }
+
+        if (arguments[index] == "--states" && index + 1 < arguments.size()) {
+            statesPath = arguments[index + 1];
+            index += 1;
             continue;
         }
 
@@ -912,6 +1000,16 @@ int main(int argc, char** argv) {
             }
 
             return commandInspect(result, argument);
+        }
+
+        if (command == "remove") {
+            if (argument.empty()) {
+                std::cerr << "remove requires a component name.\n";
+                return 2;
+            }
+
+            return commandRemove(
+                installed, argument, statesPath, arch);
         }
 
         if (command == "hardware") {
