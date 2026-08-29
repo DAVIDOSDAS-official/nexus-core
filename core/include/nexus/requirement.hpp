@@ -19,6 +19,12 @@ namespace nexus {
 struct Requirement {
     std::vector<Constraint> alternatives;
 
+    // A pre-dependency must be fully configured before this component
+    // is even unpacked. An ordinary dependency only has to be
+    // configured before this one is. The distinction is invisible to
+    // resolution and decisive for ordering.
+    bool pre = false;
+
     Requirement() = default;
 
     explicit Requirement(Constraint single) {

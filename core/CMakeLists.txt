@@ -7,6 +7,7 @@ add_library(nexus_core
     src/solver.cpp
     src/profile_check.cpp
     src/removal.cpp
+    src/transaction.cpp
     src/conflict_detector.cpp
     src/capability.cpp
     src/resolver.cpp

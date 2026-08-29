@@ -10,6 +10,7 @@
 #include <nexus/conflict_detector.hpp>
 #include <nexus/profile_check.hpp>
 #include <nexus/removal.hpp>
+#include <nexus/transaction.hpp>
 #include <nexus/system/auto_installed.hpp>
 #include <nexus/solver.hpp>
 #include <nexus/hardware/hardware.hpp>
@@ -36,6 +37,7 @@ void printUsage() {
         << "    nexus inspect <component>\n"
         << "    nexus gaps [kind]\n"
         << "    nexus conflicts\n"
+        << "    nexus plan <capability>\n"
         << "    nexus remove <component>\n"
         << "    nexus hardware\n"
         << "    nexus profile list\n"
@@ -465,6 +467,120 @@ int commandSolve(
     return 0;
 }
 
+
+int commandPlan(
+    const std::vector<Component>& universe,
+    const std::string& capability,
+    const std::string& architecture,
+    bool explain
+) {
+    nexus::Solver solver = buildSolver(universe);
+
+    nexus::SolverRequest request;
+
+    request.architecture = architecture;
+    request.requirements.push_back(
+        nexus::Requirement(nexus::Constraint(capability))
+    );
+
+    const auto solution = solver.solve(request);
+
+    std::cout
+        << "Request:  " << capability << "\n"
+        << "Resolve:  " << toString(solution.status) << "\n";
+
+    if (solution.status != nexus::SolverStatus::Success) {
+        std::cout << "\n" << solution.reason << "\n";
+
+        if (!solution.blockedOn.empty()) {
+            std::cout
+                << "\nNothing available provides:\n    "
+                << solution.blockedOn << "\n";
+        }
+
+        return 1;
+    }
+
+    const auto plan = nexus::planTransaction(
+        solution.selected,
+        universe,
+        nexus::ConflictDetector(
+            [](const std::string& left, const std::string& right) {
+                return nexus::system::compareVersions(left, right);
+            }
+        )
+    );
+
+    std::cout
+        << "Order:    " << toString(plan.status) << "\n"
+        << "Steps:    " << plan.steps.size() << "\n\n"
+        << plan.reason << "\n";
+
+    if (!plan.cycles.empty()) {
+        std::cout << "\nDependency cycles:\n";
+
+        for (const nexus::TransactionCycle& cycle : plan.cycles) {
+            std::cout << "    ";
+
+            for (std::size_t i = 0; i < cycle.members.size(); ++i) {
+                if (i > 0) {
+                    std::cout << " <-> ";
+                }
+
+                std::cout << cycle.members[i];
+            }
+
+            if (cycle.containsPreDependency) {
+                std::cout << "   [contains a pre-dependency]";
+            }
+
+            std::cout << "\n";
+        }
+    }
+
+    if (!plan.ready()) {
+        return 1;
+    }
+
+    if (!explain) {
+        std::cout
+            << "\nUse --explain for the full order.\n"
+            << "Nothing has been changed; this command only "
+            << "reports.\n";
+
+        return 0;
+    }
+
+    std::cout << "\nOrder:\n";
+
+    std::size_t number = 0;
+
+    for (const nexus::TransactionStep& step : plan.steps) {
+        std::cout
+            << "    " << ++number << ". " << step.component;
+
+        if (step.inCycle) {
+            std::cout << "   [cycle: unpack first, configure after]";
+        } else if (!step.after.empty()) {
+            std::cout << "   after ";
+
+            for (std::size_t i = 0; i < step.after.size(); ++i) {
+                if (i > 0) {
+                    std::cout << ", ";
+                }
+
+                std::cout << step.after[i];
+            }
+        }
+
+        std::cout << "\n";
+    }
+
+    std::cout
+        << "\nNothing has been changed; this command only reports.\n";
+
+    return 0;
+}
 
 int commandRemove(
     const std::vector<Component>& installed,
@@ -1008,6 +1124,15 @@ int main(int argc, char** argv) {
             }
 
             return commandInspect(result, argument);
+        }
+
+        if (command == "plan") {
+            if (argument.empty()) {
+                std::cerr << "plan requires a capability name.\n";
+                return 2;
+            }
+
+            return commandPlan(universe, argument, arch, explain);
         }
 
         if (command == "remove") {

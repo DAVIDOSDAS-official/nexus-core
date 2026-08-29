@@ -16,8 +16,11 @@ namespace nexus::system {
 // These are recorded rather than silently discarded. A model that
 // quietly drops constraints would violate the project's own rule
 // against hiding system behaviour from the user.
+// Nothing in a dependency field is discarded any more. The enum is
+// kept so that the next thing the model cannot express has somewhere
+// to be recorded rather than dropped.
 enum class ModelGapKind {
-    PreDependency   // Pre-Depends — the model has no ordering strength
+    Unrepresented
 };
 
 struct ModelGap {

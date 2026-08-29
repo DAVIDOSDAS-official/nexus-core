@@ -1,6 +1,7 @@
 #include <nexus/system/dpkg_source.hpp>
 
 #include <map>
+#include <string>
 #include <utility>
 
 #include <nexus/constraint.hpp>
@@ -136,22 +137,16 @@ DpkgSourceResult DpkgSource::loadFromStanzas(
                 }
 
                 if (!options.empty()) {
-                    component.addRequirement(
-                        Requirement(std::move(options))
-                    );
+                    Requirement requirement(std::move(options));
+
+                    requirement.pre =
+                        std::string(field) == "pre-depends";
+
+                    component.addRequirement(std::move(requirement));
                 }
             }
 
             recordClauseGaps(name, field, clauses, result.gaps);
-        }
-
-        if (stanza.has("pre-depends")) {
-            result.gaps.push_back(ModelGap{
-                name,
-                ModelGapKind::PreDependency,
-                "Pre-Depends",
-                stanza.value("pre-depends")
-            });
         }
 
         if (stanza.has("recommends")) {
@@ -241,8 +236,8 @@ ComponentType classifySection(const std::string& section) {
 
 std::string toString(ModelGapKind kind) {
     switch (kind) {
-        case ModelGapKind::PreDependency:
-            return "pre-dependency";
+        case ModelGapKind::Unrepresented:
+            return "unrepresented";
     }
 
     return "unknown";

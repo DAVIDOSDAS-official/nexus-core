@@ -16,6 +16,7 @@ add_executable(component_test
     unit/apt_source_test.cpp
     unit/hardware_test.cpp
     unit/removal_test.cpp
+    unit/transaction_test.cpp
 )
 
 target_link_libraries(component_test

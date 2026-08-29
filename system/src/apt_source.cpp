@@ -149,7 +149,11 @@ Component fromStanza(const ControlStanza& stanza) {
             }
 
             if (!options.empty()) {
-                component.addRequirement(Requirement(std::move(options)));
+                Requirement requirement(std::move(options));
+
+                requirement.pre = std::string(field) == "pre-depends";
+
+                component.addRequirement(std::move(requirement));
             }
         }
     }
