@@ -3,6 +3,7 @@ add_library(nexus_system
     src/dependency_expression.cpp
     src/dpkg_source.cpp
     src/version.cpp
+    src/profile_file.cpp
 )
 
 target_include_directories(nexus_system

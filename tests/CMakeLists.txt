@@ -12,6 +12,7 @@ add_executable(component_test
     unit/conflict_detector_test.cpp
     unit/solver_test.cpp
     unit/architecture_test.cpp
+    unit/profile_test.cpp
 )
 
 target_link_libraries(component_test

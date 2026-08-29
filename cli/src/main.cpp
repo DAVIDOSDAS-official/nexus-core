@@ -7,7 +7,9 @@
 
 #include <nexus/component.hpp>
 #include <nexus/conflict_detector.hpp>
+#include <nexus/profile_check.hpp>
 #include <nexus/solver.hpp>
+#include <nexus/system/profile_file.hpp>
 #include <nexus/system/dpkg_source.hpp>
 #include <nexus/system/version.hpp>
 
@@ -29,11 +31,16 @@ void printUsage() {
         << "    nexus inspect <component>\n"
         << "    nexus gaps [kind]\n"
         << "    nexus conflicts\n"
+        << "    nexus profile list\n"
+        << "    nexus profile show <name>\n"
+        << "    nexus profile check <name>\n"
         << "    nexus solve <capability> [--arch a] [--prefer id]\n"
         << "                             [--require id]\n"
         << "\n"
         << "Options:\n"
         << "    --status <path>   dpkg status file\n"
+        << "    --profiles <dir>  profile directory\n"
+        << "    --arch <arch>     target architecture\n"
         << "                      (default: /var/lib/dpkg/status)\n"
         << "\n"
         << "This command never modifies the system.\n";
@@ -73,7 +80,12 @@ const Component* find(
         }
 
         std::cout << "\nName one of them explicitly.\n";
+
+        // Reported here; the caller must not also say "unknown".
+        return nullptr;
     }
+
+    std::cout << "Unknown component: " << id << "\n";
 
     return nullptr;
 }
@@ -189,7 +201,6 @@ int commandWhy(
     const Component* target = find(result, id);
 
     if (target == nullptr) {
-        std::cout << "Unknown component: " << id << "\n";
         return 1;
     }
 
@@ -248,7 +259,6 @@ int commandInspect(
     const Component* component = find(result, id);
 
     if (component == nullptr) {
-        std::cout << "Unknown component: " << id << "\n";
         return 1;
     }
 
@@ -404,6 +414,161 @@ int commandSolve(
     return 0;
 }
 
+nexus::Solver buildSolver(const DpkgSourceResult& result) {
+    return nexus::Solver(
+        result.components,
+        nexus::ConflictDetector(
+            [](const std::string& left, const std::string& right) {
+                return nexus::system::compareVersions(left, right);
+            }
+        )
+    );
+}
+
+int commandProfile(
+    const DpkgSourceResult& result,
+    const std::string& action,
+    const std::string& name,
+    const std::string& directory,
+    const std::string& architecture
+) {
+    const auto loaded =
+        nexus::system::parseProfileDirectory(directory);
+
+    for (const std::string& problem : loaded.problems) {
+        std::cerr << "Warning: " << problem << "\n";
+    }
+
+    if (loaded.profiles.empty()) {
+        std::cerr
+            << "No profiles found in " << directory << "\n"
+            << "Use --profiles <dir> to point somewhere else.\n";
+        return 1;
+    }
+
+    if (action == "list") {
+        std::cout << "Profiles in " << directory << ":\n\n";
+
+        for (const nexus::Profile& profile : loaded.profiles) {
+            std::cout
+                << "    " << profile.name << "\n"
+                << "        " << profile.description << "\n"
+                << "        " << profile.requirements.size()
+                << " requirement(s)\n";
+        }
+
+        return 0;
+    }
+
+    const nexus::Profile* chosen = nullptr;
+
+    for (const nexus::Profile& profile : loaded.profiles) {
+        if (profile.name == name) {
+            chosen = &profile;
+            break;
+        }
+    }
+
+    if (chosen == nullptr) {
+        std::cerr << "Unknown profile: " << name << "\n";
+        return 1;
+    }
+
+    if (action == "show") {
+        std::cout
+            << "Profile:      " << chosen->name << "\n"
+            << "Description:  " << chosen->description << "\n"
+            << "Architecture: "
+            << (chosen->architecture.empty()
+                    ? "(native)" : chosen->architecture)
+            << "\n";
+
+        if (!chosen->additionalArchitectures.empty()) {
+            std::cout << "Also needs:   ";
+
+            for (const std::string& extra :
+                 chosen->additionalArchitectures) {
+
+                std::cout << extra << " ";
+            }
+
+            std::cout << "\n";
+        }
+
+        std::cout << "\nRequires:\n";
+
+        for (const nexus::Requirement& requirement :
+             chosen->requirements) {
+
+            std::cout << "    " << toString(requirement) << "\n";
+        }
+
+        if (!chosen->preferred.empty()) {
+            std::cout << "\nPrefers:\n";
+
+            for (const auto& [capability, component] :
+                 chosen->preferred) {
+
+                std::cout
+                    << "    " << capability
+                    << " -> " << component << "\n";
+            }
+        }
+
+        return 0;
+    }
+
+    if (action != "check") {
+        std::cerr
+            << "Unknown profile action: " << action << "\n"
+            << "Use list, show or check.\n";
+        return 2;
+    }
+
+    nexus::Profile profile = *chosen;
+
+    if (!architecture.empty()) {
+        profile.architecture = architecture;
+    }
+
+    const auto report =
+        nexus::checkProfile(profile, buildSolver(result));
+
+    std::cout
+        << "Profile:     " << report.profile << "\n"
+        << "             " << report.description << "\n"
+        << "Satisfied:   " << report.satisfied
+        << " of " << report.items.size() << "\n\n";
+
+    for (const nexus::ProfileItem& item : report.items) {
+        if (item.satisfied) {
+            std::cout
+                << "  [ok]      " << item.requirement << "\n"
+                << "            met by " << item.provided.front()
+                << " (+" << (item.provided.size() - 1)
+                << " dependencies)\n";
+        } else {
+            std::cout
+                << "  [missing] " << item.requirement << "\n"
+                << "            " << item.blockedOn << "\n";
+        }
+    }
+
+    if (report.complete()) {
+        std::cout
+            << "\nThis system already satisfies the "
+            << report.profile << " profile.\n";
+        return 0;
+    }
+
+    std::cout
+        << "\n" << report.missing
+        << " requirement(s) not met. Nothing has been changed;\n"
+        << "this command only reports.\n";
+
+    return 1;
+}
+
 int commandGaps(
     const DpkgSourceResult& result,
     const std::string& kindFilter
@@ -446,11 +611,19 @@ int main(int argc, char** argv) {
     std::string prefer;
     std::string require;
     std::string arch;
+    std::string profileDir = "components/profiles";
     std::vector<std::string> positional;
 
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         if (arguments[index] == "--status" && index + 1 < arguments.size()) {
             statusPath = arguments[index + 1];
+            index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--profiles" &&
+            index + 1 < arguments.size()) {
+            profileDir = arguments[index + 1];
             index += 1;
             continue;
         }
@@ -521,6 +694,16 @@ int main(int argc, char** argv) {
             }
 
             return commandInspect(result, argument);
+        }
+
+        if (command == "profile") {
+            const std::string action =
+                positional.size() > 1 ? positional[1] : "list";
+            const std::string name =
+                positional.size() > 2 ? positional[2] : std::string{};
+
+            return commandProfile(
+                result, action, name, profileDir, arch);
         }
 
         if (command == "solve") {

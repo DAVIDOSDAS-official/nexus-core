@@ -5,6 +5,7 @@ add_library(nexus_core
     src/constraint.cpp
     src/requirement.cpp
     src/solver.cpp
+    src/profile_check.cpp
     src/conflict_detector.cpp
     src/capability.cpp
     src/resolver.cpp
