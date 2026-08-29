@@ -12,11 +12,33 @@ namespace nexus {
 namespace {
 
 struct SearchState {
+    // The pending work list lives here, not in the recursion.
+    //
+    // It used to be passed by value, so every recursive call copied a
+    // vector that can hold thousands of entries. On a large system
+    // that is megabytes per stack frame, and the search overflows the
+    // stack long before it runs out of options.
+    std::vector<std::pair<Requirement, std::string>> queue;
+
     // Tracked by index rather than id. Identity is the source's
     // business; the solver must not silently merge two distinct
     // components that happen to share a name.
     std::vector<std::size_t> selected;
     std::set<std::size_t> selectedIndices;
+
+    // Indexes over what is currently selected, so that satisfaction
+    // and conflict checks cost the size of the answer rather than the
+    // size of the selection.
+    //
+    // Without these, every candidate evaluation walked every selected
+    // component -- and the conflict check copied them all. On a
+    // system with thousands of packages that is quadratic in the
+    // worst place possible.
+    std::map<std::string, std::vector<std::size_t>> provided;
+    std::map<
+        std::string,
+        std::vector<std::pair<std::size_t, const Constraint*>>
+    > declaredConflicts;
     std::vector<SolverStep> steps;
     std::size_t decisions = 0;
     std::size_t backtracks = 0;
@@ -77,25 +99,83 @@ SolverResult Solver::solve(const SolverRequest& request) const {
     std::string blockedOn;
     bool limitHit = false;
 
-    // Components already selected, as values, for conflict checking.
-    const auto selectedComponents =
-        [&state, this]() -> std::vector<Component> {
-            std::vector<Component> result;
-            result.reserve(state.selected.size());
+    // Every name a component answers to.
+    const auto namesOf =
+        [this](std::size_t position) -> std::vector<std::string> {
+            const Component& component = components_[position];
 
-            for (std::size_t position : state.selected) {
-                result.push_back(components_[position]);
+            std::vector<std::string> names;
+
+            names.push_back(component.id());
+
+            if (component.name() != component.id()) {
+                names.push_back(component.name());
             }
 
-            return result;
+            for (const Capability& capability :
+                 component.providedCapabilities()) {
+
+                names.push_back(capability.name());
+            }
+
+            return names;
         };
+
+    const auto indexSelection = [&](std::size_t position) {
+        for (const std::string& name : namesOf(position)) {
+            state.provided[name].push_back(position);
+        }
+
+        for (const Constraint& conflict :
+             components_[position].conflicts()) {
+
+            state.declaredConflicts[conflict.capability].push_back(
+                {position, &conflict}
+            );
+        }
+    };
+
+    const auto unindexSelection = [&](std::size_t position) {
+        for (const std::string& name : namesOf(position)) {
+            std::vector<std::size_t>& entries = state.provided[name];
+
+            entries.erase(
+                std::remove(entries.begin(), entries.end(), position),
+                entries.end()
+            );
+        }
+
+        for (const Constraint& conflict :
+             components_[position].conflicts()) {
+
+            auto& entries = state.declaredConflicts[conflict.capability];
+
+            entries.erase(
+                std::remove_if(
+                    entries.begin(),
+                    entries.end(),
+                    [position](const auto& entry) {
+                        return entry.first == position;
+                    }
+                ),
+                entries.end()
+            );
+        }
+    };
 
     // Is this requirement already met by something we have chosen?
     const auto alreadySatisfied =
         [&](const Requirement& requirement,
             const std::string& arch) -> bool {
             for (const Constraint& option : requirement.alternatives) {
-                for (std::size_t position : state.selected) {
+                const auto entry =
+                    state.provided.find(option.capability);
+
+                if (entry == state.provided.end()) {
+                    continue;
+                }
+
+                for (std::size_t position : entry->second) {
                     if (detector_.matches(
                             components_[position], option, arch)) {
                         return true;
@@ -106,39 +186,81 @@ SolverResult Solver::solve(const SolverRequest& request) const {
             return false;
         };
 
+    // Would choosing this collide with anything already chosen, in
+    // either direction? Looked up by name rather than scanned.
+    const auto collidesWithSelection =
+        [&](const Component& candidate) -> std::string {
+            for (const Constraint& conflict : candidate.conflicts()) {
+                const auto entry =
+                    state.provided.find(conflict.capability);
+
+                if (entry == state.provided.end()) {
+                    continue;
+                }
+
+                for (std::size_t position : entry->second) {
+                    if (detector_.matches(
+                            components_[position], conflict)) {
+
+                        return candidate.id() + " conflicts with " +
+                               toString(conflict) + ", satisfied by " +
+                               components_[position].id() + ".";
+                    }
+                }
+            }
+
+            std::vector<std::string> candidateNames;
+
+            candidateNames.push_back(candidate.id());
+            candidateNames.push_back(candidate.name());
+
+            for (const Capability& capability :
+                 candidate.providedCapabilities()) {
+
+                candidateNames.push_back(capability.name());
+            }
+
+            for (const std::string& name : candidateNames) {
+                const auto entry = state.declaredConflicts.find(name);
+
+                if (entry == state.declaredConflicts.end()) {
+                    continue;
+                }
+
+                for (const auto& [position, conflict] : entry->second) {
+                    if (detector_.matches(candidate, *conflict)) {
+                        return components_[position].id() +
+                               " conflicts with " +
+                               toString(*conflict) + ", satisfied by " +
+                               candidate.id() + ".";
+                    }
+                }
+            }
+
+            return "";
+        };
+
     // Recursive backtracking search over a work list of requirements.
     // Each pending item carries the architecture of the component
     // that asked for it, because "libfoo" from an amd64 package means
     // libfoo:amd64 unless the provider is marked foreign.
     using Pending = std::pair<Requirement, std::string>;
 
-    std::function<bool(std::vector<Pending>)> search =
-        [&](std::vector<Pending> pending) -> bool {
-            if (pending.empty()) {
-                return true;
-            }
+    // The recursion carries only a position in the shared queue.
+    struct Candidate {
+        std::size_t position;
+        const Component* component;
+        const Constraint* option;
+        std::size_t rank;
+    };
 
-            const Requirement requirement = pending.front().first;
-            const std::string requesterArchitecture =
-                pending.front().second;
-
-            pending.erase(pending.begin());
-
-            if (requirement.empty() ||
-                alreadySatisfied(requirement, requesterArchitecture)) {
-                return search(pending);
-            }
-
-            // Gather every component that satisfies any alternative,
-            // keeping the declared order of the alternatives.
-            struct Candidate {
-                std::size_t position;
-                const Component* component;
-                const Constraint* option;
-                std::size_t rank;
-            };
-
-            std::vector<Candidate> candidates;
+    // Build and order every component that could satisfy one
+    // requirement. Leaves candidates empty, and sets blockedOn, when
+    // nothing can.
+    const auto gather =
+        [&](const Requirement& requirement,
+            const std::string& requesterArchitecture,
+            std::vector<Candidate>& candidates) {
 
             for (std::size_t index = 0;
                  index < requirement.alternatives.size();
@@ -178,7 +300,7 @@ SolverResult Solver::solve(const SolverRequest& request) const {
                     blockedOn = toString(requirement);
                 }
 
-                return false;
+                return;
             }
 
             // A hard requirement removes every other candidate; a
@@ -203,7 +325,6 @@ SolverResult Solver::solve(const SolverRequest& request) const {
                 if (filtered.empty()) {
                     blockedOn = pinned->second + " (required for " +
                                 candidate.option->capability + ")";
-                    return false;
                 }
 
                 candidates = filtered;
@@ -239,26 +360,14 @@ SolverResult Solver::solve(const SolverRequest& request) const {
 
                     // The order of alternatives is the packager's
                     // stated preference and outranks everything below.
-                    // Architecture only breaks ties *within* one
-                    // alternative -- otherwise a native-architecture
-                    // provider of the fifth alternative would beat an
-                    // arch-independent provider of the first.
                     if (left.rank != right.rank) {
                         return left.rank < right.rank;
                     }
 
-                    // Within a single alternative, several builds of
-                    // one package can be eligible: a foreign-marked
-                    // component satisfies any architecture. Prefer the
-                    // requester's own, rather than whichever the index
-                    // listed first. Arch-independent components count
-                    // as native; they are not a worse answer.
+                    // Within one alternative, prefer the build for
+                    // this architecture, then the architecture
+                    // independent one, then a foreign build.
                     if (!requesterArchitecture.empty()) {
-                        // Three tiers, most specific first:
-                        //   0  built for exactly this architecture
-                        //   1  architecture independent
-                        //   2  another architecture, eligible only
-                        //      because it is marked foreign
                         const auto tier =
                             [&](const Component& component) {
                                 if (component.architecture() ==
@@ -285,177 +394,271 @@ SolverResult Solver::solve(const SolverRequest& request) const {
                     return false;
                 }
             );
+        };
 
-            bool firstAttempt = true;
+    // One open decision.
+    //
+    // These live on the heap, not on the call stack. The depth of the
+    // search is the size of the resolved system -- thousands of
+    // components on a real machine -- and a recursive search of that
+    // depth overflows the stack. It did: a 3,000-package system
+    // crashed while every test on a 900-package one passed.
+    struct Frame {
+        std::size_t head = 0;
+        Requirement requirement;
+        std::string architecture;
+        std::vector<Candidate> candidates;
+        std::size_t next = 0;
+        bool firstAttempt = true;
+        bool holdsSelection = false;
+        std::size_t selectedPosition = 0;
+        std::size_t queueMark = 0;
+    };
 
-            for (const Candidate& candidate : candidates) {
-                if (state.decisions >= decisionLimit_) {
-                    limitHit = true;
-                    return false;
-                }
+    std::vector<Frame> frames;
 
-                state.decisions += 1;
+    bool solved = false;
 
-                if (state.selectedIndices.count(candidate.position)) {
-                    return search(pending);
-                }
+    // Open a decision at the next queue position that needs one,
+    // skipping requirements already satisfied. Sets solved when the
+    // queue runs out.
+    const auto openFrame = [&](std::size_t head) -> bool {
+        while (head < state.queue.size()) {
+            const Requirement requirement = state.queue[head].first;
+            const std::string architecture = state.queue[head].second;
 
-                // Never select something that collides with what is
-                // already chosen, in either direction.
-                const auto conflicts = detector_.check(
-                    *candidate.component,
-                    selectedComponents()
-                );
+            if (requirement.empty() ||
+                alreadySatisfied(requirement, architecture)) {
+                head += 1;
+                continue;
+            }
 
-                if (!conflicts.empty()) {
-                    if (blockedOn.empty()) {
-                        blockedOn = conflicts.front().reason;
-                    }
+            Frame frame;
 
-                    continue;
-                }
+            frame.head = head;
+            frame.requirement = requirement;
+            frame.architecture = architecture;
 
-                state.selected.push_back(candidate.position);
-                state.selectedIndices.insert(candidate.position);
+            gather(frame.requirement, frame.architecture,
+                   frame.candidates);
 
-                // Everything else that could have satisfied this
-                // requirement, so the reason can say what was passed
-                // over instead of silently claiming there was no
-                // choice.
-                std::vector<std::string> rejected;
+            frames.push_back(std::move(frame));
 
-                for (const Candidate& other : candidates) {
-                    if (other.position == candidate.position) {
-                        continue;
-                    }
+            return true;
+        }
 
-                    rejected.push_back(other.component->id());
+        solved = true;
 
-                    if (rejected.size() >= 3) {
-                        break;
-                    }
-                }
+        return false;
+    };
 
-                const auto listRejected = [&rejected]() {
-                    std::string text;
+    state.queue.reserve(request.requirements.size() * 4);
 
-                    for (std::size_t i = 0; i < rejected.size(); ++i) {
-                        if (i > 0) {
-                            text += ", ";
-                        }
+    for (const Requirement& requirement : request.requirements) {
+        state.queue.push_back(
+            Pending{requirement, request.architecture}
+        );
+    }
 
-                        text += rejected[i];
-                    }
+    openFrame(0);
 
-                    return text;
-                };
+    while (!solved && !frames.empty()) {
+        // Undo whatever this frame currently holds before trying its
+        // next option.
+        {
+            Frame& frame = frames.back();
 
-                std::string reason;
-
-                if (candidates.size() == 1) {
-                    reason = "only component providing " +
-                             toString(*candidate.option);
-                } else if (!requirement.hasChoice()) {
-                    // One alternative, several components able to
-                    // satisfy it -- usually different architectures
-                    // of the same package.
-                    reason = "chosen over " + listRejected() +
-                             " for " + toString(*candidate.option);
-
-                    if (!requesterArchitecture.empty() &&
-                        candidate.component->architecture() ==
-                            requesterArchitecture) {
-                        reason += " (matches " +
-                                  requesterArchitecture + ")";
-                    }
-                } else if (!firstAttempt) {
-                    reason = "chosen after earlier alternatives for " +
-                             toString(requirement) + " failed";
-                } else if (requirement.hasChoice()) {
-                    reason = "first workable alternative for " +
-                             toString(requirement);
-                } else {
-                    reason = "provides " + toString(*candidate.option);
-                }
-
-                const auto pinned =
-                    request.required.find(candidate.option->capability);
-
-                if (pinned != request.required.end()) {
-                    reason = "explicitly required for " +
-                             candidate.option->capability;
-                }
-
-                const auto liked =
-                    request.preferred.find(candidate.option->capability);
-
-                if (liked != request.preferred.end() &&
-                    liked->second == candidate.component->id()) {
-
-                    reason = "preferred provider for " +
-                             candidate.option->capability;
-                } else if (request.preferredComponents.count(
-                               candidate.component->id()) > 0 &&
-                           candidates.size() > 1) {
-
-                    reason = "preferred on this machine";
-                }
-
-                state.steps.push_back(SolverStep{
-                    toString(requirement),
-                    candidate.component->id(),
-                    reason,
-                    candidates.size(),
-                    !firstAttempt
-                });
-
-                // The chosen component brings its own requirements.
-                std::vector<Pending> next = pending;
-
-                // An architecture-independent component still runs on
-                // a concrete architecture. Its own dependencies must
-                // be resolved against the architecture that asked for
-                // it, not against "all" -- "all" says what it
-                // satisfies, not what it needs.
-                const std::string childArchitecture =
-                    (candidate.component->architecture() ==
-                     kArchitectureAll)
-                        ? requesterArchitecture
-                        : candidate.component->architecture();
-
-                for (const Requirement& theirs :
-                     candidate.component->requirements()) {
-
-                    next.push_back(Pending{theirs, childArchitecture});
-                }
-
-                if (search(next)) {
-                    return true;
-                }
-
-                // Undo and try the next alternative.
+            if (frame.holdsSelection) {
+                state.queue.resize(frame.queueMark);
+                unindexSelection(frame.selectedPosition);
                 state.selected.pop_back();
-                state.selectedIndices.erase(candidate.position);
+                state.selectedIndices.erase(frame.selectedPosition);
                 state.steps.pop_back();
                 state.backtracks += 1;
 
-                firstAttempt = false;
+                frame.holdsSelection = false;
+                frame.firstAttempt = false;
+            }
+        }
+
+        bool descended = false;
+
+        while (true) {
+            Frame& frame = frames.back();
+
+            if (frame.next >= frame.candidates.size()) {
+                break;
             }
 
-            if (blockedOn.empty()) {
-                blockedOn = toString(requirement);
+            if (state.decisions >= decisionLimit_) {
+                limitHit = true;
+                frames.clear();
+                break;
             }
 
-            return false;
-        };
+            const Candidate candidate = frame.candidates[frame.next];
 
-    std::vector<Pending> initial;
+            frame.next += 1;
+            state.decisions += 1;
 
-    for (const Requirement& requirement : request.requirements) {
-        initial.push_back(Pending{requirement, request.architecture});
+            if (state.selectedIndices.count(candidate.position)) {
+                // Already chosen for something else, so the
+                // requirement is met without a new selection. This
+                // frame has no further options if what follows fails.
+                frame.next = frame.candidates.size();
+
+                const std::size_t nextHead = frame.head + 1;
+
+                descended = openFrame(nextHead);
+                break;
+            }
+
+            const std::string collision =
+                collidesWithSelection(*candidate.component);
+
+            if (!collision.empty()) {
+                if (blockedOn.empty()) {
+                    blockedOn = collision;
+                }
+
+                continue;
+            }
+
+            state.selected.push_back(candidate.position);
+            state.selectedIndices.insert(candidate.position);
+            indexSelection(candidate.position);
+
+            // Everything else that could have satisfied this
+            // requirement, so the reason can say what was passed over
+            // instead of silently claiming there was no choice.
+            std::vector<std::string> rejected;
+
+            for (const Candidate& other : frame.candidates) {
+                if (other.position == candidate.position) {
+                    continue;
+                }
+
+                rejected.push_back(other.component->id());
+
+                if (rejected.size() >= 3) {
+                    break;
+                }
+            }
+
+            const auto listRejected = [&rejected]() {
+                std::string text;
+
+                for (std::size_t i = 0; i < rejected.size(); ++i) {
+                    if (i > 0) {
+                        text += ", ";
+                    }
+
+                    text += rejected[i];
+                }
+
+                return text;
+            };
+
+            std::string reason;
+
+            if (frame.candidates.size() == 1) {
+                reason = "only component providing " +
+                         toString(*candidate.option);
+            } else if (!frame.requirement.hasChoice()) {
+                reason = "chosen over " + listRejected() +
+                         " for " + toString(*candidate.option);
+
+                if (!frame.architecture.empty() &&
+                    candidate.component->architecture() ==
+                        frame.architecture) {
+                    reason += " (matches " + frame.architecture + ")";
+                }
+            } else if (!frame.firstAttempt) {
+                reason = "chosen after earlier alternatives for " +
+                         toString(frame.requirement) + " failed";
+            } else {
+                reason = "first workable alternative for " +
+                         toString(frame.requirement);
+            }
+
+            const auto pinned =
+                request.required.find(candidate.option->capability);
+
+            if (pinned != request.required.end()) {
+                reason = "explicitly required for " +
+                         candidate.option->capability;
+            }
+
+            const auto liked =
+                request.preferred.find(candidate.option->capability);
+
+            if (liked != request.preferred.end() &&
+                liked->second == candidate.component->id()) {
+
+                reason = "preferred provider for " +
+                         candidate.option->capability;
+            } else if (request.preferredComponents.count(
+                           candidate.component->id()) > 0 &&
+                       frame.candidates.size() > 1) {
+
+                reason = "preferred on this machine";
+            }
+
+            state.steps.push_back(SolverStep{
+                toString(frame.requirement),
+                candidate.component->id(),
+                reason,
+                frame.candidates.size(),
+                !frame.firstAttempt
+            });
+
+            // The chosen component brings its own requirements,
+            // appended after whatever is already waiting.
+            frame.queueMark = state.queue.size();
+
+            // An architecture-independent component still runs on a
+            // concrete architecture. Its own dependencies resolve
+            // against the architecture that asked for it.
+            const std::string childArchitecture =
+                (candidate.component->architecture() ==
+                 kArchitectureAll)
+                    ? frame.architecture
+                    : candidate.component->architecture();
+
+            for (const Requirement& theirs :
+                 candidate.component->requirements()) {
+
+                state.queue.push_back(
+                    Pending{theirs, childArchitecture}
+                );
+            }
+
+            frame.holdsSelection = true;
+            frame.selectedPosition = candidate.position;
+
+            const std::size_t nextHead = frame.head + 1;
+
+            // Note: openFrame may reallocate frames, so nothing may
+            // touch this frame afterwards.
+            descended = openFrame(nextHead);
+            break;
+        }
+
+        if (solved || limitHit) {
+            break;
+        }
+
+        if (descended) {
+            continue;
+        }
+
+        // Out of options here; fall back to whatever asked for it.
+        if (blockedOn.empty()) {
+            blockedOn = toString(frames.back().requirement);
+        }
+
+        frames.pop_back();
     }
-
-    const bool solved = search(initial);
 
     SolverResult result;
 

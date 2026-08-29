@@ -237,3 +237,73 @@ TEST(AutoInstalledTest, MissingFileMeansNothingIsAutomatic) {
     EXPECT_TRUE(readAutoInstalled("/nonexistent/extended_states")
                     .empty());
 }
+
+// Scale test.
+//
+// planRemoval hands every root to the solver at once. On a real
+// desktop that is thousands of top-level requirements, and the search
+// then recurses once per requirement. This crashed with a stack
+// overflow on a 2,987-package system while every other test passed,
+// because the container the tests were written on had a third as
+// many. The size has to be in the test, not in the machine.
+TEST(RemovalTest, HandlesAThousandsOfRootsSystem) {
+    constexpr int kRoots = 5000;
+
+    std::vector<Component> installed;
+
+    installed.reserve(kRoots + 2);
+
+    installed.push_back(make("libcommon"));
+    installed.push_back(make("libextra", {"libcommon"}));
+
+    std::set<std::string> roots;
+
+    for (int index = 0; index < kRoots; ++index) {
+        const std::string name = "app-" + std::to_string(index);
+
+        installed.push_back(make(name, {"libcommon", "libextra"}));
+        roots.insert(name);
+    }
+
+    const RemovalPlan plan = planRemoval(
+        "app-7", installed, roots, solverOver(installed)
+    );
+
+    // Everything else still wants the shared libraries, so only the
+    // requested component goes.
+    ASSERT_TRUE(plan.possible);
+    EXPECT_EQ(plan.removed.size(), 1u);
+    EXPECT_TRUE(plan.orphaned.empty());
+}
+
+// A chain far deeper than any call stack could hold.
+//
+// The search depth is the size of the resolved system, so it must not
+// live on the stack at all. 20,000 is chosen to be comfortably past
+// the point where a recursive implementation dies.
+TEST(RemovalTest, HandlesADeepDependencyChain) {
+    constexpr int kDepth = 20000;
+
+    std::vector<Component> installed;
+
+    installed.reserve(kDepth);
+
+    for (int index = 0; index < kDepth; ++index) {
+        const std::string name = "link-" + std::to_string(index);
+
+        if (index + 1 < kDepth) {
+            installed.push_back(
+                make(name, {"link-" + std::to_string(index + 1)})
+            );
+        } else {
+            installed.push_back(make(name));
+        }
+    }
+
+    const RemovalPlan plan = planRemoval(
+        "link-0", installed, {"link-0"}, solverOver(installed)
+    );
+
+    ASSERT_TRUE(plan.possible);
+    EXPECT_EQ(plan.removed.size(), static_cast<std::size_t>(kDepth));
+}
