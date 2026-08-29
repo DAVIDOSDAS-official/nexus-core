@@ -9,6 +9,7 @@
 #include <nexus/conflict_detector.hpp>
 #include <nexus/profile_check.hpp>
 #include <nexus/solver.hpp>
+#include <nexus/system/apt_source.hpp>
 #include <nexus/system/profile_file.hpp>
 #include <nexus/system/dpkg_source.hpp>
 #include <nexus/system/version.hpp>
@@ -41,6 +42,8 @@ void printUsage() {
         << "    --status <path>   dpkg status file\n"
         << "    --profiles <dir>  profile directory\n"
         << "    --arch <arch>     target architecture\n"
+        << "    --with-available  also read apt package indexes\n"
+        << "    --lists <dir>     apt lists directory\n"
         << "                      (default: /var/lib/dpkg/status)\n"
         << "\n"
         << "This command never modifies the system.\n";
@@ -108,6 +111,17 @@ bool requires_(const Component& component, const std::string& capability) {
     }
 
     return false;
+}
+
+nexus::Solver buildSolver(const std::vector<Component>& components) {
+    return nexus::Solver(
+        components,
+        nexus::ConflictDetector(
+            [](const std::string& left, const std::string& right) {
+                return nexus::system::compareVersions(left, right);
+            }
+        )
+    );
 }
 
 int commandScan(const DpkgSourceResult& result) {
@@ -346,20 +360,13 @@ int commandConflicts(const DpkgSourceResult& result) {
 }
 
 int commandSolve(
-    const DpkgSourceResult& result,
+    const std::vector<Component>& universe,
     const std::string& capability,
     const std::string& prefer,
     const std::string& require,
     const std::string& architecture
 ) {
-    nexus::Solver solver(
-        result.components,
-        nexus::ConflictDetector(
-            [](const std::string& left, const std::string& right) {
-                return nexus::system::compareVersions(left, right);
-            }
-        )
-    );
+    nexus::Solver solver = buildSolver(universe);
 
     nexus::SolverRequest request;
     request.architecture = architecture;
@@ -389,8 +396,9 @@ int commandSolve(
         std::cout << solution.reason << "\n";
 
         if (!solution.blockedOn.empty()) {
-            std::cout << "\nBlocked on:\n    "
-                      << solution.blockedOn << "\n";
+            std::cout
+                << "\nNothing available provides:\n    "
+                << solution.blockedOn << "\n";
         }
 
         return 1;
@@ -414,19 +422,11 @@ int commandSolve(
     return 0;
 }
 
-nexus::Solver buildSolver(const DpkgSourceResult& result) {
-    return nexus::Solver(
-        result.components,
-        nexus::ConflictDetector(
-            [](const std::string& left, const std::string& right) {
-                return nexus::system::compareVersions(left, right);
-            }
-        )
-    );
-}
 
 int commandProfile(
-    const DpkgSourceResult& result,
+    const std::vector<Component>& installed,
+    const std::vector<Component>& universe,
+    bool haveAvailable,
     const std::string& action,
     const std::string& name,
     const std::string& directory,
@@ -532,7 +532,18 @@ int commandProfile(
     }
 
     const auto report =
-        nexus::checkProfile(profile, buildSolver(result));
+        nexus::checkProfile(profile, buildSolver(installed));
+
+    // When archive data is loaded, a missing requirement can be
+    // re-checked against everything available. That turns "you do not
+    // have steam" into "steam is available and would bring N
+    // components", which is the answer somebody setting up a machine
+    // actually wants.
+    nexus::ProfileReport possible;
+
+    if (haveAvailable) {
+        possible = nexus::checkProfile(profile, buildSolver(universe));
+    }
 
     std::cout
         << "Profile:     " << report.profile << "\n"
@@ -549,8 +560,38 @@ int commandProfile(
                 << " dependencies)\n";
         } else {
             std::cout
-                << "  [missing] " << item.requirement << "\n"
-                << "            " << item.blockedOn << "\n";
+                << "  [missing] " << item.requirement << "\n";
+
+            bool explained = false;
+
+            if (haveAvailable) {
+                for (const nexus::ProfileItem& option : possible.items) {
+                    if (option.requirement != item.requirement) {
+                        continue;
+                    }
+
+                    if (option.satisfied) {
+                        std::cout
+                            << "            available: install "
+                            << option.provided.front() << " ("
+                            << option.provided.size()
+                            << " components in total)\n";
+                    } else {
+                        std::cout
+                            << "            not available either: "
+                            << option.blockedOn << "\n";
+                    }
+
+                    explained = true;
+                    break;
+                }
+            }
+
+            if (!explained) {
+                std::cout
+                    << "            nothing installed provides this"
+                    << "\n";
+            }
         }
     }
 
@@ -612,11 +653,25 @@ int main(int argc, char** argv) {
     std::string require;
     std::string arch;
     std::string profileDir = "components/profiles";
+    std::string listsDir = "/var/lib/apt/lists";
+    bool withAvailable = false;
     std::vector<std::string> positional;
 
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         if (arguments[index] == "--status" && index + 1 < arguments.size()) {
             statusPath = arguments[index + 1];
+            index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--with-available") {
+            withAvailable = true;
+            continue;
+        }
+
+        if (arguments[index] == "--lists" && index + 1 < arguments.size()) {
+            listsDir = arguments[index + 1];
+            withAvailable = true;
             index += 1;
             continue;
         }
@@ -665,6 +720,36 @@ int main(int argc, char** argv) {
         const nexus::system::DpkgSource source(statusPath);
         const DpkgSourceResult result = source.load();
 
+        std::vector<Component> universe = result.components;
+        bool haveAvailable = false;
+
+        if (withAvailable) {
+            const nexus::system::AptSource apt(listsDir);
+            const auto available = apt.load();
+
+            for (const auto& skipped : available.filesSkipped) {
+                std::cerr
+                    << "Warning: skipped " << skipped.path
+                    << " (" << skipped.reason << ")\n";
+            }
+
+            if (!available.components.empty()) {
+                universe = nexus::system::mergeAvailable(
+                    result.components, available.components);
+
+                haveAvailable = true;
+
+                std::cerr
+                    << "Loaded " << available.components.size()
+                    << " available packages from "
+                    << available.filesRead.size() << " index file(s).\n";
+            } else {
+                std::cerr
+                    << "No package indexes read from " << listsDir
+                    << "; continuing with installed packages only.\n";
+            }
+        }
+
         if (command == "scan") {
             return commandScan(result);
         }
@@ -703,7 +788,8 @@ int main(int argc, char** argv) {
                 positional.size() > 2 ? positional[2] : std::string{};
 
             return commandProfile(
-                result, action, name, profileDir, arch);
+                result.components, universe, haveAvailable,
+                action, name, profileDir, arch);
         }
 
         if (command == "solve") {
@@ -713,7 +799,7 @@ int main(int argc, char** argv) {
             }
 
             return commandSolve(
-                result, argument, prefer, require, arch);
+                universe, argument, prefer, require, arch);
         }
 
         if (command == "conflicts") {

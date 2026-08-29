@@ -70,10 +70,20 @@ public:
     // running forever. Exceeding it is reported, never hidden.
     void setDecisionLimit(std::size_t limit);
 
+    std::size_t componentCount() const;
+
 private:
+    void buildIndex();
+
     std::vector<Component> components_;
     ConflictDetector detector_;
     std::size_t decisionLimit_ = 100000;
+
+    // capability name -> indices into components_. Without this the
+    // solver rescans every component for every requirement, which is
+    // fine for a few thousand installed packages and hopeless for a
+    // full archive.
+    std::map<std::string, std::vector<std::size_t>> byCapability_;
 };
 
 std::string toString(SolverStatus status);

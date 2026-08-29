@@ -13,6 +13,7 @@ add_executable(component_test
     unit/solver_test.cpp
     unit/architecture_test.cpp
     unit/profile_test.cpp
+    unit/apt_source_test.cpp
 )
 
 target_link_libraries(component_test

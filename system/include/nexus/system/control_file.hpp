@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iosfwd>
+#include <set>
 #include <map>
 #include <optional>
 #include <string>
@@ -31,6 +32,16 @@ private:
 };
 
 std::vector<ControlStanza> parseControlStream(std::istream& input);
+
+// Parse keeping only the named fields (lowercase). Everything else is
+// skipped without being stored, which matters when reading archive
+// indexes: a package index carries long Description and checksum
+// fields that no caller here ever looks at, and storing them costs
+// more than parsing them.
+std::vector<ControlStanza> parseControlStream(
+    std::istream& input,
+    const std::set<std::string>& wantedFields
+);
 
 // Throws std::runtime_error when the file cannot be opened.
 std::vector<ControlStanza> parseControlFile(const std::string& path);

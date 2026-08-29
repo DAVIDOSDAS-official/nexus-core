@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <fstream>
+#include <set>
 #include <istream>
 #include <stdexcept>
 #include <utility>
@@ -78,20 +79,29 @@ const std::map<std::string, std::string>& ControlStanza::fields() const {
     return fields_;
 }
 
-std::vector<ControlStanza> parseControlStream(std::istream& input) {
+std::vector<ControlStanza> parseControlStream(
+    std::istream& input,
+    const std::set<std::string>& wantedFields
+) {
+    const std::set<std::string>* wanted =
+        wantedFields.empty() ? nullptr : &wantedFields;
+
     std::vector<ControlStanza> stanzas;
 
     ControlStanza current;
     std::string currentField;
     std::string currentValue;
 
+    bool keepingField = true;
+
     const auto flushField = [&]() {
-        if (!currentField.empty()) {
+        if (!currentField.empty() && keepingField) {
             current.set(currentField, trim(currentValue));
         }
 
         currentField.clear();
         currentValue.clear();
+        keepingField = true;
     };
 
     const auto flushStanza = [&]() {
@@ -117,7 +127,7 @@ std::vector<ControlStanza> parseControlStream(std::istream& input) {
         }
 
         if (isContinuation(line)) {
-            if (!currentField.empty()) {
+            if (!currentField.empty() && keepingField) {
                 currentValue += "\n";
                 currentValue += trim(line);
             }
@@ -134,12 +144,28 @@ std::vector<ControlStanza> parseControlStream(std::istream& input) {
         flushField();
 
         currentField = trim(line.substr(0, colon));
+
+        keepingField =
+            wanted == nullptr ||
+            wanted->count(lowercase(currentField)) > 0;
+
+        if (!keepingField) {
+            currentValue.clear();
+            continue;
+        }
+
         currentValue = trim(line.substr(colon + 1));
     }
 
     flushStanza();
 
     return stanzas;
+}
+
+std::vector<ControlStanza> parseControlStream(std::istream& input) {
+    static const std::set<std::string> everything;
+
+    return parseControlStream(input, everything);
 }
 
 std::vector<ControlStanza> parseControlFile(const std::string& path) {

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <functional>
 #include <utility>
+#include <map>
 #include <set>
 #include <utility>
 
@@ -26,6 +27,29 @@ Solver::Solver(
 )
     : components_(std::move(components)),
       detector_(std::move(detector)) {
+    buildIndex();
+}
+
+void Solver::buildIndex() {
+    for (std::size_t index = 0; index < components_.size(); ++index) {
+        const Component& component = components_[index];
+
+        byCapability_[component.id()].push_back(index);
+
+        if (component.name() != component.id()) {
+            byCapability_[component.name()].push_back(index);
+        }
+
+        for (const Capability& capability :
+             component.providedCapabilities()) {
+
+            byCapability_[capability.name()].push_back(index);
+        }
+    }
+}
+
+std::size_t Solver::componentCount() const {
+    return components_.size();
 }
 
 void Solver::setDecisionLimit(std::size_t limit) {
@@ -106,7 +130,16 @@ SolverResult Solver::solve(const SolverRequest& request) const {
                 const Constraint& option =
                     requirement.alternatives[index];
 
-                for (const Component& component : components_) {
+                const auto entry =
+                    byCapability_.find(option.capability);
+
+                if (entry == byCapability_.end()) {
+                    continue;
+                }
+
+                for (std::size_t position : entry->second) {
+                    const Component& component = components_[position];
+
                     if (!detector_.matches(
                             component,
                             option,

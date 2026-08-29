@@ -4,6 +4,7 @@ add_library(nexus_system
     src/dpkg_source.cpp
     src/version.cpp
     src/profile_file.cpp
+    src/apt_source.cpp
 )
 
 target_include_directories(nexus_system
