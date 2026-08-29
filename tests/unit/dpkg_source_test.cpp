@@ -178,15 +178,38 @@ TEST(DpkgSourceTest, StoresConflictsOnTheComponent) {
     EXPECT_EQ(conflicts[1].capability, "aptitude");
 }
 
-TEST(DpkgSourceTest, RecordsVersionedProvidesAsAModelGap) {
+TEST(DpkgSourceTest, StoresTheVersionOfAProvidedCapability) {
+    // perl provides libnet-perl at 3.15, which has nothing to do with
+    // perl's own version. Storing the package version here is what
+    // produced false conflicts before capabilities carried versions.
     const auto result = loadFixture(
-        "Package: apt\n"
+        "Package: perl\n"
         "Status: install ok installed\n"
-        "Version: 2.8.3\n"
-        "Provides: apt-transport-https (= 2.8.3)\n"
+        "Version: 5.38.2-3.2\n"
+        "Provides: libnet-perl (= 1:3.15), libcgi-pm-perl\n"
     );
 
-    EXPECT_EQ(countGaps(result, ModelGapKind::VersionedProvides), 1u);
+    ASSERT_EQ(result.components.size(), 1u);
+
+    const auto& provided = result.components[0].providedCapabilities();
+
+    bool sawVersioned = false;
+    bool sawUnversioned = false;
+
+    for (const auto& capability : provided) {
+        if (capability.name() == "libnet-perl") {
+            EXPECT_EQ(capability.version(), "1:3.15");
+            sawVersioned = true;
+        }
+
+        if (capability.name() == "libcgi-pm-perl") {
+            EXPECT_FALSE(capability.hasVersion());
+            sawUnversioned = true;
+        }
+    }
+
+    EXPECT_TRUE(sawVersioned);
+    EXPECT_TRUE(sawUnversioned);
 }
 
 TEST(DpkgSourceTest, CountsRepresentableClauses) {

@@ -90,15 +90,17 @@ DpkgSourceResult DpkgSource::loadFromStanzas(
             for (const DependencyTerm& term :
                  parseProvidesField(stanza.value("provides"))) {
 
-                component.addProvidedCapability(Capability(term.name));
-
+                // "Provides: x (= 1.2)" states the version of the
+                // virtual capability, which is not the package's own.
                 if (term.constraint) {
-                    result.gaps.push_back(ModelGap{
-                        name,
-                        ModelGapKind::VersionedProvides,
-                        "Provides",
-                        toString(term)
-                    });
+                    component.addProvidedCapability(Capability(
+                        term.name,
+                        term.constraint->version
+                    ));
+                } else {
+                    component.addProvidedCapability(
+                        Capability(term.name)
+                    );
                 }
             }
         }
@@ -229,8 +231,6 @@ std::string toString(ModelGapKind kind) {
             return "alternatives";
         case ModelGapKind::VersionConstraint:
             return "version-constraint";
-        case ModelGapKind::VersionedProvides:
-            return "versioned-provides";
         case ModelGapKind::PreDependency:
             return "pre-dependency";
     }

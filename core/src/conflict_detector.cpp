@@ -23,23 +23,40 @@ bool relationHolds(VersionRelation relation, int comparison) {
     return false;
 }
 
-bool providesCapability(
+// The version at which a component provides a capability.
+//
+// A virtual capability may be provided at a version unrelated to the
+// component's own: perl (5.38.2) provides libnet-perl (= 3.15). When
+// the provider states a version, that is the one a constraint must be
+// checked against.
+//
+// Returns nullptr when the component does not provide the capability
+// at all.
+const std::string* providedVersion(
     const Component& component,
     const std::string& name
 ) {
-    if (component.id() == name) {
-        return true;
-    }
-
     for (const Capability& capability :
          component.providedCapabilities()) {
 
-        if (capability.name() == name) {
-            return true;
+        if (capability.name() != name) {
+            continue;
         }
+
+        if (capability.hasVersion()) {
+            return &capability.version();
+        }
+
+        // Provided, but with no version stated: fall back to the
+        // component's own version.
+        return &component.version();
     }
 
-    return false;
+    if (component.id() == name) {
+        return &component.version();
+    }
+
+    return nullptr;
 }
 
 }
@@ -56,7 +73,10 @@ bool ConflictDetector::matches(
     const Component& component,
     const Constraint& constraint
 ) const {
-    if (!providesCapability(component, constraint.capability)) {
+    const std::string* version =
+        providedVersion(component, constraint.capability);
+
+    if (version == nullptr) {
         return false;
     }
 
@@ -71,7 +91,7 @@ bool ConflictDetector::matches(
     }
 
     const int comparison =
-        comparator_(component.version(), constraint.version->version);
+        comparator_(*version, constraint.version->version);
 
     return relationHolds(constraint.version->relation, comparison);
 }

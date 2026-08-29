@@ -153,6 +153,43 @@ TEST(ConflictDetectorTest, WithoutComparatorAssumesConditionHolds) {
     );
 }
 
+// Regression: this exact shape produced six false conflicts on a real
+// Ubuntu system before capabilities carried versions. perl's own
+// version (5.38.2) is far above the 3.15 threshold, but the version
+// that matters is the one it provides libnet-perl at.
+TEST(ConflictDetectorTest, VersionedProvidesIsCheckedNotPackageVersion) {
+    Component modules = make("perl-modules-5.38", "5.38.2");
+    modules.addConflict(Constraint(
+        "libnet-perl",
+        VersionConstraint{VersionRelation::Earlier, "1:3.15"}
+    ));
+
+    Component perl = make("perl", "5.38.2-3.2ubuntu0.2");
+    perl.addProvidedCapability(nexus::Capability(
+        "libnet-perl",
+        "1:3.15"
+    ));
+
+    EXPECT_TRUE(debianDetector().detect({modules, perl}).empty());
+}
+
+TEST(ConflictDetectorTest, UnversionedProvidesFallsBackToPackageVersion) {
+    Component sendmail = make("sendmail", "8.18");
+    sendmail.addConflict(Constraint(
+        "mail-transport-agent",
+        VersionConstraint{VersionRelation::Earlier, "4.0"}
+    ));
+
+    Component postfix = make("postfix", "3.8.6");
+    postfix.addProvidedCapability(nexus::Capability(
+        "mail-transport-agent"
+    ));
+
+    // No version on the provides, so postfix's own 3.8.6 is used,
+    // which is below 4.0 and therefore a real conflict.
+    EXPECT_EQ(debianDetector().detect({sendmail, postfix}).size(), 1u);
+}
+
 TEST(ConflictDetectorTest, ReasonNamesBothComponents) {
     Component exim = make("exim4", "4.97");
     exim.addConflict(Constraint("postfix"));
