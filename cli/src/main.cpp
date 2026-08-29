@@ -497,7 +497,15 @@ int commandRemove(
     }
 
     const auto plan = nexus::planRemoval(
-        target, installed, roots, buildSolver(installed), architecture);
+        target,
+        installed,
+        roots,
+        nexus::ConflictDetector(
+            [](const std::string& left, const std::string& right) {
+                return nexus::system::compareVersions(left, right);
+            }
+        ),
+        architecture);
 
     std::cout
         << "Target:     " << plan.target << "\n"

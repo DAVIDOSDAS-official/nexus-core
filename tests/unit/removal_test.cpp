@@ -17,19 +17,16 @@ using nexus::Constraint;
 using nexus::planRemoval;
 using nexus::RemovalPlan;
 using nexus::Requirement;
-using nexus::Solver;
+
 using nexus::system::readAutoInstalled;
 
 namespace {
 
-Solver solverOver(std::vector<Component> components) {
-    return Solver(
-        std::move(components),
-        ConflictDetector(
-            [](const std::string& left, const std::string& right) {
-                return nexus::system::compareVersions(left, right);
-            }
-        )
+ConflictDetector debianDetector() {
+    return ConflictDetector(
+        [](const std::string& left, const std::string& right) {
+            return nexus::system::compareVersions(left, right);
+        }
     );
 }
 
@@ -61,7 +58,7 @@ TEST(RemovalTest, ReportsSomethingNotInstalled) {
     const std::vector<Component> installed{make("apt")};
 
     const RemovalPlan plan = planRemoval(
-        "nonexistent", installed, {"apt"}, solverOver(installed)
+        "nonexistent", installed, {"apt"}, debianDetector()
     );
 
     EXPECT_FALSE(plan.possible);
@@ -72,7 +69,7 @@ TEST(RemovalTest, RemovesALeafOnItsOwn) {
     const std::vector<Component> installed{make("apt"), make("tree")};
 
     const RemovalPlan plan = planRemoval(
-        "tree", installed, {"apt", "tree"}, solverOver(installed)
+        "tree", installed, {"apt", "tree"}, debianDetector()
     );
 
     ASSERT_TRUE(plan.possible);
@@ -89,7 +86,7 @@ TEST(RemovalTest, TakesAPrivateDependencyWithIt) {
     };
 
     const RemovalPlan plan = planRemoval(
-        "editor", installed, {"editor", "apt"}, solverOver(installed)
+        "editor", installed, {"editor", "apt"}, debianDetector()
     );
 
     ASSERT_TRUE(plan.possible);
@@ -109,7 +106,7 @@ TEST(RemovalTest, LeavesASharedDependencyAlone) {
         "editor",
         installed,
         {"editor", "shell"},
-        solverOver(installed)
+        debianDetector()
     );
 
     ASSERT_TRUE(plan.possible);
@@ -124,7 +121,7 @@ TEST(RemovalTest, RefusesWhenSomethingStillNeedsIt) {
     };
 
     const RemovalPlan plan = planRemoval(
-        "libedit", installed, {"desktop"}, solverOver(installed)
+        "libedit", installed, {"desktop"}, debianDetector()
     );
 
     EXPECT_FALSE(plan.possible);
@@ -140,7 +137,7 @@ TEST(RemovalTest, RemovalIsTransitive) {
     };
 
     const RemovalPlan plan = planRemoval(
-        "app", installed, {"app"}, solverOver(installed)
+        "app", installed, {"app"}, debianDetector()
     );
 
     ASSERT_TRUE(plan.possible);
@@ -162,7 +159,7 @@ TEST(RemovalTest, DoesNotBlameAlreadyOrphanedComponents) {
     };
 
     const RemovalPlan plan = planRemoval(
-        "app", installed, {"app", "other"}, solverOver(installed)
+        "app", installed, {"app", "other"}, debianDetector()
     );
 
     ASSERT_TRUE(plan.possible);
@@ -182,11 +179,11 @@ TEST(RemovalTest, DifferentTargetsGiveDifferentAnswers) {
     const std::set<std::string> roots{"editor", "browser"};
 
     const RemovalPlan editor = planRemoval(
-        "editor", installed, roots, solverOver(installed)
+        "editor", installed, roots, debianDetector()
     );
 
     const RemovalPlan browser = planRemoval(
-        "browser", installed, roots, solverOver(installed)
+        "browser", installed, roots, debianDetector()
     );
 
     ASSERT_TRUE(editor.possible);
@@ -266,7 +263,7 @@ TEST(RemovalTest, HandlesAThousandsOfRootsSystem) {
     }
 
     const RemovalPlan plan = planRemoval(
-        "app-7", installed, roots, solverOver(installed)
+        "app-7", installed, roots, debianDetector()
     );
 
     // Everything else still wants the shared libraries, so only the
@@ -301,7 +298,7 @@ TEST(RemovalTest, HandlesADeepDependencyChain) {
     }
 
     const RemovalPlan plan = planRemoval(
-        "link-0", installed, {"link-0"}, solverOver(installed)
+        "link-0", installed, {"link-0"}, debianDetector()
     );
 
     ASSERT_TRUE(plan.possible);

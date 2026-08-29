@@ -1,6 +1,8 @@
 #include <nexus/removal.hpp>
 
 #include <algorithm>
+#include <map>
+#include <vector>
 
 namespace nexus {
 
@@ -19,62 +21,120 @@ const Component* findById(
     return nullptr;
 }
 
-// Components still in the kept set that directly ask for something
-// the target provides. Used to explain a blocked removal.
-std::vector<std::string> directRequirers(
-    const Component& target,
-    const std::vector<Component>& installed,
-    const std::set<std::string>& kept
+// capability name -> positions of installed components providing it.
+std::map<std::string, std::vector<std::size_t>> buildIndex(
+    const std::vector<Component>& installed
 ) {
-    std::vector<std::string> names;
+    std::map<std::string, std::vector<std::size_t>> index;
 
-    std::set<std::string> provided;
+    for (std::size_t position = 0;
+         position < installed.size();
+         ++position) {
 
-    provided.insert(target.name());
+        const Component& component = installed[position];
 
-    for (const Capability& capability : target.providedCapabilities()) {
-        provided.insert(capability.name());
+        const auto add = [&](const std::string& key) {
+            std::vector<std::size_t>& entries = index[key];
+
+            if (entries.empty() || entries.back() != position) {
+                entries.push_back(position);
+            }
+        };
+
+        add(component.id());
+        add(component.name());
+
+        for (const Capability& capability :
+             component.providedCapabilities()) {
+
+            add(capability.name());
+        }
     }
 
-    for (const Component& component : installed) {
-        if (component.id() == target.id()) {
+    return index;
+}
+
+}
+
+std::set<std::string> reachableFrom(
+    const std::vector<Component>& installed,
+    const std::set<std::string>& roots,
+    const ConflictDetector& detector
+) {
+    const auto index = buildIndex(installed);
+
+    std::vector<bool> marked(installed.size(), false);
+    std::vector<std::size_t> pending;
+
+    const auto mark = [&](std::size_t position) {
+        if (!marked[position]) {
+            marked[position] = true;
+            pending.push_back(position);
+        }
+    };
+
+    for (const std::string& root : roots) {
+        const auto entry = index.find(root);
+
+        if (entry == index.end()) {
             continue;
         }
 
-        if (kept.count(component.id()) == 0) {
-            continue;
-        }
-
-        for (const Requirement& requirement : component.requirements()) {
-            const bool wantsIt = std::any_of(
-                requirement.alternatives.begin(),
-                requirement.alternatives.end(),
-                [&provided](const Constraint& option) {
-                    return provided.count(option.capability) > 0;
-                }
-            );
-
-            if (wantsIt) {
-                names.push_back(component.id());
-                break;
+        for (std::size_t position : entry->second) {
+            if (installed[position].id() == root ||
+                installed[position].name() == root) {
+                mark(position);
             }
         }
     }
 
-    std::sort(names.begin(), names.end());
+    while (!pending.empty()) {
+        const std::size_t position = pending.back();
 
-    return names;
-}
+        pending.pop_back();
 
+        for (const Requirement& requirement :
+             installed[position].requirements()) {
+
+            for (const Constraint& option : requirement.alternatives) {
+                const auto entry = index.find(option.capability);
+
+                if (entry == index.end()) {
+                    continue;
+                }
+
+                for (std::size_t candidate : entry->second) {
+                    if (detector.matches(installed[candidate], option)) {
+                        mark(candidate);
+                    }
+                }
+            }
+        }
+    }
+
+    std::set<std::string> result;
+
+    for (std::size_t position = 0;
+         position < installed.size();
+         ++position) {
+
+        if (marked[position]) {
+            result.insert(installed[position].id());
+        }
+    }
+
+    return result;
 }
 
 RemovalPlan planRemoval(
     const std::string& target,
     const std::vector<Component>& installed,
     const std::set<std::string>& roots,
-    const Solver& solver,
+    const ConflictDetector& detector,
     const std::string& architecture
 ) {
+    (void)architecture;
+
     RemovalPlan plan;
 
     plan.target = target;
@@ -88,76 +148,57 @@ RemovalPlan planRemoval(
 
     plan.target = component->id();
 
-    // Two solves, not one. The first establishes what the roots
-    // actually hold up today; the second does the same without this
-    // component. The difference is what the target -- and only the
-    // target -- was keeping alive.
-    //
-    // A single solve would blame the removal for anything that was
-    // already orphaned, which makes every removal look identical.
-    const auto solveRoots =
-        [&](const std::string& excluded) {
-            SolverRequest request;
+    const std::set<std::string> before =
+        reachableFrom(installed, roots, detector);
 
-            request.architecture = architecture;
+    std::set<std::string> without = roots;
 
-            for (const std::string& root : roots) {
-                if (!excluded.empty() && root == excluded) {
-                    continue;
-                }
+    without.erase(component->id());
+    without.erase(component->name());
 
-                request.requirements.push_back(
-                    Requirement(Constraint(root))
-                );
+    const std::set<std::string> after =
+        reachableFrom(installed, without, detector);
+
+    // Still held up by something that remains.
+    if (after.count(component->id()) > 0) {
+        std::set<std::string> provided;
+
+        provided.insert(component->name());
+        provided.insert(component->id());
+
+        for (const Capability& capability :
+             component->providedCapabilities()) {
+
+            provided.insert(capability.name());
+        }
+
+        for (const Component& other : installed) {
+            if (other.id() == component->id()) {
+                continue;
             }
 
-            return solver.solve(request);
-        };
+            if (after.count(other.id()) == 0) {
+                continue;
+            }
 
-    const SolverResult baseline = solveRoots("");
+            for (const Requirement& requirement : other.requirements()) {
+                const bool wantsIt = std::any_of(
+                    requirement.alternatives.begin(),
+                    requirement.alternatives.end(),
+                    [&provided](const Constraint& option) {
+                        return provided.count(option.capability) > 0;
+                    }
+                );
 
-    if (baseline.status != SolverStatus::Success) {
-        plan.reason =
-            "The system does not currently resolve, so no removal "
-            "can be proposed. " + baseline.reason;
-
-        if (!baseline.blockedOn.empty()) {
-            plan.reason += " Blocked on: " + baseline.blockedOn;
+                if (wantsIt) {
+                    plan.requiredBy.push_back(other.id());
+                    break;
+                }
+            }
         }
 
-        return plan;
-    }
+        std::sort(plan.requiredBy.begin(), plan.requiredBy.end());
 
-    const std::set<std::string> before(
-        baseline.selected.begin(),
-        baseline.selected.end()
-    );
-
-    const SolverResult result = solveRoots(component->id());
-
-    if (result.status != SolverStatus::Success) {
-        // Without a complete re-solve there is no trustworthy answer,
-        // and a guess here would mean deleting the wrong things.
-        plan.reason =
-            "The system could not be resolved without " +
-            plan.target + ", so no removal can be proposed. " +
-            result.reason;
-
-        if (!result.blockedOn.empty()) {
-            plan.reason += " Blocked on: " + result.blockedOn;
-        }
-
-        return plan;
-    }
-
-    const std::set<std::string> kept(
-        result.selected.begin(),
-        result.selected.end()
-    );
-
-    // Still needed by something that remains.
-    if (kept.count(component->id()) > 0) {
-        plan.requiredBy = directRequirers(*component, installed, kept);
         plan.reason =
             plan.target + " is still required by something that " +
             "would remain installed.";
@@ -168,19 +209,12 @@ RemovalPlan planRemoval(
     plan.possible = true;
     plan.removed.push_back(component->id());
 
-    // Only what was held up before and is not held up now.
     for (const std::string& id : before) {
-        if (id == component->id()) {
+        if (id == component->id() || id == "system-hardware") {
             continue;
         }
 
-        if (kept.count(id) > 0) {
-            continue;
-        }
-
-        // Synthetic components are not packages and cannot be
-        // removed.
-        if (id == "system-hardware") {
+        if (after.count(id) > 0) {
             continue;
         }
 

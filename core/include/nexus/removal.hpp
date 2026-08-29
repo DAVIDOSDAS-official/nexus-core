@@ -4,7 +4,8 @@
 #include <string>
 #include <vector>
 
-#include <nexus/solver.hpp>
+#include <nexus/component.hpp>
+#include <nexus/conflict_detector.hpp>
 
 namespace nexus {
 
@@ -29,20 +30,38 @@ struct RemovalPlan {
     std::string reason;
 };
 
+// Everything reachable from a set of roots by following requirements.
+//
+// This is a closure, not a search. The system being analysed is
+// already installed and already consistent, so there is nothing to
+// choose and nothing to backtrack out of: a requirement is held up by
+// every installed component that satisfies it.
+//
+// Where more than one installed component satisfies a requirement,
+// all of them are kept. That is the conservative direction: it can
+// leave something installed that could have gone, but it will never
+// propose deleting something that is still in use.
+std::set<std::string> reachableFrom(
+    const std::vector<Component>& installed,
+    const std::set<std::string>& roots,
+    const ConflictDetector& detector
+);
+
 // Work out what removing one component would take with it.
 //
-// The method is a re-solve rather than a graph walk: resolve the
-// system again from the things that were explicitly wanted, minus
-// this one, and see what no longer appears. Anything that drops out
-// was only present to satisfy the thing being removed.
+// Two closures: what the roots hold up now, and what they hold up
+// without this one. The difference is what the target -- and only the
+// target -- was keeping alive.
 //
-// This is exact where reference counting is approximate, and it falls
-// out of already having a solver rather than needing new machinery.
+// An earlier version re-solved the whole system instead. That is the
+// wrong tool: the solver exists to choose between options, and on a
+// desktop with a thousand roots it explored itself into its own
+// decision limit and could answer nothing at all.
 RemovalPlan planRemoval(
     const std::string& target,
     const std::vector<Component>& installed,
     const std::set<std::string>& roots,
-    const Solver& solver,
+    const ConflictDetector& detector,
     const std::string& architecture = {}
 );
 
