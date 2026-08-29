@@ -14,12 +14,14 @@ add_executable(component_test
     unit/architecture_test.cpp
     unit/profile_test.cpp
     unit/apt_source_test.cpp
+    unit/hardware_test.cpp
 )
 
 target_link_libraries(component_test
     PRIVATE
         nexus_core
         nexus_system
+        nexus_hardware
         GTest::gtest_main
 )
 

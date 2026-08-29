@@ -9,6 +9,7 @@
 #include <nexus/conflict_detector.hpp>
 #include <nexus/profile_check.hpp>
 #include <nexus/solver.hpp>
+#include <nexus/hardware/hardware.hpp>
 #include <nexus/system/apt_source.hpp>
 #include <nexus/system/profile_file.hpp>
 #include <nexus/system/dpkg_source.hpp>
@@ -32,6 +33,7 @@ void printUsage() {
         << "    nexus inspect <component>\n"
         << "    nexus gaps [kind]\n"
         << "    nexus conflicts\n"
+        << "    nexus hardware\n"
         << "    nexus profile list\n"
         << "    nexus profile show <name>\n"
         << "    nexus profile check <name>\n"
@@ -45,6 +47,7 @@ void printUsage() {
         << "    --with-available  also read apt package indexes\n"
         << "    --explain         reason for every component, not just choices\n"
         << "    --lists <dir>     apt lists directory\n"
+        << "    --sysfs <dir>     root for hardware detection\n"
         << "                      (default: /var/lib/dpkg/status)\n"
         << "\n"
         << "This command never modifies the system.\n";
@@ -459,6 +462,56 @@ int commandSolve(
 }
 
 
+int commandHardware(const nexus::hardware::HardwareInfo& info) {
+    std::cout << "Graphics:\n";
+
+    if (info.graphics.empty()) {
+        std::cout << "    (none detected)\n";
+    }
+
+    for (const auto& device : info.graphics) {
+        std::cout
+            << "    " << device.node
+            << "  vendor=" << device.vendor
+            << " (" << device.vendorId << ":" << device.deviceId << ")";
+
+        if (!device.driver.empty()) {
+            std::cout << "  driver=" << device.driver;
+        }
+
+        std::cout << "\n";
+    }
+
+    std::cout
+        << "\nFirmware:    " << toString(info.firmware) << "\n"
+        << "Secure Boot: " << toString(info.secureBoot) << "\n"
+        << "Chassis:     "
+        << (info.hasBattery ? "laptop" : "desktop") << "\n"
+        << "Gamepad:     "
+        << (info.hasGamepad ? "present" : "none detected") << "\n"
+        << "Architecture:" << " " << info.architecture << "\n";
+
+    if (!info.cpuModel.empty()) {
+        std::cout << "CPU:         " << info.cpuModel << "\n";
+    }
+
+    std::cout << "\nCapabilities:\n";
+
+    for (const std::string& capability : info.capabilities()) {
+        std::cout << "    " << capability << "\n";
+    }
+
+    if (!info.unreadable.empty()) {
+        std::cout << "\nCould not read:\n";
+
+        for (const std::string& problem : info.unreadable) {
+            std::cout << "    " << problem << "\n";
+        }
+    }
+
+    return 0;
+}
+
 int commandProfile(
     const std::vector<Component>& installed,
     const std::vector<Component>& universe,
@@ -690,6 +743,7 @@ int main(int argc, char** argv) {
     std::string arch;
     std::string profileDir = "components/profiles";
     std::string listsDir = "/var/lib/apt/lists";
+    std::string sysfsRoot = "/";
     bool withAvailable = false;
     bool explain = false;
     std::vector<std::string> positional;
@@ -708,6 +762,12 @@ int main(int argc, char** argv) {
 
         if (arguments[index] == "--with-available") {
             withAvailable = true;
+            continue;
+        }
+
+        if (arguments[index] == "--sysfs" && index + 1 < arguments.size()) {
+            sysfsRoot = arguments[index + 1];
+            index += 1;
             continue;
         }
 
@@ -762,7 +822,20 @@ int main(int argc, char** argv) {
         const nexus::system::DpkgSource source(statusPath);
         const DpkgSourceResult result = source.load();
 
-        std::vector<Component> universe = result.components;
+        // Detected hardware joins the universe as a component, so a
+        // profile can require "gpu-vendor:amd" and have it resolved
+        // exactly like any other capability.
+        const nexus::hardware::HardwareDetector detector(sysfsRoot);
+        const nexus::hardware::HardwareInfo hardware = detector.detect();
+
+        // Hardware belongs in the installed baseline too: the GPU in
+        // this machine is not something you install, it is something
+        // that is already here.
+        std::vector<Component> installed = result.components;
+        installed.push_back(nexus::hardware::asComponent(hardware));
+
+        std::vector<Component> universe = installed;
+
         bool haveAvailable = false;
 
         if (withAvailable) {
@@ -777,7 +850,7 @@ int main(int argc, char** argv) {
 
             if (!available.components.empty()) {
                 universe = nexus::system::mergeAvailable(
-                    result.components, available.components);
+                    universe, available.components);
 
                 haveAvailable = true;
 
@@ -823,6 +896,10 @@ int main(int argc, char** argv) {
             return commandInspect(result, argument);
         }
 
+        if (command == "hardware") {
+            return commandHardware(hardware);
+        }
+
         if (command == "profile") {
             const std::string action =
                 positional.size() > 1 ? positional[1] : "list";
@@ -830,7 +907,7 @@ int main(int argc, char** argv) {
                 positional.size() > 2 ? positional[2] : std::string{};
 
             return commandProfile(
-                result.components, universe, haveAvailable,
+                installed, universe, haveAvailable,
                 action, name, profileDir, arch);
         }
 

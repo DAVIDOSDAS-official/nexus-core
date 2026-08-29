@@ -6,5 +6,6 @@ Requires: steam-installer | steam,
  mesa-vulkan-drivers | nvidia-driver-libs,
  libgl1,
  pipewire | pulseaudio,
- gamemode
+ gamemode,
+ gpu-vendor-amd | gpu-vendor-intel | gpu-vendor-nvidia
 Prefers: audio=pipewire
