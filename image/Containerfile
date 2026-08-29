@@ -1,0 +1,108 @@
+# Nexus OS — gaming image
+#
+# A bootable container. `bootc` turns this into a system: the image is
+# the source of truth, updates replace it, and the previous image stays
+# on disk so the bootloader can go back.
+#
+# Build it in stages. Each FROM below is a checkpoint you can build and
+# boot on its own, so a failure tells you which layer broke rather than
+# just that something did.
+
+# ---------------------------------------------------------------- base
+FROM quay.io/fedora/fedora-bootc:42 AS base
+
+# Nexus itself. Read-only tooling; it does not modify the system.
+RUN dnf install -y \
+        cmake \
+        gcc-c++ \
+        git \
+        make \
+    && dnf clean all
+
+COPY . /usr/src/nexus-core
+
+RUN cmake -S /usr/src/nexus-core -B /tmp/nexus-build \
+        -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build /tmp/nexus-build --parallel \
+    && install -m 0755 /tmp/nexus-build/cli/nexus /usr/bin/nexus \
+    && mkdir -p /usr/share/nexus \
+    && cp -r /usr/src/nexus-core/components/profiles \
+             /usr/share/nexus/profiles \
+    && rm -rf /tmp/nexus-build /usr/src/nexus-core
+
+# ------------------------------------------------------------- desktop
+FROM base AS desktop
+
+# KDE on Wayland. Chosen over GNOME because gaming benefits from
+# variable refresh and per-display scaling, which KDE has handled
+# better for longer.
+RUN dnf install -y \
+        @kde-desktop-environment \
+        plasma-workspace-wayland \
+        sddm \
+    && systemctl set-default graphical.target \
+    && dnf clean all
+
+# -------------------------------------------------------------- gaming
+FROM desktop AS gaming
+
+# Fedora bootc ships no 32-bit multilib. Steam needs it, so it is added
+# explicitly rather than assumed -- see decisions 4 and 5.
+RUN dnf install -y \
+        mesa-dri-drivers.i686 \
+        mesa-vulkan-drivers.i686 \
+        mesa-libGL.i686 \
+        mesa-libEGL.i686 \
+        glibc.i686 \
+        libgcc.i686 \
+        alsa-lib.i686 \
+        pulseaudio-libs.i686 \
+        libX11.i686 \
+        libXext.i686 \
+        libXinerama.i686 \
+        libXrandr.i686 \
+        libXScrnSaver.i686 \
+        nss.i686 \
+    && dnf clean all
+
+# RPM Fusion carries Steam. Enabling a third-party repository is a
+# decision, not a detail: it is the only non-Fedora source in the
+# image, and it is here because Steam is not in Fedora proper.
+RUN dnf install -y \
+        "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
+        "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm" \
+    && dnf install -y \
+        steam \
+        gamemode \
+        gamescope \
+        mangohud \
+        vulkan-tools \
+    && dnf clean all
+
+# Controllers. A gamepad that does not work is a bug a beginner cannot
+# describe, so the drivers and udev rules are present from first boot.
+RUN dnf install -y \
+        kernel-modules-extra \
+        libratbag-ratbagd \
+    && dnf clean all
+
+# Audio: PipeWire is already default on Fedora. Named here so the image
+# states it rather than inheriting it silently.
+RUN dnf install -y \
+        pipewire \
+        pipewire-pulseaudio \
+        wireplumber \
+    && dnf clean all
+
+# --------------------------------------------------------------- nexus
+FROM gaming AS final
+
+LABEL org.opencontainers.image.title="Nexus OS"
+LABEL org.opencontainers.image.description="A Linux system that explains its own decisions"
+LABEL containers.bootc="1"
+
+# Where the CLI looks for profiles on an installed system.
+ENV NEXUS_PROFILES=/usr/share/nexus/profiles
+
+# bootc requires this to succeed for the image to be considered valid.
+RUN bootc container lint

@@ -1,0 +1,71 @@
+# The image
+
+A bootable container. `bootc` treats the whole OS as an image: updates
+replace it wholesale, and the previous image stays on disk so the
+bootloader can return to it.
+
+That is where rollback comes from, and it is why the write path is
+easier here than on a mutable system. Nexus never has to mutate a live
+machine; it emits a build artifact you can read and diff before
+anything boots.
+
+## Build
+
+```
+./image/build.sh
+```
+
+Four stages, built separately so a failure names the layer:
+
+| Stage | Contains |
+|---|---|
+| `base` | Fedora bootc plus the `nexus` binary and profiles |
+| `desktop` | KDE on Wayland |
+| `gaming` | 32-bit stack, Steam, Gamescope, GameMode, MangoHud, controllers |
+| `final` | Labels, and `bootc container lint` |
+
+## Before trusting any of it
+
+**The package names in the Containerfile are unverified.** They were
+written from memory, not checked against Fedora's repositories, and
+that is exactly the failure mode this project keeps running into.
+Check them before believing the build:
+
+```
+podman run --rm quay.io/fedora/fedora-bootc:42 \
+    dnf --setopt=install_weak_deps=False list steam gamescope mangohud
+```
+
+Expect at least one wrong name. `steam` in particular is in RPM Fusion
+rather than Fedora proper, so it will only resolve after that repository
+is enabled.
+
+## Things that will bite
+
+**Secure Boot.** A custom image ships an unsigned kernel. Machines with
+Secure Boot enabled will refuse to boot it, and beginners do not know
+how to turn it off. This kills more custom distributions than any
+technical failing. `nexus hardware` reports the state, which is a start,
+not a solution.
+
+**NVIDIA.** The driver must be baked into the image, because DKMS
+rebuilding kernel modules against a read-only `/usr` is precisely what
+immutability prevents. Bazzite ships separate NVIDIA images for this
+reason, and so will this eventually.
+
+**Anti-cheat.** EAC and BattlEye either work or they do not, depending
+on Proton and kernel versions, and it is not something the image can
+fix. Say so in the profile description rather than letting people
+discover it.
+
+**Size.** Gaming images with drivers and a 32-bit stack are large, and
+an image-based system keeps the previous one too. Budget double.
+
+## Not done
+
+- No first-boot profile picker. The plan is a small greeter that runs
+  `nexus profile check` and shows what the machine can do.
+- No signing, so no Secure Boot.
+- No `nexus` involvement in the build. The image is assembled by `dnf`;
+  Nexus only observes it. Closing that gap needs an RPM source, which is
+  Track A's next big piece.
