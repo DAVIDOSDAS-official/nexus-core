@@ -7,6 +7,7 @@
 
 #include <nexus/component.hpp>
 #include <nexus/conflict_detector.hpp>
+#include <nexus/solver.hpp>
 #include <nexus/system/dpkg_source.hpp>
 #include <nexus/system/version.hpp>
 
@@ -28,6 +29,7 @@ void printUsage() {
         << "    nexus inspect <component>\n"
         << "    nexus gaps [kind]\n"
         << "    nexus conflicts\n"
+        << "    nexus solve <capability> [--prefer id] [--require id]\n"
         << "\n"
         << "Options:\n"
         << "    --status <path>   dpkg status file\n"
@@ -303,6 +305,71 @@ int commandConflicts(const DpkgSourceResult& result) {
     return 1;
 }
 
+int commandSolve(
+    const DpkgSourceResult& result,
+    const std::string& capability,
+    const std::string& prefer,
+    const std::string& require
+) {
+    nexus::Solver solver(
+        result.components,
+        nexus::ConflictDetector(
+            [](const std::string& left, const std::string& right) {
+                return nexus::system::compareVersions(left, right);
+            }
+        )
+    );
+
+    nexus::SolverRequest request;
+    request.requirements.push_back(
+        nexus::Requirement(nexus::Constraint(capability))
+    );
+
+    if (!prefer.empty()) {
+        request.preferred[capability] = prefer;
+    }
+
+    if (!require.empty()) {
+        request.required[capability] = require;
+    }
+
+    const auto solution = solver.solve(request);
+
+    std::cout
+        << "Request:     " << capability << "\n"
+        << "Status:      " << toString(solution.status) << "\n"
+        << "Decisions:   " << solution.decisions << "\n"
+        << "Backtracks:  " << solution.backtracks << "\n\n";
+
+    if (solution.status != nexus::SolverStatus::Success) {
+        std::cout << solution.reason << "\n";
+
+        if (!solution.blockedOn.empty()) {
+            std::cout << "\nBlocked on:\n    "
+                      << solution.blockedOn << "\n";
+        }
+
+        return 1;
+    }
+
+    std::cout
+        << "Selected " << solution.selected.size()
+        << " component(s).\n\n"
+        << "Why each one:\n";
+
+    for (const nexus::SolverStep& step : solution.steps) {
+        std::cout << "    " << step.selected;
+
+        if (step.wasBacktrackedInto) {
+            std::cout << "  [after backtracking]";
+        }
+
+        std::cout << "\n        " << step.reason << "\n";
+    }
+
+    return 0;
+}
+
 int commandGaps(
     const DpkgSourceResult& result,
     const std::string& kindFilter
@@ -342,11 +409,25 @@ int main(int argc, char** argv) {
     std::vector<std::string> arguments(argv + 1, argv + argc);
 
     std::string statusPath = "/var/lib/dpkg/status";
+    std::string prefer;
+    std::string require;
     std::vector<std::string> positional;
 
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         if (arguments[index] == "--status" && index + 1 < arguments.size()) {
             statusPath = arguments[index + 1];
+            index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--prefer" && index + 1 < arguments.size()) {
+            prefer = arguments[index + 1];
+            index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--require" && index + 1 < arguments.size()) {
+            require = arguments[index + 1];
             index += 1;
             continue;
         }
@@ -399,6 +480,15 @@ int main(int argc, char** argv) {
             }
 
             return commandInspect(result, argument);
+        }
+
+        if (command == "solve") {
+            if (argument.empty()) {
+                std::cerr << "solve requires a capability name.\n";
+                return 2;
+            }
+
+            return commandSolve(result, argument, prefer, require);
         }
 
         if (command == "conflicts") {

@@ -37,7 +37,17 @@ void Component::addProvidedCapability(Capability capability) {
 }
 
 void Component::addRequiredCapability(Capability capability) {
-    requires_.push_back(std::move(capability));
+    requirements_.push_back(
+        Requirement(Constraint(capability.name()))
+    );
+}
+
+void Component::addRequirement(Requirement requirement) {
+    requirements_.push_back(std::move(requirement));
+}
+
+const std::vector<Requirement>& Component::requirements() const {
+    return requirements_;
 }
 
 void Component::addRecommendedCapability(Capability capability) {
@@ -48,8 +58,23 @@ const std::vector<Capability>& Component::providedCapabilities() const {
     return provides_;
 }
 
-const std::vector<Capability>& Component::requiredCapabilities() const {
-    return requires_;
+// Flattened view: the first alternative of each requirement. Kept for
+// callers that predate alternatives; new code should use
+// requirements(), which does not discard the choices.
+std::vector<Capability> Component::requiredCapabilities() const {
+    std::vector<Capability> flattened;
+
+    for (const Requirement& requirement : requirements_) {
+        if (requirement.empty()) {
+            continue;
+        }
+
+        flattened.push_back(
+            Capability(requirement.alternatives.front().capability)
+        );
+    }
+
+    return flattened;
 }
 
 const std::vector<Capability>& Component::recommendedCapabilities() const {

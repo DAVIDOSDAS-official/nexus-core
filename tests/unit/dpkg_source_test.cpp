@@ -36,20 +36,6 @@ bool hasCapability(
     );
 }
 
-std::size_t countGaps(
-    const DpkgSourceResult& result,
-    ModelGapKind kind
-) {
-    std::size_t count = 0;
-
-    for (const auto& gap : result.gaps) {
-        if (gap.kind == kind) {
-            count += 1;
-        }
-    }
-
-    return count;
-}
 
 }
 
@@ -136,18 +122,28 @@ TEST(DpkgSourceTest, ClassifiesSectionAsComponentType) {
 // cannot represent everything real package metadata contains, and the
 // gaps must be reported rather than silently dropped.
 
-TEST(DpkgSourceTest, RecordsAlternativesAsAModelGap) {
+TEST(DpkgSourceTest, KeepsEveryAlternative) {
     const auto result = loadFixture(
         "Package: apt\n"
         "Status: install ok installed\n"
         "Version: 2.8.3\n"
-        "Depends: base-passwd | adduser\n"
+        "Depends: base-passwd (>= 3.6.1) | adduser\n"
     );
 
-    EXPECT_EQ(countGaps(result, ModelGapKind::Alternatives), 1u);
+    ASSERT_EQ(result.components.size(), 1u);
+    ASSERT_EQ(result.components[0].requirements().size(), 1u);
+
+    const auto& requirement = result.components[0].requirements()[0];
+
+    ASSERT_EQ(requirement.alternatives.size(), 2u);
+    EXPECT_EQ(requirement.alternatives[0].capability, "base-passwd");
+    ASSERT_TRUE(requirement.alternatives[0].version.has_value());
+    EXPECT_EQ(requirement.alternatives[0].version->version, "3.6.1");
+    EXPECT_EQ(requirement.alternatives[1].capability, "adduser");
+    EXPECT_TRUE(requirement.hasChoice());
 }
 
-TEST(DpkgSourceTest, RecordsVersionConstraintsAsModelGaps) {
+TEST(DpkgSourceTest, KeepsVersionConstraintsOnRequirements) {
     const auto result = loadFixture(
         "Package: apt\n"
         "Status: install ok installed\n"
@@ -155,7 +151,17 @@ TEST(DpkgSourceTest, RecordsVersionConstraintsAsModelGaps) {
         "Depends: libc6 (>= 2.38), gpgv\n"
     );
 
-    EXPECT_EQ(countGaps(result, ModelGapKind::VersionConstraint), 1u);
+    ASSERT_EQ(result.components.size(), 1u);
+
+    const auto& requirements = result.components[0].requirements();
+
+    ASSERT_EQ(requirements.size(), 2u);
+    ASSERT_TRUE(requirements[0].alternatives[0].version.has_value());
+    EXPECT_EQ(
+        requirements[0].alternatives[0].version->version,
+        "2.38"
+    );
+    EXPECT_TRUE(requirements[1].alternatives[0].isUnversioned());
 }
 
 TEST(DpkgSourceTest, StoresConflictsOnTheComponent) {
@@ -221,12 +227,12 @@ TEST(DpkgSourceTest, CountsRepresentableClauses) {
     );
 
     EXPECT_EQ(result.dependencyClauses, 3u);
-    EXPECT_EQ(result.representableClauses, 1u);
+    EXPECT_EQ(result.representableClauses, 3u);
 }
 
-TEST(DpkgSourceTest, FirstAlternativeIsSelectedButRecorded) {
-    // The model can only hold one name. Choosing the first is a
-    // decision, not a fact, so it must appear in the gap list.
+TEST(DpkgSourceTest, NoLongerGuessesBetweenAlternatives) {
+    // Both alternatives are kept, so nothing has to be recorded as a
+    // guess. The choice moves to the solver, where it belongs.
     const auto result = loadFixture(
         "Package: apt\n"
         "Status: install ok installed\n"
@@ -235,15 +241,7 @@ TEST(DpkgSourceTest, FirstAlternativeIsSelectedButRecorded) {
     );
 
     ASSERT_EQ(result.components.size(), 1u);
-    EXPECT_TRUE(hasCapability(
-        result.components[0].requiredCapabilities(),
-        "base-passwd"
-    ));
-    EXPECT_FALSE(hasCapability(
-        result.components[0].requiredCapabilities(),
-        "adduser"
-    ));
-    EXPECT_EQ(countGaps(result, ModelGapKind::Alternatives), 1u);
+    EXPECT_TRUE(result.gaps.empty());
 }
 
 TEST(DpkgSourceTest, MissingStatusFileThrows) {

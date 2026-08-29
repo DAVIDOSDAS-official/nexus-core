@@ -10,6 +10,7 @@ add_executable(component_test
     unit/dpkg_source_test.cpp
     unit/version_test.cpp
     unit/conflict_detector_test.cpp
+    unit/solver_test.cpp
 )
 
 target_link_libraries(component_test

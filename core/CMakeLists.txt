@@ -2,6 +2,8 @@ add_library(nexus_core
     src/core.cpp
     src/component.cpp
     src/constraint.cpp
+    src/requirement.cpp
+    src/solver.cpp
     src/conflict_detector.cpp
     src/capability.cpp
     src/resolver.cpp

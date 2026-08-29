@@ -3,6 +3,7 @@
 #include <utility>
 
 #include <nexus/constraint.hpp>
+#include <nexus/requirement.hpp>
 
 namespace nexus::system {
 
@@ -22,23 +23,16 @@ void recordClauseGaps(
     const std::vector<DependencyClause>& clauses,
     std::vector<ModelGap>& gaps
 ) {
+    // Alternatives and version conditions are both represented now.
+    // Only architecture qualifiers remain unmodelled.
     for (const DependencyClause& clause : clauses) {
-        if (clause.alternatives.size() > 1) {
-            gaps.push_back(ModelGap{
-                componentId,
-                ModelGapKind::Alternatives,
-                field,
-                toString(clause)
-            });
-        }
-
         for (const DependencyTerm& term : clause.alternatives) {
-            if (term.constraint) {
+            if (term.architecture) {
                 gaps.push_back(ModelGap{
                     componentId,
-                    ModelGapKind::VersionConstraint,
+                    ModelGapKind::ArchitectureQualifier,
                     field,
-                    toString(term)
+                    toString(term) + ":" + *term.architecture
                 });
             }
         }
@@ -116,16 +110,28 @@ DpkgSourceResult DpkgSource::loadFromStanzas(
             for (const DependencyClause& clause : clauses) {
                 result.dependencyClauses += 1;
 
-                if (clause.isSimple()) {
-                    result.representableClauses += 1;
+                // Alternatives and version conditions are both held
+                // by the model now, so every clause survives intact.
+                result.representableClauses += 1;
+
+                // Every alternative is kept, with its version
+                // condition. Nothing is discarded, so nothing needs to
+                // be recorded as a guess.
+                std::vector<Constraint> options;
+
+                for (const DependencyTerm& term : clause.alternatives) {
+                    if (term.constraint) {
+                        options.push_back(
+                            Constraint(term.name, *term.constraint)
+                        );
+                    } else {
+                        options.push_back(Constraint(term.name));
+                    }
                 }
 
-                // The model can only hold a single name, so the first
-                // alternative is used. The gap list records that this
-                // is a lossy choice.
-                if (!clause.alternatives.empty()) {
-                    component.addRequiredCapability(
-                        Capability(clause.alternatives.front().name)
+                if (!options.empty()) {
+                    component.addRequirement(
+                        Requirement(std::move(options))
                     );
                 }
             }
@@ -227,10 +233,8 @@ ComponentType classifySection(const std::string& section) {
 
 std::string toString(ModelGapKind kind) {
     switch (kind) {
-        case ModelGapKind::Alternatives:
-            return "alternatives";
-        case ModelGapKind::VersionConstraint:
-            return "version-constraint";
+        case ModelGapKind::ArchitectureQualifier:
+            return "architecture-qualifier";
         case ModelGapKind::PreDependency:
             return "pre-dependency";
     }

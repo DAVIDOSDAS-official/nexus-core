@@ -5,6 +5,7 @@
 
 #include <nexus/capability.hpp>
 #include <nexus/constraint.hpp>
+#include <nexus/requirement.hpp>
 
 namespace nexus {
 
@@ -51,10 +52,15 @@ public:
     void addRecommendedCapability(Capability capability);
 
     const std::vector<Capability>& providedCapabilities() const;
-    const std::vector<Capability>& requiredCapabilities() const;
+    std::vector<Capability> requiredCapabilities() const;
     const std::vector<Capability>& recommendedCapabilities() const;
 
     // Components this one cannot coexist with.
+    // Full requirements, alternatives preserved.
+    void addRequirement(Requirement requirement);
+
+    const std::vector<Requirement>& requirements() const;
+
     void addConflict(Constraint constraint);
 
     const std::vector<Constraint>& conflicts() const;
@@ -66,7 +72,7 @@ private:
     ComponentType type_;
 
     std::vector<Capability> provides_;
-    std::vector<Capability> requires_;
+    std::vector<Requirement> requirements_;
     std::vector<Capability> recommends_;
     std::vector<Constraint> conflicts_;
 };
