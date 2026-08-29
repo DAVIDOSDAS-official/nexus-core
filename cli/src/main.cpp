@@ -49,6 +49,32 @@ const Component* find(
         }
     }
 
+    // On a multi-arch system ids are qualified ("libc6:amd64"), so a
+    // plain name still has to resolve. If it is ambiguous, say so
+    // rather than picking one silently.
+    std::vector<const Component*> byName;
+
+    for (const Component& component : result.components) {
+        if (component.name() == id) {
+            byName.push_back(&component);
+        }
+    }
+
+    if (byName.size() == 1) {
+        return byName.front();
+    }
+
+    if (byName.size() > 1) {
+        std::cout
+            << id << " is installed for more than one architecture:\n";
+
+        for (const Component* component : byName) {
+            std::cout << "    " << component->id() << "\n";
+        }
+
+        std::cout << "\nName one of them explicitly.\n";
+    }
+
     return nullptr;
 }
 

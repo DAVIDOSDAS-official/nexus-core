@@ -2,6 +2,10 @@
 
 #include <nexus/architecture.hpp>
 #include <nexus/solver.hpp>
+#include <sstream>
+
+#include <nexus/system/control_file.hpp>
+#include <nexus/system/dpkg_source.hpp>
 #include <nexus/system/version.hpp>
 
 using nexus::architectureSatisfies;
@@ -151,6 +155,32 @@ TEST(ArchitectureSolverTest, PicksTheMatchingArchitecture) {
     EXPECT_TRUE(sawCorrect);
 }
 
+// Regression: an Architecture: all package used to pass "all" down as
+// the requesting architecture, so its own dependencies could never be
+// satisfied by any real architecture. On a multi-arch system this made
+// most solves fail.
+TEST(ArchitectureSolverTest, ArchIndependentPassesDownNativeArch) {
+    Component app = make("app", "amd64");
+    app.addRequirement(Requirement(Constraint("config-tool")));
+
+    // Architecture: all, but it needs a real native library.
+    Component tool = make("config-tool", kArchitectureAll);
+    tool.addRequirement(Requirement(Constraint("perl-base")));
+
+    Component perl = make("perl-base", "amd64");
+
+    Solver solver({app, tool, perl}, debianDetector());
+
+    SolverRequest request;
+    request.architecture = "amd64";
+    request.requirements.push_back(Requirement(Constraint("app")));
+
+    const auto result = solver.solve(request);
+
+    EXPECT_EQ(result.status, SolverStatus::Success);
+    EXPECT_EQ(result.backtracks, 0u);
+}
+
 TEST(ArchitectureSolverTest, ForeignToolSatisfiesAcrossArchitectures) {
     Component app = make("app", "i386");
     app.addRequirement(Requirement(Constraint("helper")));
@@ -165,4 +195,122 @@ TEST(ArchitectureSolverTest, ForeignToolSatisfiesAcrossArchitectures) {
     request.requirements.push_back(Requirement(Constraint("app")));
 
     EXPECT_EQ(solver.solve(request).status, SolverStatus::Success);
+}
+
+
+// End-to-end on a multi-arch system: real status data, through the
+// dpkg source, into the solver. This is the path that failed on a
+// machine with i386 enabled while an amd64-only machine looked fine.
+TEST(ArchitectureIntegrationTest, SolvesOnAMultiArchSystem) {
+    std::istringstream input(
+        "Package: apt\n"
+        "Status: install ok installed\n"
+        "Architecture: amd64\n"
+        "Version: 2.8.3\n"
+        "Depends: debconf, libc6 (>= 2.38)\n"
+        "\n"
+        "Package: debconf\n"
+        "Status: install ok installed\n"
+        "Architecture: all\n"
+        "Multi-Arch: foreign\n"
+        "Version: 1.5.86\n"
+        "Depends: perl-base (>= 5.20.1-3~)\n"
+        "\n"
+        "Package: perl-base\n"
+        "Status: install ok installed\n"
+        "Architecture: amd64\n"
+        "Multi-Arch: allowed\n"
+        "Version: 5.38.2-3.2\n"
+        "\n"
+        "Package: libc6\n"
+        "Status: install ok installed\n"
+        "Architecture: amd64\n"
+        "Multi-Arch: same\n"
+        "Version: 2.39\n"
+        "\n"
+        "Package: libc6\n"
+        "Status: install ok installed\n"
+        "Architecture: i386\n"
+        "Multi-Arch: same\n"
+        "Version: 2.39\n"
+    );
+
+    const nexus::system::DpkgSource source;
+    const auto loaded = source.loadFromStanzas(
+        nexus::system::parseControlStream(input)
+    );
+
+    ASSERT_EQ(loaded.components.size(), 5u);
+
+    Solver solver(loaded.components, debianDetector());
+
+    SolverRequest request;
+    request.architecture = "amd64";
+    request.requirements.push_back(Requirement(Constraint("apt")));
+
+    const auto result = solver.solve(request);
+
+    ASSERT_EQ(result.status, SolverStatus::Success);
+
+    bool sawAmd64 = false;
+
+    for (const std::string& id : result.selected) {
+        // The 32-bit libc must never be chosen for an amd64 solve.
+        EXPECT_NE(id, "libc6:i386");
+
+        if (id == "libc6:amd64") {
+            sawAmd64 = true;
+        }
+    }
+
+    EXPECT_TRUE(sawAmd64);
+}
+
+TEST(ArchitectureIntegrationTest, SolvingForI386PicksThe32BitLibrary) {
+    std::istringstream input(
+        "Package: game\n"
+        "Status: install ok installed\n"
+        "Architecture: i386\n"
+        "Version: 1.0\n"
+        "Depends: libc6 (>= 2.38)\n"
+        "\n"
+        "Package: libc6\n"
+        "Status: install ok installed\n"
+        "Architecture: amd64\n"
+        "Multi-Arch: same\n"
+        "Version: 2.39\n"
+        "\n"
+        "Package: libc6\n"
+        "Status: install ok installed\n"
+        "Architecture: i386\n"
+        "Multi-Arch: same\n"
+        "Version: 2.39\n"
+    );
+
+    const nexus::system::DpkgSource source;
+    const auto loaded = source.loadFromStanzas(
+        nexus::system::parseControlStream(input)
+    );
+
+    Solver solver(loaded.components, debianDetector());
+
+    SolverRequest request;
+    request.architecture = "i386";
+    request.requirements.push_back(Requirement(Constraint("game")));
+
+    const auto result = solver.solve(request);
+
+    ASSERT_EQ(result.status, SolverStatus::Success);
+
+    bool saw32 = false;
+
+    for (const std::string& id : result.selected) {
+        EXPECT_NE(id, "libc6:amd64");
+
+        if (id == "libc6:i386") {
+            saw32 = true;
+        }
+    }
+
+    EXPECT_TRUE(saw32);
 }

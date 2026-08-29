@@ -260,13 +260,21 @@ SolverResult Solver::solve(const SolverRequest& request) const {
                 // The chosen component brings its own requirements.
                 std::vector<Pending> next = pending;
 
+                // An architecture-independent component still runs on
+                // a concrete architecture. Its own dependencies must
+                // be resolved against the architecture that asked for
+                // it, not against "all" -- "all" says what it
+                // satisfies, not what it needs.
+                const std::string childArchitecture =
+                    (candidate.component->architecture() ==
+                     kArchitectureAll)
+                        ? requesterArchitecture
+                        : candidate.component->architecture();
+
                 for (const Requirement& theirs :
                      candidate.component->requirements()) {
 
-                    next.push_back(Pending{
-                        theirs,
-                        candidate.component->architecture()
-                    });
+                    next.push_back(Pending{theirs, childArchitecture});
                 }
 
                 if (search(next)) {
