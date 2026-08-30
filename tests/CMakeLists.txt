@@ -21,6 +21,7 @@ add_executable(component_test
     unit/xml_test.cpp
     unit/rpm_source_test.cpp
     unit/rpm_repo_test.cpp
+    unit/rpm_database_test.cpp
 )
 
 target_link_libraries(component_test
