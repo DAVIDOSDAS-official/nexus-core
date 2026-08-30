@@ -17,6 +17,8 @@
 #include <nexus/solver.hpp>
 #include <nexus/hardware/hardware.hpp>
 #include <nexus/system/apt_source.hpp>
+#include <nexus/system/rpm_database.hpp>
+#include <nexus/system/rpm_repo.hpp>
 #include <nexus/system/profile_file.hpp>
 #include <nexus/system/dpkg_source.hpp>
 #include <nexus/system/version.hpp>
@@ -52,7 +54,9 @@ void printUsage() {
         << "    --status <path>   dpkg status file\n"
         << "    --profiles <dir>  profile directory\n"
         << "    --arch <arch>     target architecture\n"
-        << "    --with-available  also read apt package indexes\n"
+        << "    --with-available  also read available packages\n"
+        << "    --rpm | --dpkg    force a package ecosystem\n"
+        << "    --rpm-root <dir>  inspect an rpm root elsewhere\n"
         << "    --explain         reason for every component, not just choices\n"
         << "    --lists <dir>     apt lists directory\n"
         << "    --sysfs <dir>     root for hardware detection\n"
@@ -62,10 +66,10 @@ void printUsage() {
 }
 
 const Component* find(
-    const DpkgSourceResult& result,
+    const std::vector<Component>& components,
     const std::string& id
 ) {
-    for (const Component& component : result.components) {
+    for (const Component& component : components) {
         if (component.id() == id) {
             return &component;
         }
@@ -76,7 +80,7 @@ const Component* find(
     // rather than picking one silently.
     std::vector<const Component*> byName;
 
-    for (const Component& component : result.components) {
+    for (const Component& component : components) {
         if (component.name() == id) {
             byName.push_back(&component);
         }
@@ -136,12 +140,31 @@ nexus::Solver buildSolver(const std::vector<Component>& components) {
     );
 }
 
-int commandScan(const DpkgSourceResult& result) {
+// What a package source reported, without saying which one it was.
+//
+// Nexus reasons about capabilities, so the parts of scan that are
+// interesting -- how much of the metadata the model holds, what it
+// could not represent -- are the same question whichever ecosystem
+// answered it.
+struct SourceSummary {
+    std::string name;
+    std::vector<Component> components;
+
+    std::size_t recordsRead = 0;
+    std::size_t recordsSkipped = 0;
+    std::size_t dependencyClauses = 0;
+    std::size_t representableClauses = 0;
+
+    std::map<std::string, std::size_t> gaps;
+    std::vector<std::string> notes;
+};
+
+int commandScan(const SourceSummary& result) {
     std::cout
-        << "Source:      dpkg status\n"
-        << "Stanzas:     " << result.stanzasRead << "\n"
+        << "Source:      " << result.name << "\n"
+        << "Records:     " << result.recordsRead << "\n"
         << "Components:  " << result.components.size() << "\n"
-        << "Skipped:     " << result.stanzasSkipped << "\n"
+        << "Skipped:     " << result.recordsSkipped << "\n"
         << "\n";
 
     std::size_t capabilities = 0;
@@ -165,32 +188,30 @@ int commandScan(const DpkgSourceResult& result) {
             << " (" << static_cast<int>(share) << "%)\n";
     }
 
-    std::map<std::string, std::size_t> byKind;
-
-    for (const ModelGap& gap : result.gaps) {
-        byKind[toString(gap.kind)] += 1;
-    }
-
     std::cout << "\nModel gaps:\n";
 
-    if (byKind.empty()) {
+    if (result.gaps.empty()) {
         std::cout << "    none\n";
     }
 
-    for (const auto& [kind, count] : byKind) {
+    for (const auto& [kind, count] : result.gaps) {
         std::cout << "    " << kind << ": " << count << "\n";
+    }
+
+    for (const std::string& note : result.notes) {
+        std::cout << "\n" << note << "\n";
     }
 
     return 0;
 }
 
 int commandWhatProvides(
-    const DpkgSourceResult& result,
+    const std::vector<Component>& components,
     const std::string& capability
 ) {
     std::vector<std::string> providers;
 
-    for (const Component& component : result.components) {
+    for (const Component& component : components) {
         if (provides(component, capability)) {
             providers.push_back(component.id());
         }
@@ -221,10 +242,10 @@ int commandWhatProvides(
 }
 
 int commandWhy(
-    const DpkgSourceResult& result,
+    const std::vector<Component>& components,
     const std::string& id
 ) {
-    const Component* target = find(result, id);
+    const Component* target = find(components, id);
 
     if (target == nullptr) {
         return 1;
@@ -234,7 +255,7 @@ int commandWhy(
 
     std::vector<std::string> dependents;
 
-    for (const Component& component : result.components) {
+    for (const Component& component : components) {
         if (component.id() == id) {
             continue;
         }
@@ -279,10 +300,10 @@ int commandWhy(
 }
 
 int commandInspect(
-    const DpkgSourceResult& result,
+    const std::vector<Component>& components,
     const std::string& id
 ) {
-    const Component* component = find(result, id);
+    const Component* component = find(components, id);
 
     if (component == nullptr) {
         return 1;
@@ -312,30 +333,10 @@ int commandInspect(
         std::cout << "    " << capability.name() << "\n";
     }
 
-    std::vector<const ModelGap*> gaps;
-
-    for (const ModelGap& gap : result.gaps) {
-        if (gap.componentId == id) {
-            gaps.push_back(&gap);
-        }
-    }
-
-    if (!gaps.empty()) {
-        std::cout
-            << "\nNot represented by the component model ("
-            << gaps.size() << "):\n";
-
-        for (const ModelGap* gap : gaps) {
-            std::cout
-                << "    [" << toString(gap->kind) << "] "
-                << gap->field << ": " << gap->detail << "\n";
-        }
-    }
-
     return 0;
 }
 
-int commandConflicts(const DpkgSourceResult& result) {
+int commandConflicts(const std::vector<Component>& components) {
     const nexus::ConflictDetector detector(
         [](const std::string& left, const std::string& right) {
             return nexus::system::compareVersions(left, right);
@@ -344,15 +345,15 @@ int commandConflicts(const DpkgSourceResult& result) {
 
     std::size_t declared = 0;
 
-    for (const Component& component : result.components) {
+    for (const Component& component : components) {
         declared += component.conflicts().size();
     }
 
     std::cout
-        << "Components:          " << result.components.size() << "\n"
+        << "Components:          " << components.size() << "\n"
         << "Declared conflicts:  " << declared << "\n\n";
 
-    const auto conflicts = detector.detect(result.components);
+    const auto conflicts = detector.detect(components);
 
     if (conflicts.empty()) {
         std::cout
@@ -924,34 +925,19 @@ int commandProfile(
     return 1;
 }
 
-int commandGaps(
-    const DpkgSourceResult& result,
-    const std::string& kindFilter
-) {
-    std::size_t shown = 0;
-
-    for (const ModelGap& gap : result.gaps) {
-        const std::string kind = toString(gap.kind);
-
-        if (!kindFilter.empty() && kind != kindFilter) {
-            continue;
-        }
-
+int commandGaps(const SourceSummary& result) {
+    if (result.gaps.empty()) {
         std::cout
-            << gap.componentId << "  ["
-            << kind << "]  "
-            << gap.field << ": " << gap.detail << "\n";
-
-        shown += 1;
-
-        if (shown >= 200) {
-            std::cout << "... truncated at 200 entries\n";
-            break;
-        }
+            << result.name
+            << " reported nothing the model could not represent.\n";
     }
 
-    if (shown == 0) {
-        std::cout << "No gaps recorded.\n";
+    for (const auto& [kind, count] : result.gaps) {
+        std::cout << kind << ": " << count << "\n";
+    }
+
+    for (const std::string& note : result.notes) {
+        std::cout << "\n" << note << "\n";
     }
 
     return 0;
@@ -982,6 +968,10 @@ int main(int argc, char** argv) {
     std::string listsDir = "/var/lib/apt/lists";
     std::string sysfsRoot = "/";
     std::string statesPath = "/var/lib/apt/extended_states";
+    std::string rpmCache = "/var/cache/libdnf5";
+    std::string rpmRoot;
+    bool forceRpm = false;
+    bool forceDpkg = false;
     bool withAvailable = false;
     bool explain = false;
     std::vector<std::string> positional;
@@ -995,6 +985,30 @@ int main(int argc, char** argv) {
 
         if (arguments[index] == "--explain") {
             explain = true;
+            continue;
+        }
+
+        if (arguments[index] == "--rpm") {
+            forceRpm = true;
+            continue;
+        }
+
+        if (arguments[index] == "--dpkg") {
+            forceDpkg = true;
+            continue;
+        }
+
+        if (arguments[index] == "--rpm-cache" &&
+            index + 1 < arguments.size()) {
+            rpmCache = arguments[index + 1];
+            index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--rpm-root" &&
+            index + 1 < arguments.size()) {
+            rpmRoot = arguments[index + 1];
+            index += 1;
             continue;
         }
 
@@ -1070,16 +1084,66 @@ int main(int argc, char** argv) {
         //
         // So a missing database is a fact to report, not a reason to
         // refuse to start.
-        DpkgSourceResult result;
+        // Which ecosystem this machine uses is a fact to detect, not
+        // a flag to demand. dpkg wins when its database is present
+        // because a system with both is a Debian one with rpm
+        // installed as a tool.
+        SourceSummary result;
         bool havePackages = false;
 
-        try {
-            const nexus::system::DpkgSource source(statusPath);
+        const bool preferRpm =
+            forceRpm ||
+            (!forceDpkg &&
+             !std::filesystem::exists(statusPath) &&
+             nexus::system::RpmDatabase::available());
 
-            result = source.load();
-            havePackages = true;
-        } catch (const std::exception& error) {
-            result = DpkgSourceResult{};
+        if (preferRpm) {
+            const nexus::system::RpmDatabase database(rpmRoot);
+            const auto loaded = database.load();
+
+            if (loaded.error.empty()) {
+                result.name = "rpm database";
+                result.components = loaded.components;
+                result.recordsRead = loaded.packagesRead;
+                havePackages = true;
+
+                for (const Component& component : result.components) {
+                    const auto count = component.requirements().size();
+
+                    result.dependencyClauses += count;
+                    result.representableClauses += count;
+                }
+
+                if (loaded.rpmlibRequirements > 0) {
+                    result.notes.push_back(
+                        std::to_string(loaded.rpmlibRequirements) +
+                        " rpmlib requirement(s) were skipped: they "
+                        "are satisfied by rpm itself, never by a "
+                        "package."
+                    );
+                }
+            }
+        } else {
+            try {
+                const nexus::system::DpkgSource source(statusPath);
+                const auto loaded = source.load();
+
+                result.name = "dpkg status";
+                result.components = loaded.components;
+                result.recordsRead = loaded.stanzasRead;
+                result.recordsSkipped = loaded.stanzasSkipped;
+                result.dependencyClauses = loaded.dependencyClauses;
+                result.representableClauses =
+                    loaded.representableClauses;
+
+                for (const auto& gap : loaded.gaps) {
+                    result.gaps[toString(gap.kind)] += 1;
+                }
+
+                havePackages = true;
+            } catch (const std::exception& error) {
+                result = SourceSummary{};
+            }
         }
 
         // Commands that read the package database say so plainly when
@@ -1087,8 +1151,9 @@ int main(int argc, char** argv) {
         // user never mentioned.
         const auto requirePackages = [&]() {
             std::cerr
-                << "No package database at " << statusPath << ".\n"
-                << "This system does not appear to use dpkg, so \""
+                << "No package database found.\n"
+                << "Looked for dpkg at " << statusPath
+                << " and for an rpm database, so \""
                 << command << "\" has nothing to read.\n"
                 << "Commands that work anywhere: hardware, "
                 << "profile list, profile show.\n";
@@ -1110,7 +1175,29 @@ int main(int argc, char** argv) {
 
         bool haveAvailable = false;
 
-        if (withAvailable) {
+        if (withAvailable && preferRpm) {
+            const nexus::system::RpmRepository repositories(rpmCache);
+            const auto available = repositories.load();
+
+            for (const auto& skipped : available.skipped) {
+                std::cerr
+                    << "Warning: skipped " << skipped.path
+                    << " (" << skipped.reason << ")\n";
+            }
+
+            if (!available.components.empty()) {
+                universe = nexus::system::mergeAvailable(
+                    universe, available.components);
+
+                haveAvailable = true;
+
+                std::cerr
+                    << "Loaded " << available.components.size()
+                    << " available packages from "
+                    << available.repositoriesRead.size()
+                    << " repository(ies).\n";
+            }
+        } else if (withAvailable) {
             const nexus::system::AptSource apt(listsDir);
             const auto available = apt.load();
 
@@ -1157,7 +1244,7 @@ int main(int argc, char** argv) {
                 return 2;
             }
 
-            return commandWhatProvides(result, argument);
+            return commandWhatProvides(result.components, argument);
         }
 
         if (command == "why") {
@@ -1171,7 +1258,7 @@ int main(int argc, char** argv) {
                 return 2;
             }
 
-            return commandWhy(result, argument);
+            return commandWhy(result.components, argument);
         }
 
         if (command == "inspect") {
@@ -1185,7 +1272,7 @@ int main(int argc, char** argv) {
                 return 2;
             }
 
-            return commandInspect(result, argument);
+            return commandInspect(result.components, argument);
         }
 
         if (command == "plan") {
@@ -1259,11 +1346,11 @@ int main(int argc, char** argv) {
                 return 1;
             }
 
-            return commandConflicts(result);
+            return commandConflicts(result.components);
         }
 
         if (command == "gaps") {
-            return commandGaps(result, argument);
+            return commandGaps(result);
         }
 
         std::cerr << "Unknown command: " << command << "\n\n";

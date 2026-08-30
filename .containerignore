@@ -1,7 +1,9 @@
-# The build tree is the host's, not the image's. Copying it in wastes
-# hundreds of megabytes and invalidates the layer cache on every local
-# rebuild.
+# Nothing here belongs in the image, and two of them are enormous.
+# output/ holds a multi-gigabyte disk image; copying it into the
+# build context fills the disk and lands the image inside itself.
 build/
+output/
 .git/
 *.o
 *.a
+*.qcow2
