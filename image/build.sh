@@ -10,7 +10,7 @@ set -euo pipefail
 TAG="${TAG:-localhost/nexus-os}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-for stage in base desktop gaming final; do
+for stage in builder base desktop gaming final; do
     echo
     echo "=== building stage: ${stage} ==="
 

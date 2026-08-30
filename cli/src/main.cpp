@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <exception>
 #include <iostream>
+#include <cstdlib>
+#include <filesystem>
 #include <map>
 #include <set>
 #include <string>
@@ -964,7 +966,19 @@ int main(int argc, char** argv) {
     std::string prefer;
     std::string require;
     std::string arch;
-    std::string profileDir = "components/profiles";
+    // Where profiles live, most specific first: an explicit flag, the
+    // environment (which the image sets), the installed location, then
+    // the source tree for development.
+    std::string profileDir;
+
+    if (const char* fromEnvironment = std::getenv("NEXUS_PROFILES")) {
+        profileDir = fromEnvironment;
+    } else if (std::filesystem::is_directory(
+                   "/usr/share/nexus/profiles")) {
+        profileDir = "/usr/share/nexus/profiles";
+    } else {
+        profileDir = "components/profiles";
+    }
     std::string listsDir = "/var/lib/apt/lists";
     std::string sysfsRoot = "/";
     std::string statesPath = "/var/lib/apt/extended_states";
@@ -1049,8 +1063,36 @@ int main(int argc, char** argv) {
         positional.size() > 1 ? positional[1] : std::string{};
 
     try {
-        const nexus::system::DpkgSource source(statusPath);
-        const DpkgSourceResult result = source.load();
+        // Not every system has a package database, and not every
+        // command needs one. `nexus hardware` and `nexus profile list`
+        // are perfectly meaningful on a machine that has never heard
+        // of dpkg -- which includes the Fedora image Nexus ships in.
+        //
+        // So a missing database is a fact to report, not a reason to
+        // refuse to start.
+        DpkgSourceResult result;
+        bool havePackages = false;
+
+        try {
+            const nexus::system::DpkgSource source(statusPath);
+
+            result = source.load();
+            havePackages = true;
+        } catch (const std::exception& error) {
+            result = DpkgSourceResult{};
+        }
+
+        // Commands that read the package database say so plainly when
+        // there is not one, rather than failing on a file path the
+        // user never mentioned.
+        const auto requirePackages = [&]() {
+            std::cerr
+                << "No package database at " << statusPath << ".\n"
+                << "This system does not appear to use dpkg, so \""
+                << command << "\" has nothing to read.\n"
+                << "Commands that work anywhere: hardware, "
+                << "profile list, profile show.\n";
+        };
 
         // Detected hardware joins the universe as a component, so a
         // profile can require "gpu-vendor:amd" and have it resolved
@@ -1096,10 +1138,20 @@ int main(int argc, char** argv) {
         }
 
         if (command == "scan") {
+            if (!havePackages) {
+                requirePackages();
+                return 1;
+            }
+
             return commandScan(result);
         }
 
         if (command == "what-provides") {
+            if (!havePackages) {
+                requirePackages();
+                return 1;
+            }
+
             if (argument.empty()) {
                 std::cerr << "what-provides requires a capability name.\n";
                 return 2;
@@ -1109,6 +1161,11 @@ int main(int argc, char** argv) {
         }
 
         if (command == "why") {
+            if (!havePackages) {
+                requirePackages();
+                return 1;
+            }
+
             if (argument.empty()) {
                 std::cerr << "why requires a component id.\n";
                 return 2;
@@ -1118,6 +1175,11 @@ int main(int argc, char** argv) {
         }
 
         if (command == "inspect") {
+            if (!havePackages) {
+                requirePackages();
+                return 1;
+            }
+
             if (argument.empty()) {
                 std::cerr << "inspect requires a component id.\n";
                 return 2;
@@ -1127,6 +1189,11 @@ int main(int argc, char** argv) {
         }
 
         if (command == "plan") {
+            if (!havePackages) {
+                requirePackages();
+                return 1;
+            }
+
             if (argument.empty()) {
                 std::cerr << "plan requires a capability name.\n";
                 return 2;
@@ -1136,6 +1203,11 @@ int main(int argc, char** argv) {
         }
 
         if (command == "remove") {
+            if (!havePackages) {
+                requirePackages();
+                return 1;
+            }
+
             if (argument.empty()) {
                 std::cerr << "remove requires a component name.\n";
                 return 2;
@@ -1149,11 +1221,17 @@ int main(int argc, char** argv) {
             return commandHardware(hardware);
         }
 
+
         if (command == "profile") {
             const std::string action =
                 positional.size() > 1 ? positional[1] : "list";
             const std::string name =
                 positional.size() > 2 ? positional[2] : std::string{};
+
+            if (action == "check" && !havePackages) {
+                requirePackages();
+                return 1;
+            }
 
             return commandProfile(
                 installed, universe, haveAvailable,
@@ -1161,6 +1239,11 @@ int main(int argc, char** argv) {
         }
 
         if (command == "solve") {
+            if (!havePackages) {
+                requirePackages();
+                return 1;
+            }
+
             if (argument.empty()) {
                 std::cerr << "solve requires a capability name.\n";
                 return 2;
@@ -1171,6 +1254,11 @@ int main(int argc, char** argv) {
         }
 
         if (command == "conflicts") {
+            if (!havePackages) {
+                requirePackages();
+                return 1;
+            }
+
             return commandConflicts(result);
         }
 

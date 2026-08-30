@@ -8,27 +8,35 @@
 # boot on its own, so a failure tells you which layer broke rather than
 # just that something did.
 
-# ---------------------------------------------------------------- base
-FROM quay.io/fedora/fedora-bootc:42 AS base
+# ------------------------------------------------------------- builder
+# Compiling happens here and stays here. The shipped image gets the
+# binary and nothing else: no compiler, no source, no build tree.
+#
+# This also sidesteps a real problem. Deleting a COPYed directory
+# inside a RUN fails with an I/O error under rootless podman's overlay
+# filesystem -- so the answer is not to delete it, but never to put it
+# in the shipped layer.
+FROM quay.io/fedora/fedora-bootc:42 AS builder
 
-# Nexus itself. Read-only tooling; it does not modify the system.
 RUN dnf install -y \
         cmake \
         gcc-c++ \
-        git \
         make \
     && dnf clean all
 
-COPY . /usr/src/nexus-core
+COPY . /src
 
-RUN cmake -S /usr/src/nexus-core -B /tmp/nexus-build \
+# NEXUS_BUILD_TESTS=OFF: the image needs the tool, not the test suite.
+RUN cmake -S /src -B /build \
         -DCMAKE_BUILD_TYPE=Release \
-    && cmake --build /tmp/nexus-build --parallel \
-    && install -m 0755 /tmp/nexus-build/cli/nexus /usr/bin/nexus \
-    && mkdir -p /usr/share/nexus \
-    && cp -r /usr/src/nexus-core/components/profiles \
-             /usr/share/nexus/profiles \
-    && rm -rf /tmp/nexus-build /usr/src/nexus-core
+        -DNEXUS_BUILD_TESTS=OFF \
+    && cmake --build /build --parallel
+
+# ---------------------------------------------------------------- base
+FROM quay.io/fedora/fedora-bootc:42 AS base
+
+COPY --from=builder /build/cli/nexus /usr/bin/nexus
+COPY components/profiles /usr/share/nexus/profiles
 
 # ------------------------------------------------------------- desktop
 FROM base AS desktop
@@ -36,12 +44,35 @@ FROM base AS desktop
 # KDE on Wayland. Chosen over GNOME because gaming benefits from
 # variable refresh and per-display scaling, which KDE has handled
 # better for longer.
+# --exclude=rootfiles: it ships /root/.bash_logout, and in a bootc
+# image /root is managed by ostree rather than being an ordinary
+# directory. RPM cannot unpack into it, and one failed unpack aborts
+# the entire transaction -- 1,518 successful installs get rolled back
+# because of one file nobody needs.
+#
+# --setopt=install_weak_deps=False: the desktop group pulls in its
+# Recommends otherwise, which is where most of those 1,519 packages
+# came from. An image should contain what it needs, not what it might
+# like.
+#
+# Split into three commands on purpose. A single dnf install of a whole
+# desktop makes any failure anonymous; this way the failing layer names
+# itself.
 RUN dnf install -y \
+        --exclude=rootfiles \
+        --setopt=install_weak_deps=False \
         @kde-desktop-environment \
+    && dnf clean all
+
+RUN dnf install -y \
+        --exclude=rootfiles \
+        --setopt=install_weak_deps=False \
         plasma-workspace-wayland \
         sddm \
-    && systemctl set-default graphical.target \
     && dnf clean all
+
+RUN systemctl set-default graphical.target \
+    && systemctl enable sddm.service
 
 # -------------------------------------------------------------- gaming
 FROM desktop AS gaming
@@ -49,6 +80,7 @@ FROM desktop AS gaming
 # Fedora bootc ships no 32-bit multilib. Steam needs it, so it is added
 # explicitly rather than assumed -- see decisions 4 and 5.
 RUN dnf install -y \
+        --exclude=rootfiles \
         mesa-dri-drivers.i686 \
         mesa-vulkan-drivers.i686 \
         mesa-libGL.i686 \
@@ -72,6 +104,7 @@ RUN dnf install -y \
         "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
         "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm" \
     && dnf install -y \
+        --exclude=rootfiles \
         steam \
         gamemode \
         gamescope \
@@ -82,6 +115,7 @@ RUN dnf install -y \
 # Controllers. A gamepad that does not work is a bug a beginner cannot
 # describe, so the drivers and udev rules are present from first boot.
 RUN dnf install -y \
+        --exclude=rootfiles \
         kernel-modules-extra \
         libratbag-ratbagd \
     && dnf clean all
@@ -89,6 +123,7 @@ RUN dnf install -y \
 # Audio: PipeWire is already default on Fedora. Named here so the image
 # states it rather than inheriting it silently.
 RUN dnf install -y \
+        --exclude=rootfiles \
         pipewire \
         pipewire-pulseaudio \
         wireplumber \

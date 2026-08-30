@@ -1,0 +1,7 @@
+# The build tree is the host's, not the image's. Copying it in wastes
+# hundreds of megabytes and invalidates the layer cache on every local
+# rebuild.
+build/
+.git/
+*.o
+*.a

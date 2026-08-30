@@ -1,0 +1,9 @@
+# Users belong to the disk image, not the container image.
+#
+# useradd in a Containerfile puts an account in /etc/passwd with a home
+# directory under /var -- and /var is created at install time, not
+# baked into the image. The account exists and cannot log in.
+[[customizations.user]]
+name = "nexus"
+password = "nexus"
+groups = ["wheel"]

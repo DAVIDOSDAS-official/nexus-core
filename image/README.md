@@ -40,6 +40,18 @@ Expect at least one wrong name. `steam` in particular is in RPM Fusion
 rather than Fedora proper, so it will only resolve after that repository
 is enabled.
 
+## Known build failures
+
+**`rootfiles`.** It ships `/root/.bash_logout`, and in a bootc image
+`/root` is managed by ostree rather than being a normal directory. RPM
+cannot unpack into it and aborts the whole transaction, so a single
+unwanted file rolls back a thousand successful installs. Every `dnf
+install` here passes `--exclude=rootfiles`.
+
+**Weak dependencies.** `@kde-desktop-environment` pulled 1,519 packages
+with its Recommends enabled. `--setopt=install_weak_deps=False` keeps
+the image to what it actually needs.
+
 ## Things that will bite
 
 **Secure Boot.** A custom image ships an unsigned kernel. Machines with

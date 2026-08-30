@@ -15,5 +15,11 @@ add_subdirectory(system)
 add_subdirectory(hardware)
 add_subdirectory(cli)
 
-enable_testing()
-add_subdirectory(tests)
+# Tests need GoogleTest, which a deployment image has no reason to
+# carry. Building the tool and testing the tool are different jobs.
+option(NEXUS_BUILD_TESTS "Build the test suite" ON)
+
+if(NEXUS_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
