@@ -18,6 +18,8 @@ add_executable(component_test
     unit/removal_test.cpp
     unit/transaction_test.cpp
     unit/rpm_version_test.cpp
+    unit/xml_test.cpp
+    unit/rpm_source_test.cpp
 )
 
 target_link_libraries(component_test
