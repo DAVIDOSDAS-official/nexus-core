@@ -29,6 +29,7 @@ const char* kRealOutput =
     "PRV\tlibgcc_s.so.1()(64bit)\t\t\n"
     "REQ\tglibc\t>=\t2.34\t\n"
     "CON\tlibgcc-old\t<\t9.0\n"
+    "FIL\t/usr/lib64/libgcc_s.so.1\n"
     "PKG\ttzdata\t(none)\t2025c\t1.fc42\tnoarch\n"
     "PRV\ttzdata\t=\t2025c-1.fc42\n";
 
@@ -182,6 +183,32 @@ TEST(RpmDatabaseTest, SonameProvidesAreOrdinaryCapabilities) {
     ASSERT_GE(result.components.size(), 2u);
     EXPECT_TRUE(
         provides(result.components[1], "libgcc_s.so.1()(64bit)"));
+}
+
+// bash requires /usr/bin/sh. Without file provides, a system looks
+// unsatisfiable for reasons that have nothing to do with packages.
+TEST(RpmDatabaseTest, FilesAreProvidedCapabilities) {
+    const auto result = RpmDatabase::parse(kRealOutput);
+
+    ASSERT_GE(result.components.size(), 2u);
+    EXPECT_EQ(result.fileProvides, 1u);
+    EXPECT_TRUE(provides(
+        result.components[1], "/usr/lib64/libgcc_s.so.1"));
+}
+
+// A conditional requirement is not a capability name. Passed
+// through, "(glibc-gconv-extra if redhat-rpm-config)" is something
+// nothing can ever provide, and every solve fails on it.
+TEST(RpmDatabaseTest, RecordsBooleanRequirementsInsteadOfPassingThem) {
+    const auto result = RpmDatabase::parse(
+        "PKG\tbash\t(none)\t5.2\t1\tx86_64\n"
+        "REQ\t(glibc-gconv-extra if redhat-rpm-config)\t\t\t\n"
+        "REQ\tglibc\t>=\t2.34\t\n");
+
+    ASSERT_EQ(result.components.size(), 1u);
+    EXPECT_EQ(result.booleanRequirements, 1u);
+    EXPECT_EQ(result.components[0].requirements().size(), 1u);
+    EXPECT_TRUE(requires_(result.components[0], "glibc"));
 }
 
 TEST(RpmDatabaseTest, HandlesEmptyOutput) {

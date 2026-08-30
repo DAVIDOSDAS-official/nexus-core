@@ -20,6 +20,18 @@ struct RpmDatabaseResult {
     // declares and their absence from the model should be visible.
     std::size_t rpmlibRequirements = 0;
 
+    // Paths a package owns. rpm lets a requirement name a file, so
+    // these are capabilities like any other -- and without them a
+    // system looks unsatisfiable in ways that have nothing to do with
+    // packages. bash requires /usr/bin/sh.
+    std::size_t fileProvides = 0;
+
+    // Rich dependencies: "(a if b)", "(a or b)". The model has no
+    // conditional requirements, so these are recorded and skipped
+    // rather than passed through as a literal capability name that
+    // nothing can ever provide.
+    std::size_t booleanRequirements = 0;
+
     std::string error;
 };
 

@@ -23,7 +23,8 @@ const char* kFormat =
     "[REQ\\t%{REQUIRENAME}\\t%{REQUIREFLAGS:depflags}"
     "\\t%{REQUIREVERSION}\\t%{REQUIREFLAGS:deptype}\\n]"
     "[CON\\t%{CONFLICTNAME}\\t%{CONFLICTFLAGS:depflags}"
-    "\\t%{CONFLICTVERSION}\\n]";
+    "\\t%{CONFLICTVERSION}\\n]"
+    "[FIL\\t%{FILENAMES}\\n]";
 
 std::vector<std::string> split(const std::string& line) {
     std::vector<std::string> fields;
@@ -90,6 +91,11 @@ bool relationOf(const std::string& flags, VersionRelation& relation) {
 
 bool isRpmlib(const std::string& name) {
     return name.rfind("rpmlib(", 0) == 0;
+}
+
+// A rich dependency: "(a if b)", "(a or b)", "(a and b)".
+bool isBoolean(const std::string& name) {
+    return !name.empty() && name.front() == '(';
 }
 
 }
@@ -203,6 +209,11 @@ RpmDatabaseResult RpmDatabase::parse(const std::string& queryOutput) {
                 continue;
             }
 
+            if (isBoolean(name)) {
+                result.booleanRequirements += 1;
+                continue;
+            }
+
             Constraint constraint(name);
 
             VersionRelation relation;
@@ -220,6 +231,14 @@ RpmDatabaseResult RpmDatabase::parse(const std::string& queryOutput) {
 
             component.addRequirement(std::move(requirement));
 
+            continue;
+        }
+
+        if (kind == "FIL") {
+            // A path is a capability: rpm lets a requirement name a
+            // file, satisfied by whichever package ships it.
+            component.addProvidedCapability(Capability(name));
+            result.fileProvides += 1;
             continue;
         }
 

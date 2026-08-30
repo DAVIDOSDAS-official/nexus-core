@@ -1114,6 +1114,19 @@ int main(int argc, char** argv) {
                     result.representableClauses += count;
                 }
 
+                if (loaded.fileProvides > 0) {
+                    result.notes.push_back(
+                        std::to_string(loaded.fileProvides) +
+                        " file path(s) are provided as capabilities: "
+                        "rpm lets a requirement name a file."
+                    );
+                }
+
+                if (loaded.booleanRequirements > 0) {
+                    result.gaps["boolean-dependency"] =
+                        loaded.booleanRequirements;
+                }
+
                 if (loaded.rpmlibRequirements > 0) {
                     result.notes.push_back(
                         std::to_string(loaded.rpmlibRequirements) +
