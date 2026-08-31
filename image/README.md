@@ -52,6 +52,12 @@ install` here passes `--exclude=rootfiles`.
 with its Recommends enabled. `--setopt=install_weak_deps=False` keeps
 the image to what it actually needs.
 
+**Decompressors.** Repository metadata is compressed, and Fedora uses
+zstd for small repositories and zchunk for large ones. Without `zstd`
+and `unzck` in the image, `nexus --with-available` reads whichever
+repositories happen to be small and silently reports the rest as
+unavailable -- which looks like a resolver problem and is not one.
+
 ## Things that will bite
 
 **Secure Boot.** A custom image ships an unsigned kernel. Machines with

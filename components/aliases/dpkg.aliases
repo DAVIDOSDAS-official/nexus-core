@@ -91,7 +91,7 @@ Resolves-To: systemsettings | gnome-control-center
 # installed. Aliases go stale this way: ecosystems absorb tools
 # into larger packages, and the alias still names the tool.
 Capability: screenshot-tool
-Resolves-To: spectacle | flameshot | gnome-screenshot | xfce4-screenshooter | gnome-shell
+Resolves-To: kde-spectacle | spectacle | flameshot | gnome-screenshot | xfce4-screenshooter | gnome-shell
 
 Capability: lightweight-session
 Resolves-To: openbox | i3-wm | fluxbox | xfce4-session

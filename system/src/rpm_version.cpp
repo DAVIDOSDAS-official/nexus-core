@@ -265,6 +265,26 @@ int compareRpmVersions(
     return compareRpmSegments(left.release, right.release);
 }
 
+int compareRpmConstraint(
+    const std::string& provided,
+    const std::string& required
+) {
+    RpmVersion left = parseRpmVersion(provided);
+    const RpmVersion right = parseRpmVersion(required);
+
+    // A constraint that names no epoch does not care about epoch.
+    if (required.find(':') == std::string::npos) {
+        left.epoch = 0;
+    }
+
+    // A constraint that names no release does not care about release.
+    if (right.release.empty()) {
+        left.release.clear();
+    }
+
+    return compareRpmVersions(left, right);
+}
+
 int compareRpmVersions(
     const std::string& left,
     const std::string& right

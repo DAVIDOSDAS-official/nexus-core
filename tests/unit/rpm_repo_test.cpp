@@ -115,7 +115,7 @@ TEST(CompressionTest, PicksTheRightToolAndFlags) {
     EXPECT_EQ(decompressTool("a.gz"), "gzip");
     EXPECT_EQ(decompressTool("a.xml"), "");
 
-    EXPECT_EQ(decompressCommand("a.zst"), "zstd -dc");
+    EXPECT_EQ(decompressCommand("a.zst"), "zstd -dc --long=31");
     EXPECT_EQ(decompressCommand("a.gz"), "gzip -dc");
     EXPECT_EQ(decompressCommand("a.xml"), "");
 }
@@ -256,6 +256,56 @@ TEST(RpmRepoTest, SkipsAMissingPrimaryFile) {
 
 TEST(RpmRepoTest, ReportsAMissingCacheDirectory) {
     const auto result = RpmRepository("/nonexistent/cache").load();
+
+    EXPECT_TRUE(result.components.empty());
+    ASSERT_EQ(result.skipped.size(), 1u);
+}
+
+// zstd refuses a frame whose window exceeds its default limit, and
+// Fedora's full primary.xml is compressed with a large one. Without
+// --long it fails on every repository big enough to matter and works
+// on the small ones, which is the worst way for a bug to behave.
+TEST(CompressionTest, ZstdAllowsALargeWindow) {
+    EXPECT_NE(
+        decompressCommand("a.zst").find("--long"),
+        std::string::npos
+    );
+}
+
+// repomd.xml describes the published repository; the cache holds what
+// dnf actually downloaded. For large repositories that is a zchunk
+// file saved under a .zck name while repomd still names the .zst, so
+// following the href alone finds nothing and every real repository is
+// reported as broken.
+TEST(RpmRepoTest, FallsBackToThePrimaryMetadataActuallyPresent) {
+    FakeCache cache;
+
+    // repomd names one file; a differently named one is on disk.
+    cache.repository(
+        "fedora",
+        repomdFor("abc-primary.xml.zst"),
+        "abc-primary.xml",
+        kPrimary
+    );
+
+    const auto result = RpmRepository(cache.path()).load();
+
+    ASSERT_EQ(result.repositoriesRead.size(), 1u);
+    ASSERT_EQ(result.components.size(), 1u);
+    EXPECT_TRUE(result.skipped.empty());
+}
+
+TEST(RpmRepoTest, IgnoresPrimaryDbWhenFallingBack) {
+    FakeCache cache;
+
+    cache.repository(
+        "fedora",
+        repomdFor("abc-primary.xml.zst"),
+        "abc-primary_db.sqlite",
+        "not xml at all"
+    );
+
+    const auto result = RpmRepository(cache.path()).load();
 
     EXPECT_TRUE(result.components.empty());
     ASSERT_EQ(result.skipped.size(), 1u);

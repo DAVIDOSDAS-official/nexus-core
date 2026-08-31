@@ -35,6 +35,18 @@ RUN cmake -S /src -B /build \
 # ---------------------------------------------------------------- base
 FROM quay.io/fedora/fedora-bootc:42 AS base
 
+# Nexus reads repository metadata, which arrives compressed in
+# whichever format the tool that wrote it preferred. Fedora uses zstd
+# for small repositories and zchunk for large ones, so an image that
+# ships Nexus has to ship the decompressors or it can only read the
+# small ones.
+RUN dnf install -y \
+        --exclude=rootfiles \
+        --setopt=install_weak_deps=False \
+        zchunk \
+        zstd \
+    && dnf clean all
+
 COPY --from=builder /build/cli/nexus /usr/bin/nexus
 COPY components/profiles /usr/share/nexus/profiles
 COPY components/aliases /usr/share/nexus/aliases

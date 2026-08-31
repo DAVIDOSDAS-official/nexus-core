@@ -25,6 +25,7 @@ dnf install -y \
 
 PACKAGES="
 cmake gcc-c++ git make
+zchunk zstd
 plasma-workspace plasma-workspace-wayland plasma-desktop
 plasma-nm plasma-pa sddm sddm-breeze xdg-desktop-portal-kde
 konsole dolphin kate ark spectacle gwenview

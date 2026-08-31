@@ -32,6 +32,22 @@ std::string toString(const RpmVersion& version);
 //     so 1.0 < 1.0^ < 1.0.1                  (dpkg has no equivalent)
 int compareRpmSegments(const std::string& left, const std::string& right);
 
+// Compare a provided version against a constraint, at the precision
+// the constraint was written in.
+//
+// This is the rule that makes rpm dependencies work at all. Fedora's
+// inter-subpackage requirements say "= 6.10.2" while the package
+// provides "6.10.2-1.fc42", and rpm considers that satisfied: a
+// constraint that names no release matches any release, and one that
+// names no epoch matches any epoch.
+//
+// Comparing the strings whole instead makes almost every desktop
+// package in Fedora unsatisfiable, which is exactly what it did.
+int compareRpmConstraint(
+    const std::string& provided,
+    const std::string& required
+);
+
 // Compare complete versions: epoch first, then version, then release.
 int compareRpmVersions(const RpmVersion& left, const RpmVersion& right);
 int compareRpmVersions(

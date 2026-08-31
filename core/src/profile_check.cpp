@@ -52,6 +52,17 @@ ProfileReport checkProfile(
         request.required = profile.required;
         request.preferredComponents = preferredComponents;
 
+        // A preference keyed by capability does not survive alias
+        // expansion: the profile asks for "terminal-emulator", the
+        // alternative that matches is "x-terminal-emulator", and the
+        // lookup misses. Favouring the component by id works whichever
+        // alternative it came in on.
+        for (const auto& [capability, component] :
+             profile.preferred) {
+
+            request.preferredComponents.insert(component);
+        }
+
         const SolverResult result = solver.solve(request);
 
         ProfileItem item;

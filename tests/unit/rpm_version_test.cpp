@@ -250,3 +250,33 @@ TEST(RpmVersionFuzzTest, AgreesWithRpmOnRandomVersions) {
 
     EXPECT_GT(compared, 500u);
 }
+
+// The rule that makes rpm dependencies work at all.
+//
+// Fedora's inter-subpackage requirements say "= 6.10.2" while the
+// package provides "6.10.2-1.fc42". Comparing the strings whole makes
+// almost every desktop package in Fedora unsatisfiable, which is
+// exactly what it did.
+TEST(RpmVersionTest, ConstraintIsComparedAtItsOwnPrecision) {
+    using nexus::system::compareRpmConstraint;
+
+    // No release named, so any release matches.
+    EXPECT_EQ(compareRpmConstraint("6.10.2-1.fc42", "6.10.2"), 0);
+    EXPECT_EQ(compareRpmConstraint("6.10.2-9.fc44", "6.10.2"), 0);
+
+    // A named release is still compared.
+    EXPECT_LT(
+        compareRpmConstraint("6.10.2-1.fc42", "6.10.2-2.fc42"), 0);
+    EXPECT_EQ(
+        compareRpmConstraint("6.10.2-1.fc42", "6.10.2-1.fc42"), 0);
+
+    // No epoch named, so any epoch matches.
+    EXPECT_EQ(compareRpmConstraint("2:1.0-1", "1.0"), 0);
+
+    // A named epoch is still compared.
+    EXPECT_GT(compareRpmConstraint("2:1.0-1", "1:1.0"), 0);
+
+    // And the version itself still decides.
+    EXPECT_LT(compareRpmConstraint("6.10.1-1.fc42", "6.10.2"), 0);
+    EXPECT_GT(compareRpmConstraint("6.10.3-1.fc42", "6.10.2"), 0);
+}

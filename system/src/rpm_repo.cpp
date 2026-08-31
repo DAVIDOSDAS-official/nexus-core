@@ -118,7 +118,51 @@ RpmRepositoryResult RpmRepository::load() const {
 
         // The href is written relative to the repository root, and
         // repomd.xml itself lives one level down in repodata/.
-        const std::filesystem::path primaryPath = repository / href;
+        std::filesystem::path primaryPath = repository / href;
+
+        // repomd.xml describes the published repository; the cache
+        // holds whatever dnf actually downloaded. For large
+        // repositories that is a zchunk file, saved under a .zck name
+        // while repomd still names the .zst. So when the named file
+        // is absent, look for the primary metadata that is really
+        // there rather than reporting the repository as broken.
+        if (!std::filesystem::exists(primaryPath, error)) {
+            const std::filesystem::path data = repository / "repodata";
+
+            std::vector<std::filesystem::path> candidates;
+
+            for (const auto& file :
+                 std::filesystem::directory_iterator(data, error)) {
+
+                const std::string name =
+                    file.path().filename().string();
+
+                if (name.find("primary.xml") == std::string::npos) {
+                    continue;
+                }
+
+                // primary_db is a SQLite dump of the same content.
+                if (name.find("primary_db") != std::string::npos ||
+                    name.find("sqlite") != std::string::npos) {
+                    continue;
+                }
+
+                candidates.push_back(file.path());
+            }
+
+            std::sort(candidates.begin(), candidates.end());
+
+            if (candidates.empty()) {
+                result.skipped.push_back(SkippedRepository{
+                    primaryPath.string(),
+                    "named in repomd.xml but not present, and no "
+                    "primary metadata found in the cache"
+                });
+                continue;
+            }
+
+            primaryPath = candidates.front();
+        }
 
         std::string primary;
 

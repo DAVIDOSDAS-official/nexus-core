@@ -60,6 +60,14 @@ std::string decompressCommand(const std::string& path) {
         return "unzck -c";
     }
 
+    // --long=31: zstd refuses to decompress a frame whose window is
+    // larger than its default limit, and Fedora's full primary.xml is
+    // compressed with a large one. Without this it fails on every
+    // repository big enough to matter and works on the small ones.
+    if (tool == "zstd") {
+        return "zstd -dc --long=31";
+    }
+
     return tool + " -dc";
 }
 
@@ -94,8 +102,12 @@ bool readPossiblyCompressed(
         return false;
     }
 
-    std::FILE* pipe =
-        popen((command + " '" + path + "' 2>/dev/null").c_str(), "r");
+    // Keep stderr. Discarding it turns every decompression failure
+    // into "produced no output", which says nothing about why.
+    const std::string errors = "/tmp/nexus-decompress-error";
+
+    std::FILE* pipe = popen(
+        (command + " '" + path + "' 2>" + errors).c_str(), "r");
 
     if (pipe == nullptr) {
         reason = "could not run " + tool;
@@ -113,7 +125,18 @@ bool readPossiblyCompressed(
     const int status = pclose(pipe);
 
     if (status != 0 || output.empty()) {
-        reason = tool + " produced no output";
+        reason = tool + " failed";
+
+        std::ifstream why(errors);
+
+        if (why) {
+            std::string line;
+
+            if (std::getline(why, line) && !line.empty()) {
+                reason += ": " + line;
+            }
+        }
+
         return false;
     }
 

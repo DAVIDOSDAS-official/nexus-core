@@ -196,3 +196,32 @@ TEST(AliasTest, OneProfileWorksOnBothEcosystems) {
 
     EXPECT_FALSE(without.complete());
 }
+
+// Regression: a preference keyed by capability does not survive alias
+// expansion. The profile asks for "terminal-emulator", the alternative
+// that matches is "x-terminal-emulator", and the lookup misses -- so a
+// profile that named its preferred desktop got a different one, and an
+// image generated from it mixed two toolkits.
+TEST(AliasTest, PreferenceSurvivesAliasExpansion) {
+    Profile profile;
+
+    profile.name = "coherent";
+    profile.requirements.push_back(
+        Requirement(Constraint("terminal-emulator")));
+    profile.preferred["terminal-emulator"] = "konsole";
+
+    const AliasTable table = parse(
+        "Capability: terminal-emulator\n"
+        "Resolves-To: x-terminal-emulator | konsole\n");
+
+    // alacritty provides the virtual capability and is listed first,
+    // so without the fix it wins on cost.
+    Component alacritty = make("alacritty", {"x-terminal-emulator"});
+    Component konsole = make("konsole", {"x-terminal-emulator"});
+
+    const auto report = nexus::checkProfile(
+        profile, solverOver({alacritty, konsole}), table);
+
+    ASSERT_TRUE(report.complete());
+    EXPECT_EQ(report.items[0].provided.front(), "konsole");
+}
