@@ -19,3 +19,6 @@ ark                             # archive-manager
 plasma-systemsettings           # system-settings
 spectacle                       # screenshot-tool
 pipewire                        # audio-server
+plasma-nm                       # network-applet
+plasma-pa                       # volume-applet
+xdg-desktop-portal-kde          # desktop-portal

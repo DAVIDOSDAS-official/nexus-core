@@ -107,3 +107,12 @@ Resolves-To: breeze-cursor-theme | adwaita-icon-theme
 
 Capability: font-collection
 Resolves-To: fonts-noto | fonts-dejavu | fonts-liberation
+
+Capability: network-applet
+Resolves-To: plasma-nm | network-manager-gnome | nm-tray
+
+Capability: volume-applet
+Resolves-To: plasma-pa | pavucontrol | pasystray
+
+Capability: desktop-portal
+Resolves-To: xdg-desktop-portal-kde | xdg-desktop-portal-gnome | xdg-desktop-portal-gtk

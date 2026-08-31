@@ -85,6 +85,20 @@ run.
 A profile named for the second while described as the first will
 disappoint everybody who picks it.
 
+## The generated list exposes what a profile forgot
+
+Building the desktop image from a hand-written package list, then from
+the `minimalism` profile, produced different sets. The hand-written one
+quietly included a network applet, a volume applet and a desktop
+portal. The profile asked for none of them, because "connect to wifi"
+and "file dialogs work inside sandboxed apps" had not been written down
+as capabilities.
+
+The generated list was right and the profile was incomplete. That is
+the useful direction for the disagreement to run: a hand-written list
+hides an omission by silently including things nobody asked for, while
+a generated one makes the omission visible as a missing package.
+
 ## Checking
 
 `nexus profile check <name>` resolves each requirement **separately**.

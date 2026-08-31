@@ -11,7 +11,10 @@ Requires: desktop-session,
  archive-manager,
  system-settings,
  screenshot-tool,
- audio-server
+ audio-server,
+ network-applet,
+ volume-applet,
+ desktop-portal
 # Coherence is a preference, and it has to be stated.
 #
 # Resolving each requirement on its own picks the cheapest provider
@@ -32,4 +35,7 @@ Prefers: desktop-session=plasma-desktop,
  archive-manager=ark,
  system-settings=systemsettings,
  screenshot-tool=kde-spectacle,
+ network-applet=plasma-nm,
+ volume-applet=plasma-pa,
+ desktop-portal=xdg-desktop-portal-kde,
  audio-server=pipewire
