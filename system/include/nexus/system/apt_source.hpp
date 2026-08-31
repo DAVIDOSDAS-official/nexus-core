@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <nexus/component.hpp>
+#include <nexus/conflict_detector.hpp>
 
 namespace nexus::system {
 
@@ -53,14 +54,23 @@ private:
     std::string listsDirectory_;
 };
 
-// Combine an installed set with an available set.
+// Combine an installed set with an available set into the universe
+// the resolver plans against.
 //
-// Installed components win: their recorded state is the truth about
-// this machine. Available components are added only where nothing
-// installed already provides that identity.
+// The newer version wins, not the installed one.
+//
+// Installed-wins is right for describing this machine and wrong for
+// planning: an upgrade that exists in the archive is a thing you can
+// have. Shadowing it made firefox unsatisfiable on a system where the
+// nss it needed was one dnf update away, and the fallback quietly
+// chose a different browser instead.
+//
+// The installed set itself is untouched, so anything reporting what
+// is actually here still reads that rather than this.
 std::vector<Component> mergeAvailable(
     const std::vector<Component>& installed,
-    const std::vector<Component>& available
+    const std::vector<Component>& available,
+    const VersionComparator& comparator = {}
 );
 
 // The command needed to read a compressed index, or an empty string

@@ -68,38 +68,25 @@ FROM base AS desktop
 # Split across commands on purpose: a single dnf install of a whole
 # desktop makes any failure anonymous.
 #
-# Named packages, not a group.
+# The desktop comes from the profile, not from this file.
 #
-# @kde-desktop-environment installs whatever Fedora decided belongs in
-# it -- which is how an image ends up with a word list, a traceroute
-# and three archive tools nobody asked for. Naming the pieces is the
-# difference between a system you chose and one you inherited.
+# image/generated/minimalism.rpm.list is produced by:
 #
-# Every entry here answers a question somebody would actually ask: how
-# do I get a window, a terminal, my files, my settings, a screenshot.
-RUN dnf install -y \
-        --exclude=rootfiles \
-        --setopt=install_weak_deps=False \
-        plasma-workspace \
-        plasma-workspace-wayland \
-        plasma-desktop \
-        plasma-nm \
-        plasma-pa \
-        sddm \
-        sddm-breeze \
-        xdg-desktop-portal-kde \
-    && dnf clean all
+#     nexus image minimalism --with-available
+#
+# run inside this image, where the Fedora repositories are. It is
+# committed rather than generated at build time on purpose: a build
+# you cannot read is a build you cannot audit, and every line of that
+# file says which capability it answers.
+#
+# Regenerate it when the profile changes; the diff is the review.
+COPY image/generated/minimalism.rpm.list /tmp/desktop.list
 
-# One tool per job.
 RUN dnf install -y \
         --exclude=rootfiles \
         --setopt=install_weak_deps=False \
-        konsole \
-        dolphin \
-        kate \
-        ark \
-        spectacle \
-        gwenview \
+        $(grep -v '^#' /tmp/desktop.list | awk 'NF {print $1}') \
+    && rm /tmp/desktop.list \
     && dnf clean all
 
 RUN systemctl set-default graphical.target \

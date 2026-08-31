@@ -225,3 +225,51 @@ TEST(MergeAvailableTest, IdsAreRequalifiedAcrossSources) {
     EXPECT_EQ(merged[0].id(), "libc6:amd64");
     EXPECT_EQ(merged[1].id(), "libc6:i386");
 }
+
+// Installed-wins is right for describing a machine and wrong for
+// planning. An upgrade sitting in the archive is a thing you can have,
+// and shadowing it made firefox unsatisfiable on a system where the
+// nss it needed was one update away.
+TEST(MergeAvailableTest, AnAvailableUpgradeBeatsTheInstalledVersion) {
+    const auto comparator =
+        [](const std::string& left, const std::string& right) {
+            return nexus::system::compareVersions(left, right);
+        };
+
+    const auto merged = mergeAvailable(
+        {make("nss", "3.122.2")},
+        {make("nss", "3.123.1")},
+        comparator
+    );
+
+    ASSERT_EQ(merged.size(), 1u);
+    EXPECT_EQ(merged[0].version(), "3.123.1");
+}
+
+TEST(MergeAvailableTest, AnOlderAvailableVersionDoesNotWin) {
+    const auto comparator =
+        [](const std::string& left, const std::string& right) {
+            return nexus::system::compareVersions(left, right);
+        };
+
+    const auto merged = mergeAvailable(
+        {make("nss", "3.123.1")},
+        {make("nss", "3.122.2")},
+        comparator
+    );
+
+    ASSERT_EQ(merged.size(), 1u);
+    EXPECT_EQ(merged[0].version(), "3.123.1");
+}
+
+// Without a comparator there is no way to tell which is newer, so the
+// installed one stays: the conservative direction.
+TEST(MergeAvailableTest, WithoutAComparatorInstalledStillWins) {
+    const auto merged = mergeAvailable(
+        {make("nss", "3.122.2")},
+        {make("nss", "3.123.1")}
+    );
+
+    ASSERT_EQ(merged.size(), 1u);
+    EXPECT_EQ(merged[0].version(), "3.122.2");
+}

@@ -583,7 +583,21 @@ int commandImage(
 
         // The first step is what satisfied the requirement itself;
         // everything after it is a dependency.
-        const std::string package = result.steps.front().selected;
+        const std::string selected = result.steps.front().selected;
+
+        // Emit the package name, not the internal id. Ids carry an
+        // architecture suffix so that multilib builds stay distinct
+        // inside the resolver -- but "kate:amd64" is not something
+        // dnf or apt will accept, and a generated list that cannot be
+        // fed to a package manager is not a generated list.
+        std::string package = selected;
+
+        for (const Component& component : universe) {
+            if (component.id() == selected) {
+                package = component.name();
+                break;
+            }
+        }
 
         // Hardware capabilities are facts about the machine, not
         // things to install.
@@ -1454,7 +1468,8 @@ int main(int argc, char** argv) {
 
             if (!available.components.empty()) {
                 universe = nexus::system::mergeAvailable(
-                    universe, available.components);
+                    universe, available.components,
+                    versionComparator());
 
                 haveAvailable = true;
 
@@ -1476,7 +1491,8 @@ int main(int argc, char** argv) {
 
             if (!available.components.empty()) {
                 universe = nexus::system::mergeAvailable(
-                    universe, available.components);
+                    universe, available.components,
+                    versionComparator());
 
                 haveAvailable = true;
 

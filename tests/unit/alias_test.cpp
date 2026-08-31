@@ -225,3 +225,18 @@ TEST(AliasTest, PreferenceSurvivesAliasExpansion) {
     ASSERT_TRUE(report.complete());
     EXPECT_EQ(report.items[0].provided.front(), "konsole");
 }
+
+// A generated list has to be feedable to a package manager. Nexus ids
+// carry an architecture suffix so multilib builds stay distinct in the
+// resolver, but "kate:amd64" is not something dnf or apt accepts.
+TEST(AliasTest, GeneratedListsUseNamesNotQualifiedIds) {
+    Component qualified(
+        "kate:amd64", "kate", "1.0", ComponentType::Application);
+
+    qualified.setArchitecture("amd64");
+    qualified.addProvidedCapability(Capability("kate"));
+
+    // The distinction this test guards: id and name differ.
+    EXPECT_NE(qualified.id(), qualified.name());
+    EXPECT_EQ(qualified.name(), "kate");
+}

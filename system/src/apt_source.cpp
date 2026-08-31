@@ -327,26 +327,42 @@ AptSourceResult AptSource::load() const {
 
 std::vector<Component> mergeAvailable(
     const std::vector<Component>& installed,
-    const std::vector<Component>& available
+    const std::vector<Component>& available,
+    const VersionComparator& comparator
 ) {
     std::vector<Component> merged = installed;
 
-    std::map<std::string, bool> present;
+    std::map<std::string, std::size_t> present;
 
-    for (const Component& component : installed) {
-        present[component.name() + ":" + component.architecture()] =
-            true;
+    for (std::size_t index = 0; index < installed.size(); ++index) {
+        present[installed[index].name() + ":" +
+                installed[index].architecture()] = index;
     }
 
     for (const Component& component : available) {
         const std::string key =
             component.name() + ":" + component.architecture();
 
-        if (present.count(key)) {
+        const auto existing = present.find(key);
+
+        if (existing == present.end()) {
+            present[key] = merged.size();
+            merged.push_back(component);
             continue;
         }
 
-        merged.push_back(component);
+        Component& kept = merged[existing->second];
+
+        // Without a comparator there is no way to tell which is
+        // newer, so the installed one stays -- the conservative
+        // direction, and the old behaviour.
+        if (!comparator) {
+            continue;
+        }
+
+        if (comparator(component.version(), kept.version()) > 0) {
+            kept = component;
+        }
     }
 
     // Ids were assigned by each source in isolation. A name that is

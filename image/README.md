@@ -20,9 +20,30 @@ Four stages, built separately so a failure names the layer:
 | Stage | Contains |
 |---|---|
 | `base` | Fedora bootc plus the `nexus` binary and profiles |
-| `desktop` | KDE on Wayland |
+| `desktop` | KDE on Wayland, from `image/generated/minimalism.rpm.list` |
 | `gaming` | 32-bit stack, Steam, Gamescope, GameMode, MangoHud, controllers |
 | `final` | Labels, and `bootc container lint` |
+
+## The package list is generated
+
+The desktop stage installs what the `minimalism` profile resolves to,
+not a list somebody typed. Regenerate it inside the image, where the
+Fedora repositories are:
+
+```
+podman run --rm localhost/nexus-os:base bash -c \
+    'dnf makecache -q > /dev/null 2>&1
+     nexus image minimalism --with-available' \
+    > image/generated/minimalism.rpm.list
+```
+
+`makecache` output is discarded deliberately: `-q` still prints
+"Metadata cache created." to stdout, and that line lands in the list
+as a package named `Metadata`.
+
+Committed rather than generated during the build, deliberately. Every
+line names the capability it answers, so the file can be read and the
+diff reviewed. A build nobody can read is a build nobody can audit.
 
 ## Before trusting any of it
 
