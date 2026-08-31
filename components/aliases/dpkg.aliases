@@ -1,0 +1,59 @@
+# What Debian calls the things profiles ask for.
+#
+# Many of these are genuine Debian virtual packages, in which case the
+# alias is redundant and harmless: expansion keeps the original name
+# first, so the real capability wins.
+
+Capability: web-browser
+Resolves-To: firefox | firefox-esr | chromium | epiphany-browser
+
+Capability: terminal-emulator
+Resolves-To: x-terminal-emulator | konsole | gnome-terminal | xterm
+
+Capability: file-manager
+Resolves-To: dolphin | nautilus | thunar | pcmanfm
+
+Capability: text-editor
+Resolves-To: editor | kate | gedit | nano
+
+Capability: document-viewer
+Resolves-To: evince | okular | atril
+
+Capability: image-viewer
+Resolves-To: eog | gwenview | ristretto
+
+Capability: word-processor
+Resolves-To: libreoffice-writer | abiword
+
+Capability: spreadsheet
+Resolves-To: libreoffice-calc | gnumeric
+
+Capability: mail-transport-agent
+Resolves-To: postfix | exim4-daemon-light | nullmailer | msmtp-mta
+
+Capability: audio-server
+Resolves-To: pipewire | pulseaudio
+
+Capability: vulkan-driver
+Resolves-To: mesa-vulkan-drivers | nvidia-driver-libs
+
+Capability: opengl
+Resolves-To: libgl1 | libgl1-mesa-glx
+
+Capability: firewall
+Resolves-To: ufw | nftables | iptables
+
+Capability: time-sync
+Resolves-To: systemd-timesyncd | chrony | ntp
+
+Capability: ssh-server
+Resolves-To: openssh-server
+
+Capability: compiler-toolchain
+Resolves-To: build-essential | gcc
+
+Capability: vpn-client
+Resolves-To: wireguard-tools
+
+Capability: steam
+Resolves-To: steam-installer | steam

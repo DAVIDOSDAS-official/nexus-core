@@ -1,0 +1,59 @@
+# What Fedora calls the same things.
+#
+# The names differ more than they look. Debian's mail-transport-agent
+# is Fedora's MTA; Debian's libgl1 is Fedora's mesa-libGL. A profile
+# that named either directly would work on exactly one of them.
+
+Capability: web-browser
+Resolves-To: firefox | chromium | epiphany
+
+Capability: terminal-emulator
+Resolves-To: konsole | gnome-terminal | xterm
+
+Capability: file-manager
+Resolves-To: dolphin | nautilus | thunar
+
+Capability: text-editor
+Resolves-To: kate | gedit | nano
+
+Capability: document-viewer
+Resolves-To: okular | evince
+
+Capability: image-viewer
+Resolves-To: gwenview | eog
+
+Capability: word-processor
+Resolves-To: libreoffice-writer | abiword
+
+Capability: spreadsheet
+Resolves-To: libreoffice-calc | gnumeric
+
+Capability: mail-transport-agent
+Resolves-To: MTA | smtpdaemon | postfix | msmtp
+
+Capability: audio-server
+Resolves-To: pipewire | pulseaudio
+
+Capability: vulkan-driver
+Resolves-To: mesa-vulkan-drivers | nvidia-driver-libs
+
+Capability: opengl
+Resolves-To: mesa-libGL
+
+Capability: firewall
+Resolves-To: firewalld | nftables | iptables
+
+Capability: time-sync
+Resolves-To: chrony | systemd-timesyncd
+
+Capability: ssh-server
+Resolves-To: openssh-server
+
+Capability: compiler-toolchain
+Resolves-To: gcc-c++ | gcc
+
+Capability: vpn-client
+Resolves-To: wireguard-tools
+
+Capability: steam
+Resolves-To: steam

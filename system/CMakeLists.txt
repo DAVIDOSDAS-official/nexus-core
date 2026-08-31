@@ -12,6 +12,7 @@ add_library(nexus_system
     src/rpm_source.cpp
     src/rpm_repo.cpp
     src/rpm_database.cpp
+    src/alias_file.cpp
     src/compression.cpp
 )
 

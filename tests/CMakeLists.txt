@@ -17,6 +17,8 @@ add_executable(component_test
     unit/hardware_test.cpp
     unit/removal_test.cpp
     unit/transaction_test.cpp
+    unit/options_test.cpp
+    unit/alias_test.cpp
     unit/rpm_version_test.cpp
     unit/xml_test.cpp
     unit/rpm_source_test.cpp

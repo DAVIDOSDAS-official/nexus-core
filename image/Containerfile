@@ -37,6 +37,7 @@ FROM quay.io/fedora/fedora-bootc:42 AS base
 
 COPY --from=builder /build/cli/nexus /usr/bin/nexus
 COPY components/profiles /usr/share/nexus/profiles
+COPY components/aliases /usr/share/nexus/aliases
 
 # ------------------------------------------------------------- desktop
 FROM base AS desktop
@@ -138,6 +139,7 @@ LABEL containers.bootc="1"
 
 # Where the CLI looks for profiles on an installed system.
 ENV NEXUS_PROFILES=/usr/share/nexus/profiles
+ENV NEXUS_ALIASES=/usr/share/nexus/aliases
 
 # bootc requires this to succeed for the image to be considered valid.
 RUN bootc container lint

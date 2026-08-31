@@ -6,7 +6,8 @@ namespace nexus {
 
 ProfileReport checkProfile(
     const Profile& profile,
-    const Solver& solver
+    const Solver& solver,
+    const AliasTable& aliases
 ) {
     ProfileReport report;
 
@@ -25,7 +26,7 @@ ProfileReport checkProfile(
 
         probe.architecture = profile.architecture;
         probe.requirements.push_back(
-            Requirement(Constraint(conditional.when))
+            aliases.expand(Requirement(Constraint(conditional.when)))
         );
 
         const bool holds =
@@ -46,7 +47,7 @@ ProfileReport checkProfile(
         SolverRequest request;
 
         request.architecture = profile.architecture;
-        request.requirements.push_back(requirement);
+        request.requirements.push_back(aliases.expand(requirement));
         request.preferred = profile.preferred;
         request.required = profile.required;
         request.preferredComponents = preferredComponents;

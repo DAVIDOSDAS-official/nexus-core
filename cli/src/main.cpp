@@ -11,6 +11,9 @@
 #include <nexus/component.hpp>
 #include <nexus/conflict_detector.hpp>
 #include <nexus/profile_check.hpp>
+#include <nexus/alias.hpp>
+#include <nexus/options.hpp>
+#include <nexus/system/alias_file.hpp>
 #include <nexus/removal.hpp>
 #include <nexus/transaction.hpp>
 #include <nexus/system/auto_installed.hpp>
@@ -41,6 +44,7 @@ void printUsage() {
         << "    nexus inspect <component>\n"
         << "    nexus gaps [kind]\n"
         << "    nexus conflicts\n"
+        << "    nexus options <capability>\n"
         << "    nexus plan <capability>\n"
         << "    nexus remove <component>\n"
         << "    nexus hardware\n"
@@ -471,6 +475,92 @@ int commandSolve(
 }
 
 
+int commandOptions(
+    const std::vector<Component>& universe,
+    const std::vector<Component>& installed,
+    const std::string& capability,
+    const std::string& architecture
+) {
+    const nexus::ConflictDetector detector(
+        [](const std::string& left, const std::string& right) {
+            return nexus::system::compareVersions(left, right);
+        }
+    );
+
+    const auto report = nexus::findOptions(
+        capability, universe, installed,
+        buildSolver(universe), detector, architecture);
+
+    std::cout << "Capability:  " << capability << "\n";
+
+    if (report.options.empty()) {
+        std::cout
+            << "\nNothing available provides it.\n"
+            << "Try --with-available to include packages that are "
+            << "not installed.\n";
+        return 1;
+    }
+
+    std::cout
+        << "Options:     " << report.options.size() << "\n\n";
+
+    for (const nexus::Option& option : report.options) {
+        std::cout << "  " << option.component;
+
+        if (!option.version.empty()) {
+            std::cout << "  " << option.version;
+        }
+
+        if (option.installed) {
+            std::cout << "   [installed]";
+        }
+
+        std::cout << "\n";
+
+        if (!option.workable) {
+            std::cout
+                << "      cannot be used: " << option.blockedOn
+                << "\n";
+        } else if (option.installed) {
+            std::cout
+                << "      " << option.componentCount
+                << " components, already here\n";
+        } else {
+            std::cout
+                << "      " << option.componentCount
+                << " components, " << option.wouldAdd
+                << " of them new\n";
+        }
+
+        if (!option.conflictsWith.empty()) {
+            std::cout << "      collides with ";
+
+            for (std::size_t index = 0;
+                 index < option.conflictsWith.size() && index < 3;
+                 ++index) {
+
+                if (index > 0) {
+                    std::cout << ", ";
+                }
+
+                std::cout << option.conflictsWith[index];
+            }
+
+            std::cout << "\n";
+        }
+    }
+
+    if (!report.anyInstalled()) {
+        std::cout
+            << "\nNothing providing this is installed yet.\n";
+    }
+
+    std::cout
+        << "\nNothing has been changed; this command only reports.\n";
+
+    return 0;
+}
+
 int commandPlan(
     const std::vector<Component>& universe,
     const std::string& capability,
@@ -721,6 +811,7 @@ int commandHardware(const nexus::hardware::HardwareInfo& info) {
 }
 
 int commandProfile(
+    const nexus::AliasTable& aliases,
     const std::vector<Component>& installed,
     const std::vector<Component>& universe,
     bool haveAvailable,
@@ -829,7 +920,8 @@ int commandProfile(
     }
 
     const auto report =
-        nexus::checkProfile(profile, buildSolver(installed));
+        nexus::checkProfile(
+            profile, buildSolver(installed), aliases);
 
     // When archive data is loaded, a missing requirement can be
     // re-checked against everything available. That turns "you do not
@@ -839,7 +931,8 @@ int commandProfile(
     nexus::ProfileReport possible;
 
     if (haveAvailable) {
-        possible = nexus::checkProfile(profile, buildSolver(universe));
+        possible = nexus::checkProfile(
+            profile, buildSolver(universe), aliases);
     }
 
     std::cout
@@ -970,6 +1063,16 @@ int main(int argc, char** argv) {
     std::string statesPath = "/var/lib/apt/extended_states";
     std::string rpmCache = "/var/cache/libdnf5";
     std::string rpmRoot;
+    std::string aliasDir;
+
+    if (const char* fromEnvironment = std::getenv("NEXUS_ALIASES")) {
+        aliasDir = fromEnvironment;
+    } else if (std::filesystem::is_directory(
+                   "/usr/share/nexus/aliases")) {
+        aliasDir = "/usr/share/nexus/aliases";
+    } else {
+        aliasDir = "components/aliases";
+    }
     bool forceRpm = false;
     bool forceDpkg = false;
     bool withAvailable = false;
@@ -1159,6 +1262,26 @@ int main(int argc, char** argv) {
             }
         }
 
+        // Profiles name intent; the alias table says what this
+        // ecosystem calls it. Without one, every profile is written
+        // for whichever distribution its author had.
+        nexus::AliasTable aliases;
+
+        {
+            const std::string file =
+                aliasDir + "/" +
+                (preferRpm ? "rpm.aliases" : "dpkg.aliases");
+
+            const auto loaded =
+                nexus::system::parseAliasFile(file);
+
+            for (const std::string& problem : loaded.problems) {
+                std::cerr << "Warning: " << problem << "\n";
+            }
+
+            aliases = loaded.table;
+        }
+
         // Commands that read the package database say so plainly when
         // there is not one, rather than failing on a file path the
         // user never mentioned.
@@ -1288,6 +1411,16 @@ int main(int argc, char** argv) {
             return commandInspect(result.components, argument);
         }
 
+        if (command == "options") {
+            if (argument.empty()) {
+                std::cerr << "options requires a capability name.\n";
+                return 2;
+            }
+
+            return commandOptions(
+                universe, installed, argument, arch);
+        }
+
         if (command == "plan") {
             if (!havePackages) {
                 requirePackages();
@@ -1334,7 +1467,7 @@ int main(int argc, char** argv) {
             }
 
             return commandProfile(
-                installed, universe, haveAvailable,
+                aliases, installed, universe, haveAvailable,
                 action, name, profileDir, arch);
         }
 

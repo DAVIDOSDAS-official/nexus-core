@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include <nexus/alias.hpp>
 #include <nexus/profile.hpp>
 #include <nexus/solver.hpp>
 
@@ -49,7 +50,8 @@ struct ProfileReport {
 // somebody setting up a machine actually needs to know.
 ProfileReport checkProfile(
     const Profile& profile,
-    const Solver& solver
+    const Solver& solver,
+    const AliasTable& aliases = AliasTable{}
 );
 
 }
