@@ -66,6 +66,25 @@ preferences. Worth remembering when writing new profiles.
 without `=`, or a `Prefers-When` without `->`, produces a warning and
 is skipped; the rest of the profile still loads.
 
+## minimal is not minimalism
+
+Two different words for two different goals, and conflating them
+produces a profile that serves neither.
+
+**minimal** is the least that still works: a machine with little to
+spare, a lightweight session, no compositing, one of everything and
+nothing else. It is measured in megabytes, and it exists for hardware
+that cannot afford anything more.
+
+**minimalism** is a full desktop kept simple: proper session, good
+defaults, one tool per job and no duplicates. It is not small -- it
+may well be larger than a careless install -- and it exists for people
+who want a system that feels calm rather than one that is cheap to
+run.
+
+A profile named for the second while described as the first will
+disappoint everybody who picks it.
+
 ## Checking
 
 `nexus profile check <name>` resolves each requirement **separately**.

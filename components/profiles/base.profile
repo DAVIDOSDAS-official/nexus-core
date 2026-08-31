@@ -1,8 +1,8 @@
 Profile: base
 Description: What any usable system needs regardless of what it is for
-Requires: init | systemd-sysv,
- libc6,
- coreutils,
- apt | dnf | pacman,
+Requires: init,
+ c-library,
+ core-utilities,
+ package-manager,
  ca-certificates,
- tar
+ archiver

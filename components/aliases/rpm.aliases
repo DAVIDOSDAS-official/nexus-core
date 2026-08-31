@@ -57,3 +57,53 @@ Resolves-To: wireguard-tools
 
 Capability: steam
 Resolves-To: steam
+
+Capability: init
+Resolves-To: systemd
+
+Capability: c-library
+Resolves-To: glibc | musl-libc
+
+Capability: core-utilities
+Resolves-To: coreutils
+
+Capability: package-manager
+Resolves-To: dnf5 | dnf | rpm
+
+Capability: archiver
+Resolves-To: tar
+
+Capability: desktop-session
+Resolves-To: plasma-workspace | gnome-shell | xfce4-session
+
+Capability: display-manager
+Resolves-To: sddm | gdm | lightdm
+
+Capability: archive-manager
+Resolves-To: ark | file-roller | xarchiver
+
+Capability: system-settings
+Resolves-To: plasma-systemsettings | gnome-control-center
+
+# gnome-shell is last on purpose. Since GNOME 42 the screenshot
+# tool is part of the shell rather than a package of its own, so
+# a machine can have the capability with nothing named after it
+# installed. Aliases go stale this way: ecosystems absorb tools
+# into larger packages, and the alias still names the tool.
+Capability: screenshot-tool
+Resolves-To: spectacle | flameshot | gnome-screenshot | gnome-shell
+
+Capability: lightweight-session
+Resolves-To: openbox | i3 | fluxbox | xfce4-session
+
+Capability: compositor-effects
+Resolves-To: kwin-wayland | kwin-x11 | mutter
+
+Capability: icon-theme
+Resolves-To: breeze-icon-theme | adwaita-icon-theme | papirus-icon-theme
+
+Capability: cursor-theme
+Resolves-To: breeze-cursor-theme | adwaita-cursor-theme
+
+Capability: font-collection
+Resolves-To: google-noto-fonts-common | dejavu-fonts-all | liberation-fonts

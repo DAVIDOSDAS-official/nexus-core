@@ -25,7 +25,9 @@ dnf install -y \
 
 PACKAGES="
 cmake gcc-c++ git make
-plasma-workspace-wayland sddm
+plasma-workspace plasma-workspace-wayland plasma-desktop
+plasma-nm plasma-pa sddm sddm-breeze xdg-desktop-portal-kde
+konsole dolphin kate ark spectacle gwenview
 mesa-dri-drivers.i686 mesa-vulkan-drivers.i686 mesa-libGL.i686
 mesa-libEGL.i686 glibc.i686 libgcc.i686 alsa-lib.i686
 pulseaudio-libs.i686 libX11.i686 libXext.i686 libXinerama.i686
@@ -44,9 +46,8 @@ for package in ${PACKAGES}; do
     fi
 done
 
-echo "checking the desktop group..."
-dnf -q group info kde-desktop-environment > /dev/null 2>&1 \
-    || echo "MISSING GROUP: kde-desktop-environment"
+# The desktop is named package by package now, so there is no group
+# left to check.
 
 echo
 echo "done: ${missing} missing package name(s)"

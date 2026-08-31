@@ -48,28 +48,46 @@ FROM base AS desktop
 # --exclude=rootfiles: it ships /root/.bash_logout, and in a bootc
 # image /root is managed by ostree rather than being an ordinary
 # directory. RPM cannot unpack into it, and one failed unpack aborts
-# the entire transaction -- 1,518 successful installs get rolled back
-# because of one file nobody needs.
+# the entire transaction.
 #
-# --setopt=install_weak_deps=False: the desktop group pulls in its
-# Recommends otherwise, which is where most of those 1,519 packages
-# came from. An image should contain what it needs, not what it might
-# like.
+# --setopt=install_weak_deps=False: Recommends are what somebody else
+# thought you might like. An image should contain what it needs.
 #
-# Split into three commands on purpose. A single dnf install of a whole
-# desktop makes any failure anonymous; this way the failing layer names
-# itself.
+# Split across commands on purpose: a single dnf install of a whole
+# desktop makes any failure anonymous.
+#
+# Named packages, not a group.
+#
+# @kde-desktop-environment installs whatever Fedora decided belongs in
+# it -- which is how an image ends up with a word list, a traceroute
+# and three archive tools nobody asked for. Naming the pieces is the
+# difference between a system you chose and one you inherited.
+#
+# Every entry here answers a question somebody would actually ask: how
+# do I get a window, a terminal, my files, my settings, a screenshot.
 RUN dnf install -y \
         --exclude=rootfiles \
         --setopt=install_weak_deps=False \
-        @kde-desktop-environment \
+        plasma-workspace \
+        plasma-workspace-wayland \
+        plasma-desktop \
+        plasma-nm \
+        plasma-pa \
+        sddm \
+        sddm-breeze \
+        xdg-desktop-portal-kde \
     && dnf clean all
 
+# One tool per job.
 RUN dnf install -y \
         --exclude=rootfiles \
         --setopt=install_weak_deps=False \
-        plasma-workspace-wayland \
-        sddm \
+        konsole \
+        dolphin \
+        kate \
+        ark \
+        spectacle \
+        gwenview \
     && dnf clean all
 
 RUN systemctl set-default graphical.target \

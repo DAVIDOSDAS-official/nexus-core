@@ -1,6 +1,10 @@
 Profile: minimal
-Description: A clean system with one tool for each job and nothing spare
-Requires: terminal-emulator,
- file-manager,
+Description: The least that still works, for machines with little to spare
+Requires: init,
+ c-library,
+ core-utilities,
+ package-manager,
+ lightweight-session,
+ terminal-emulator,
  text-editor,
- web-browser
+ file-manager
