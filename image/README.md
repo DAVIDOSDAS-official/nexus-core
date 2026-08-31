@@ -31,11 +31,21 @@ not a list somebody typed. Regenerate it inside the image, where the
 Fedora repositories are:
 
 ```
-podman run --rm localhost/nexus-os:base bash -c \
+podman run --rm \
+    -v ./components/profiles:/usr/share/nexus/profiles:ro \
+    -v ./components/aliases:/usr/share/nexus/aliases:ro \
+    localhost/nexus-os:base bash -c \
     'dnf makecache -q > /dev/null 2>&1
      nexus image minimalism --with-available' \
     > image/generated/minimalism.rpm.list
 ```
+
+The mounts matter. Without them the profiles baked into the image are
+used instead of the ones in the checkout, so editing a profile and
+regenerating produces the previous answer -- confidently, with no
+indication anything is stale. The container supplies the repositories
+and the binary; the working tree supplies what is being generated
+from.
 
 `makecache` output is discarded deliberately: `-q` still prints
 "Metadata cache created." to stdout, and that line lands in the list
