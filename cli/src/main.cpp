@@ -391,6 +391,7 @@ int commandConflicts(const std::vector<Component>& components) {
 }
 
 int commandSolve(
+    const nexus::AliasTable& aliases,
     const std::vector<Component>& universe,
     const std::string& capability,
     const std::string& prefer,
@@ -403,7 +404,7 @@ int commandSolve(
     nexus::SolverRequest request;
     request.architecture = architecture;
     request.requirements.push_back(
-        nexus::Requirement(nexus::Constraint(capability))
+        aliases.expand(nexus::Requirement(nexus::Constraint(capability)))
     );
 
     if (!prefer.empty()) {
@@ -628,6 +629,7 @@ int commandImage(
 }
 
 int commandOptions(
+    const nexus::AliasTable& aliases,
     const std::vector<Component>& universe,
     const std::vector<Component>& installed,
     const std::string& capability,
@@ -637,7 +639,7 @@ int commandOptions(
 
     const auto report = nexus::findOptions(
         capability, universe, installed,
-        buildSolver(universe), detector, architecture);
+        buildSolver(universe), detector, architecture, aliases);
 
     std::cout << "Capability:  " << capability << "\n";
 
@@ -1575,7 +1577,7 @@ int main(int argc, char** argv) {
             }
 
             return commandOptions(
-                universe, installed, argument, arch);
+                aliases, universe, installed, argument, arch);
         }
 
         if (command == "plan") {
@@ -1640,7 +1642,8 @@ int main(int argc, char** argv) {
             }
 
             return commandSolve(
-                universe, argument, prefer, require, arch, explain);
+                aliases, universe, argument, prefer, require, arch,
+                explain);
         }
 
         if (command == "conflicts") {

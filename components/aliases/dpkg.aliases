@@ -8,7 +8,7 @@ Capability: web-browser
 Resolves-To: firefox | firefox-esr | chromium | epiphany-browser
 
 Capability: terminal-emulator
-Resolves-To: x-terminal-emulator | konsole | gnome-terminal | xterm
+Resolves-To: foot | alacritty | kitty | wezterm | x-terminal-emulator | konsole | gnome-terminal | xterm
 
 Capability: file-manager
 Resolves-To: dolphin | nautilus | thunar | pcmanfm
@@ -116,3 +116,33 @@ Resolves-To: plasma-pa | pavucontrol | pasystray
 
 Capability: desktop-portal
 Resolves-To: xdg-desktop-portal-kde | xdg-desktop-portal-gnome | xdg-desktop-portal-gtk
+
+Capability: window-manager
+Resolves-To: sway | hyprland | i3-wm | bspwm | dwm | river
+
+Capability: status-bar
+Resolves-To: waybar | polybar | i3status | lemonbar
+
+Capability: application-launcher
+Resolves-To: fuzzel | rofi | wofi | dmenu | bemenu
+
+Capability: notification-daemon
+Resolves-To: mako-notifier | dunst | notification-daemon
+
+Capability: screen-locker
+Resolves-To: swaylock | i3lock | xsecurelock | slock
+
+Capability: wallpaper-setter
+Resolves-To: swaybg | feh | nitrogen | hsetroot
+
+Capability: compositor
+Resolves-To: picom | compton | xcompmgr
+
+Capability: modern-shell
+Resolves-To: zsh | fish
+
+Capability: terminal-multiplexer
+Resolves-To: tmux | zellij | screen
+
+Capability: fuzzy-finder
+Resolves-To: fzf | skim

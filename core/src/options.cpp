@@ -22,7 +22,8 @@ OptionsReport findOptions(
     const std::vector<Component>& installed,
     const Solver& solver,
     const ConflictDetector& detector,
-    const std::string& architecture
+    const std::string& architecture,
+    const AliasTable& aliases
 ) {
     OptionsReport report;
 
@@ -44,10 +45,22 @@ OptionsReport findOptions(
         installedIds.insert(identityOf(component));
     }
 
-    const Constraint wanted(capability);
+    // An abstract capability has no provider of its own: nothing
+    // ships a package called "window-manager". Without expansion the
+    // command that exists to show choices finds none.
+    const Requirement wanted =
+        aliases.expand(Requirement(Constraint(capability)));
 
     for (const Component& component : universe) {
-        if (!detector.matches(component, wanted, architecture)) {
+        const bool fits = std::any_of(
+            wanted.alternatives.begin(),
+            wanted.alternatives.end(),
+            [&](const Constraint& option) {
+                return detector.matches(component, option, architecture);
+            }
+        );
+
+        if (!fits) {
             continue;
         }
 

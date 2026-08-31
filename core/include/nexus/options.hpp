@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include <nexus/alias.hpp>
 #include <nexus/component.hpp>
 #include <nexus/solver.hpp>
 
@@ -57,7 +58,8 @@ OptionsReport findOptions(
     const std::vector<Component>& installed,
     const Solver& solver,
     const ConflictDetector& detector,
-    const std::string& architecture = {}
+    const std::string& architecture = {},
+    const AliasTable& aliases = AliasTable{}
 );
 
 }

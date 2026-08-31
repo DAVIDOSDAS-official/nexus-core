@@ -292,3 +292,32 @@ TEST(OptionsTest, BreaksCostTiesByTotalSize) {
     ASSERT_EQ(report.options.size(), 2u);
     EXPECT_EQ(report.options[0].component, "zebra");
 }
+
+// An abstract capability has no provider of its own: nothing ships a
+// package called "window-manager". Without alias expansion the command
+// that exists to show choices finds none of them.
+TEST(OptionsTest, ExpandsAliasesBeforeLookingForProviders) {
+    const std::vector<Component> universe{
+        make("sway"),
+        make("i3-wm"),
+        make("firefox")
+    };
+
+    nexus::AliasTable aliases;
+
+    aliases.add("window-manager", {
+        Constraint("sway"), Constraint("i3-wm")
+    });
+
+    const auto without = findOptions(
+        "window-manager", universe, {},
+        Solver(universe, detector()), detector());
+
+    EXPECT_TRUE(without.options.empty());
+
+    const auto with = findOptions(
+        "window-manager", universe, {},
+        Solver(universe, detector()), detector(), "", aliases);
+
+    EXPECT_EQ(with.options.size(), 2u);
+}
