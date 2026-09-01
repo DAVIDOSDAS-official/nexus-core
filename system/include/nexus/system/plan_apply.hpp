@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <vector>
 
 namespace nexus::system {
 
@@ -38,6 +39,16 @@ struct ApplyResult {
 // computed set would override its judgement with ours, and the point
 // of verifying first was to establish that the two agree.
 ApplyResult applyWithApt(const std::string& requested);
+
+// Remove a package by asking apt to do it.
+//
+// --autoremove is deliberately not passed. Nexus already worked out
+// what becomes unused and showed it; letting apt decide again would
+// mean the list on screen and the list removed could differ, and the
+// person agreed to the one on screen.
+ApplyResult removeWithApt(
+    const std::vector<std::string>& packages
+);
 
 bool haveRootPrivileges();
 

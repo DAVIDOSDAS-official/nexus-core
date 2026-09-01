@@ -28,7 +28,9 @@ std::string toString(ApplyOutcome outcome) {
     return "unavailable";
 }
 
-ApplyResult applyWithApt(const std::string& requested) {
+namespace {
+
+ApplyResult runApt(const std::string& arguments) {
     ApplyResult result;
 
     if (std::system("apt-get --version > /dev/null 2>&1") != 0) {
@@ -41,12 +43,7 @@ ApplyResult applyWithApt(const std::string& requested) {
         return result;
     }
 
-    // -y is deliberate: the person was asked already, by Nexus, with
-    // the plan in front of them. Asking twice trains people to say
-    // yes without reading.
-    const std::string command =
-        "apt-get install -y --no-install-recommends '" +
-        requested + "' 2>&1";
+    const std::string command = "apt-get " + arguments + " 2>&1";
 
     std::FILE* pipe = popen(command.c_str(), "r");
 
@@ -75,6 +72,46 @@ ApplyResult applyWithApt(const std::string& requested) {
         : ApplyOutcome::Failed;
 
     return result;
+}
+
+}
+
+ApplyResult removeWithApt(
+    const std::vector<std::string>& packages
+) {
+    if (packages.empty()) {
+        ApplyResult result;
+        result.outcome = ApplyOutcome::Refused;
+        return result;
+    }
+
+    std::string arguments = "remove -y";
+
+    for (const std::string& name : packages) {
+        arguments += " '" + name + "'";
+    }
+
+    return runApt(arguments);
+}
+
+ApplyResult applyWithApt(const std::string& requested) {
+    ApplyResult result;
+
+    if (std::system("apt-get --version > /dev/null 2>&1") != 0) {
+        result.outcome = ApplyOutcome::Unavailable;
+        return result;
+    }
+
+    if (!haveRootPrivileges()) {
+        result.outcome = ApplyOutcome::NeedsRoot;
+        return result;
+    }
+
+    // -y is deliberate: the person was asked already, by Nexus, with
+    // the plan in front of them. Asking twice trains people to say
+    // yes without reading.
+    return runApt(
+        "install -y --no-install-recommends '" + requested + "'");
 }
 
 }

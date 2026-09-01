@@ -69,7 +69,14 @@ bool recordTransaction(
         << "Exit: " << record.exitCode << "\n";
 
     if (!record.packages.empty()) {
-        out << (record.succeeded ? "Added:" : "Attempted:");
+        if (!record.succeeded) {
+            out << "Attempted:";
+        } else if (record.kind == TransactionKind::Remove) {
+            out << "Removed:";
+        } else {
+            out << "Added:";
+        }
+
 
         for (const std::string& name : record.packages) {
             out << " " << name;
@@ -106,13 +113,22 @@ std::vector<TransactionRecord> readTransactions(
         record.resolved = stanza.value("resolved");
         record.outcome = stanza.value("outcome");
         record.exitCode = std::atoi(stanza.value("exit").c_str());
-        record.succeeded = stanza.has("added");
+        record.succeeded =
+            stanza.has("added") || stanza.has("removed");
 
-        std::istringstream names(
-            record.succeeded
-                ? stanza.value("added")
-                : stanza.value("attempted")
-        );
+        record.kind = stanza.has("removed")
+            ? TransactionKind::Remove
+            : TransactionKind::Install;
+
+        std::string body = stanza.value("attempted");
+
+        if (stanza.has("added")) {
+            body = stanza.value("added");
+        } else if (stanza.has("removed")) {
+            body = stanza.value("removed");
+        }
+
+        std::istringstream names(body);
 
         std::string name;
 

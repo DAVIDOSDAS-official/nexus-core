@@ -120,3 +120,53 @@ TEST(TransactionLogTest, TimestampsAreIsoUtc) {
     EXPECT_EQ(when[10], 'T');
     EXPECT_EQ(when.back(), 'Z');
 }
+
+// A log that says a removal added a package is worse than no log.
+TEST(TransactionLogTest, ARemovalSaysRemoved) {
+    const std::string path = temporaryLog();
+
+    TransactionRecord record;
+
+    record.kind = nexus::system::TransactionKind::Remove;
+    record.when = "2026-09-01T19:57:05Z";
+    record.request = "remove tree";
+    record.resolved = "tree";
+    record.packages = {"tree"};
+    record.outcome = "applied";
+    record.succeeded = true;
+
+    ASSERT_TRUE(recordTransaction(path, record));
+
+    const auto records = readTransactions(path);
+
+    ASSERT_EQ(records.size(), 1u);
+    EXPECT_EQ(records[0].kind, nexus::system::TransactionKind::Remove);
+    EXPECT_TRUE(records[0].succeeded);
+    EXPECT_EQ(records[0].packages.size(), 1u);
+
+    std::error_code error;
+    std::filesystem::remove(path, error);
+}
+
+TEST(TransactionLogTest, AnInstallStillSaysAdded) {
+    const std::string path = temporaryLog();
+
+    TransactionRecord record;
+
+    record.kind = nexus::system::TransactionKind::Install;
+    record.when = "2026-09-01T19:18:20Z";
+    record.request = "tree";
+    record.packages = {"tree"};
+    record.outcome = "applied";
+    record.succeeded = true;
+
+    ASSERT_TRUE(recordTransaction(path, record));
+
+    const auto records = readTransactions(path);
+
+    ASSERT_EQ(records.size(), 1u);
+    EXPECT_EQ(records[0].kind, nexus::system::TransactionKind::Install);
+
+    std::error_code error;
+    std::filesystem::remove(path, error);
+}

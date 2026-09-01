@@ -56,7 +56,7 @@ void printUsage() {
         << "    nexus install <capability> [--apply] [--yes]\n"
         << "    nexus image <profile>\n"
         << "    nexus plan <capability>\n"
-        << "    nexus remove <component>\n"
+        << "    nexus remove <component> [--apply] [--yes]\n"
         << "    nexus doctor\n"
         << "    nexus history\n"
         << "    nexus hardware\n"
@@ -1106,7 +1106,10 @@ int commandRemove(
     const std::string& target,
     const std::string& statesPath,
     const std::string& architecture,
-    const std::set<std::string>& protectedIds
+    const std::set<std::string>& protectedIds,
+    bool apply,
+    bool assumeYes,
+    const std::string& invocation
 ) {
     const auto automatic =
         nexus::system::readAutoInstalled(statesPath);
@@ -1178,10 +1181,80 @@ int commandRemove(
         std::cout << "    " << id << "  (nothing else needs it)\n";
     }
 
-    std::cout
-        << "\nNothing has been changed; this command only reports.\n";
+    if (!apply) {
+        std::cout
+            << "\nNothing has been changed. Use --apply to remove.\n";
 
-    return 0;
+        return 0;
+    }
+
+    if (!nexus::system::haveRootPrivileges()) {
+        std::cout
+            << "\nRemoving needs root. Re-run with sudo:\n"
+            << "    sudo " << invocation << "\n"
+            << "\nNothing has been changed.\n";
+
+        return 1;
+    }
+
+    // Removing is the dangerous direction, so the confirmation is
+    // stricter than for installing: the count is stated and the whole
+    // word must be typed. A y/N prompt is answered by reflex.
+    if (!assumeYes) {
+        std::cout
+            << "\nThis will remove " << plan.removed.size()
+            << " component(s). Type 'remove' to confirm: ";
+
+        std::string answer;
+
+        std::getline(std::cin, answer);
+
+        if (answer != "remove") {
+            std::cout << "Nothing has been changed.\n";
+            return 1;
+        }
+    }
+
+    std::cout << "\nHanding the plan to apt.\n\n";
+
+    const auto removed = nexus::system::removeWithApt(plan.removed);
+
+    for (const std::string& line : removed.output) {
+        std::cout << line << "\n";
+    }
+
+    nexus::system::TransactionRecord record;
+
+    record.kind = nexus::system::TransactionKind::Remove;
+    record.when = nexus::system::currentTimestamp();
+    record.request = "remove " + target;
+    record.resolved = plan.target;
+    record.packages = std::set<std::string>(
+        plan.removed.begin(), plan.removed.end());
+    record.outcome = toString(removed.outcome);
+    record.exitCode = removed.exitCode;
+    record.succeeded =
+        removed.outcome == nexus::system::ApplyOutcome::Applied;
+
+    const std::string log = nexus::system::defaultTransactionLog();
+
+    if (!nexus::system::recordTransaction(log, record)) {
+        std::cerr
+            << "\nWarning: could not write the transaction record to "
+            << log << ".\n";
+    }
+
+    if (removed.outcome == nexus::system::ApplyOutcome::Applied) {
+        std::cout << "\nDone.\n";
+        return 0;
+    }
+
+    std::cout
+        << "\napt did not complete (exit " << removed.exitCode
+        << ").\nIt manages its own recovery; the messages above are "
+        << "its own.\n";
+
+    return 1;
 }
 
 int commandHistory(const std::string& path) {
@@ -1205,10 +1278,18 @@ int commandHistory(const std::string& path) {
         std::cout << "  [" << record.outcome << "]\n";
 
         if (!record.packages.empty()) {
+            std::string verb = "attempted ";
+
+            if (record.succeeded) {
+                verb =
+                    record.kind ==
+                        nexus::system::TransactionKind::Remove
+                        ? "removed "
+                        : "added ";
+            }
+
             std::cout
-                << "    "
-                << (record.succeeded ? "added " : "attempted ")
-                << record.packages.size() << ": ";
+                << "    " << verb << record.packages.size() << ": ";
 
             std::size_t shown = 0;
 
@@ -2147,7 +2228,8 @@ int main(int argc, char** argv) {
             }
 
             return commandRemove(
-                installed, argument, statesPath, arch, protectedIds);
+                installed, argument, statesPath, arch, protectedIds,
+                apply, assumeYes, invocation);
         }
 
         if (command == "history") {

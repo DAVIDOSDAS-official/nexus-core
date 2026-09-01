@@ -6,17 +6,24 @@
 
 namespace nexus::system {
 
+enum class TransactionKind {
+    Install,
+    Remove
+};
+
 // One thing Nexus did, written down.
 struct TransactionRecord {
+    TransactionKind kind = TransactionKind::Install;
+
     std::string when;          // ISO 8601, UTC
     std::string request;       // what was asked for
     std::string resolved;      // what that turned out to mean
 
-    // What the plan involved. Written as "Added" when the change
-    // succeeded and "Attempted" when it did not, because a log that
-    // says a failed transaction added fourteen packages is worse than
-    // no log: somebody debugging the machine would go looking for
-    // them.
+    // What the plan involved. The field name states what actually
+    // happened -- Added, Removed, or Attempted -- because a log that
+    // says a removal added a package, or that a failed transaction
+    // added fourteen, is worse than no log: somebody debugging the
+    // machine would go looking for things that were never there.
     std::set<std::string> packages;
 
     std::string outcome;
