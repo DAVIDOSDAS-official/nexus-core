@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <unistd.h>
 #include <sstream>
 
 namespace nexus::system {
@@ -104,7 +105,10 @@ bool readPossiblyCompressed(
 
     // Keep stderr. Discarding it turns every decompression failure
     // into "produced no output", which says nothing about why.
-    const std::string errors = "/tmp/nexus-decompress-error";
+    // Process-specific: a fixed name in a sticky /tmp cannot be
+    // rewritten by a different user.
+    const std::string errors =
+        "/tmp/nexus-decompress-" + std::to_string(::getpid());
 
     std::FILE* pipe = popen(
         (command + " '" + path + "' 2>" + errors).c_str(), "r");

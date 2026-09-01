@@ -2,8 +2,10 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sys/wait.h>
+#include <unistd.h>
 
 namespace nexus::system {
 
@@ -21,7 +23,13 @@ PlanCheck checkPlanWithApt(
     // A dry run changes nothing and needs no privileges. Its stderr
     // is kept: discarding it turns a refusal into a statement with no
     // content, and the tool was saying exactly what was wrong.
-    const std::string errors = "/tmp/nexus-plan-check-error";
+    //
+    // The path includes the process id. A fixed name in /tmp belongs
+    // to whoever created it first, and /tmp is sticky -- so running
+    // once as a user and then again under sudo left root unable to
+    // write to its own scratch file.
+    const std::string errors =
+        "/tmp/nexus-plan-check-" + std::to_string(::getpid());
 
     const std::string command =
         "apt-get install --dry-run --no-install-recommends '" +
@@ -53,8 +61,6 @@ PlanCheck checkPlanWithApt(
     const int code = status == -1 ? -1 : WEXITSTATUS(status);
 
     if (code != 0 && check.theirs.empty()) {
-        check.agreement = PlanAgreement::Refused;
-
         std::ifstream why(errors);
 
         if (why) {
@@ -67,8 +73,22 @@ PlanCheck checkPlanWithApt(
             }
         }
 
+        std::error_code removal;
+        std::filesystem::remove(errors, removal);
+
+        // A refusal with nothing said is not a refusal. apt always
+        // explains itself, so an empty message means the check never
+        // ran -- and reporting that as "apt refuses this plan" blames
+        // the wrong thing entirely.
+        check.agreement = check.refusal.empty()
+            ? PlanAgreement::Unavailable
+            : PlanAgreement::Refused;
+
         return check;
     }
+
+    std::error_code removal;
+    std::filesystem::remove(errors, removal);
 
     for (const std::string& name : expected) {
         if (check.theirs.count(name) == 0) {

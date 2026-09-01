@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <exception>
 #include <iostream>
+#include <istream>
 #include <cstdlib>
 #include <fstream>
 #include <filesystem>
@@ -23,6 +24,8 @@
 #include <nexus/hardware/hardware.hpp>
 #include <nexus/system/apt_source.hpp>
 #include <nexus/system/rpm_database.hpp>
+#include <nexus/system/plan_apply.hpp>
+#include <nexus/system/transaction_log.hpp>
 #include <nexus/system/plan_check.hpp>
 #include <nexus/system/protection.hpp>
 #include <nexus/system/rpm_version.hpp>
@@ -50,11 +53,12 @@ void printUsage() {
         << "    nexus gaps [kind]\n"
         << "    nexus conflicts\n"
         << "    nexus options <capability>\n"
-        << "    nexus install <capability> [--apply]\n"
+        << "    nexus install <capability> [--apply] [--yes]\n"
         << "    nexus image <profile>\n"
         << "    nexus plan <capability>\n"
         << "    nexus remove <component>\n"
         << "    nexus doctor\n"
+        << "    nexus history\n"
         << "    nexus hardware\n"
         << "    nexus profile list\n"
         << "    nexus profile show <name>\n"
@@ -435,9 +439,11 @@ int commandSolve(
         std::cout << solution.reason << "\n";
 
         if (!solution.blockedOn.empty()) {
-            std::cout
-                << "\nNothing available provides:\n    "
-                << solution.blockedOn << "\n";
+            // blockedOn may be a capability nothing provides or a
+            // rule that was violated. "Nothing available provides"
+            // fits only the first.
+            std::cout << "\nBlocked on:\n    "
+                      << solution.blockedOn << "\n";
         }
 
         return 1;
@@ -653,7 +659,9 @@ int commandInstall(
     const std::string& capability,
     const std::string& architecture,
     bool useRpm,
-    bool apply
+    bool apply,
+    bool assumeYes,
+    const std::string& invocation
 ) {
     nexus::SolverRequest request;
 
@@ -669,9 +677,11 @@ int commandInstall(
             << "Cannot be resolved: " << solution.reason << "\n";
 
         if (!solution.blockedOn.empty()) {
-            std::cout
-                << "\nNothing available provides:\n    "
-                << solution.blockedOn << "\n";
+            // blockedOn may be a capability nothing provides or a
+            // rule that was violated. "Nothing available provides"
+            // fits only the first.
+            std::cout << "\nBlocked on:\n    "
+                      << solution.blockedOn << "\n";
         }
 
         return 1;
@@ -729,7 +739,8 @@ int commandInstall(
         case nexus::system::PlanAgreement::Unavailable:
             std::cout
                 << "\napt could not be asked, so this plan is "
-                << "unverified.\n";
+                << "unverified.\nThat is not the same as apt "
+                << "objecting to it.\n";
             break;
 
         case nexus::system::PlanAgreement::Refused:
@@ -802,11 +813,97 @@ int commandInstall(
         return 1;
     }
 
-    std::cout
-        << "\nApplying is not implemented yet. The plan is verified "
-        << "and\nwould be safe to apply.\n";
+    if (!nexus::system::haveRootPrivileges()) {
+        // The original arguments, not a reconstruction. A suggested
+        // command that drops the flags which made it work is worse
+        // than no suggestion.
+        std::cout
+            << "\nInstalling needs root. Re-run with sudo:\n"
+            << "    sudo " << invocation << "\n"
+            << "\nNothing has been changed.\n";
 
-    return 0;
+        return 1;
+    }
+
+    // The plan is shown before anything happens, and the person says
+    // yes to that plan rather than to a question with no content.
+    if (!assumeYes) {
+        std::cout << "\nWould install:\n";
+
+        std::size_t shown = 0;
+
+        for (const std::string& name : expected) {
+            std::cout << "    " << name << "\n";
+
+            if (++shown >= 20) {
+                std::cout
+                    << "    ... and " << (expected.size() - shown)
+                    << " more\n";
+                break;
+            }
+        }
+
+        std::cout << "\nProceed? [y/N] ";
+
+        std::string answer;
+
+        std::getline(std::cin, answer);
+
+        if (answer != "y" && answer != "Y" && answer != "yes") {
+            std::cout << "Nothing has been changed.\n";
+            return 1;
+        }
+    }
+
+    std::cout << "\nHanding the plan to apt.\n\n";
+
+    const auto applied = nexus::system::applyWithApt(requested);
+
+    for (const std::string& line : applied.output) {
+        std::cout << line << "\n";
+    }
+
+    // A tool that changes a system owes an account of what it did.
+    nexus::system::TransactionRecord record;
+
+    record.when = nexus::system::currentTimestamp();
+    record.request = capability;
+    record.resolved = requested;
+    record.packages = expected;
+    record.outcome = toString(applied.outcome);
+    record.exitCode = applied.exitCode;
+    record.succeeded =
+        applied.outcome == nexus::system::ApplyOutcome::Applied;
+
+    const std::string log = nexus::system::defaultTransactionLog();
+
+    if (!nexus::system::recordTransaction(log, record)) {
+        std::cerr
+            << "\nWarning: could not write the transaction record to "
+            << log << ".\n";
+    }
+
+    switch (applied.outcome) {
+        case nexus::system::ApplyOutcome::Applied:
+            std::cout << "\nDone.\n";
+            return 0;
+
+        case nexus::system::ApplyOutcome::NeedsRoot:
+            std::cout << "\nInstalling needs root.\n";
+            return 1;
+
+        case nexus::system::ApplyOutcome::Unavailable:
+            std::cout << "\napt is not available here.\n";
+            return 1;
+
+        default:
+            std::cout
+                << "\napt did not complete (exit "
+                << applied.exitCode << ").\n"
+                << "It manages its own recovery; the messages above "
+                << "are its own.\n";
+            return 1;
+    }
 }
 
 int commandOptions(
@@ -917,9 +1014,11 @@ int commandPlan(
         std::cout << "\n" << solution.reason << "\n";
 
         if (!solution.blockedOn.empty()) {
-            std::cout
-                << "\nNothing available provides:\n    "
-                << solution.blockedOn << "\n";
+            // blockedOn may be a capability nothing provides or a
+            // rule that was violated. "Nothing available provides"
+            // fits only the first.
+            std::cout << "\nBlocked on:\n    "
+                      << solution.blockedOn << "\n";
         }
 
         return 1;
@@ -1081,6 +1180,54 @@ int commandRemove(
 
     std::cout
         << "\nNothing has been changed; this command only reports.\n";
+
+    return 0;
+}
+
+int commandHistory(const std::string& path) {
+    const auto records = nexus::system::readTransactions(path);
+
+    if (records.empty()) {
+        std::cout
+            << "No changes recorded in " << path << ".\n";
+        return 0;
+    }
+
+    for (const auto& record : records) {
+        std::cout
+            << record.when << "  " << record.request;
+
+        if (!record.resolved.empty() &&
+            record.resolved != record.request) {
+            std::cout << " -> " << record.resolved;
+        }
+
+        std::cout << "  [" << record.outcome << "]\n";
+
+        if (!record.packages.empty()) {
+            std::cout
+                << "    "
+                << (record.succeeded ? "added " : "attempted ")
+                << record.packages.size() << ": ";
+
+            std::size_t shown = 0;
+
+            for (const std::string& name : record.packages) {
+                if (shown > 0) {
+                    std::cout << ", ";
+                }
+
+                std::cout << name;
+
+                if (++shown >= 8) {
+                    std::cout << ", ...";
+                    break;
+                }
+            }
+
+            std::cout << "\n";
+        }
+    }
 
     return 0;
 }
@@ -1525,6 +1672,13 @@ int commandGaps(const SourceSummary& result) {
 int main(int argc, char** argv) {
     std::vector<std::string> arguments(argv + 1, argv + argc);
 
+    // Kept so that a suggested re-run is the command actually typed.
+    std::string invocation = argv[0] == nullptr ? "nexus" : argv[0];
+
+    for (const std::string& argument : arguments) {
+        invocation += " " + argument;
+    }
+
     std::string statusPath = "/var/lib/dpkg/status";
     std::string prefer;
     std::string require;
@@ -1563,12 +1717,18 @@ int main(int argc, char** argv) {
     bool withAvailable = false;
     bool explain = false;
     bool apply = false;
+    bool assumeYes = false;
     std::vector<std::string> positional;
 
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         if (arguments[index] == "--status" && index + 1 < arguments.size()) {
             statusPath = arguments[index + 1];
             index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--yes") {
+            assumeYes = true;
             continue;
         }
 
@@ -1667,6 +1827,14 @@ int main(int argc, char** argv) {
     }
 
     const std::string command = positional[0];
+
+    // Installing something means installing something that is not
+    // here yet, which cannot be resolved from the installed set
+    // alone. Requiring the flag would only ever produce a confusing
+    // failure.
+    if (command == "install") {
+        withAvailable = true;
+    }
     const std::string argument =
         positional.size() > 1 ? positional[1] : std::string{};
 
@@ -1940,7 +2108,7 @@ int main(int argc, char** argv) {
 
             return commandInstall(
                 aliases, universe, installed, argument, arch,
-                preferRpm, apply);
+                preferRpm, apply, assumeYes, invocation);
         }
 
         if (command == "options") {
@@ -1980,6 +2148,11 @@ int main(int argc, char** argv) {
 
             return commandRemove(
                 installed, argument, statesPath, arch, protectedIds);
+        }
+
+        if (command == "history") {
+            return commandHistory(
+                nexus::system::defaultTransactionLog());
         }
 
         if (command == "doctor") {
