@@ -178,3 +178,6 @@ docs/        specifications, and the decisions behind them
 
 `docs/specifications/00-decisions.md` is the one worth reading: the
 reasoning that is not recoverable from the code.
+
+`docs/vision.md` is where this is going, annotated with what exists.
+`docs/what-users-want.md` is the research it came from.
