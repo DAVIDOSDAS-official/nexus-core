@@ -54,7 +54,20 @@ public:
 
     const std::vector<Capability>& providedCapabilities() const;
     std::vector<Capability> requiredCapabilities() const;
-    const std::vector<Capability>& recommendedCapabilities() const;
+    // Recommendations are clauses, not names.
+    //
+    // "Recommends: libodbc2 | libodbc1" is one recommendation with two
+    // ways of meeting it. Storing only the first made a machine with
+    // the second one installed look as though nothing wanted it --
+    // the same mistake requirements outgrew when alternatives arrived,
+    // repeated here because recommendations kept the older shape.
+    void addRecommendation(Requirement requirement);
+
+    const std::vector<Requirement>& recommendations() const;
+
+    // Flattened view: the first alternative of each recommendation.
+    // Kept for callers that predate alternatives.
+    std::vector<Capability> recommendedCapabilities() const;
 
     // Components this one cannot coexist with.
     // Full requirements, alternatives preserved.
@@ -90,7 +103,7 @@ private:
     std::vector<Requirement> requirements_;
     std::string architecture_ = kArchitectureAll;
     MultiArch multiArch_ = MultiArch::No;
-    std::vector<Capability> recommends_;
+    std::vector<Requirement> recommends_;
     std::vector<Constraint> conflicts_;
 };
 

@@ -344,3 +344,43 @@ TEST(RemovalTest, ARecommendedComponentIsNotProposedForRemoval) {
     ASSERT_TRUE(plan.possible);
     EXPECT_TRUE(plan.orphaned.empty());
 }
+
+// Built from the exact shape that exposed it: wine recommends
+// "libodbc2 | libodbc1", the machine has libodbc1, and following only
+// the first alternative made it look unwanted.
+TEST(RemovalTest, ARecommendationsAlternativesAreAllFollowed) {
+    Component wine = make("wine");
+
+    wine.addRecommendation(nexus::Requirement(
+        std::vector<nexus::Constraint>{
+            nexus::Constraint("libodbc2"),
+            nexus::Constraint("libodbc1")
+        }
+    ));
+
+    // Only the second alternative is installed.
+    const std::vector<Component> installed{
+        wine,
+        make("libodbc1")
+    };
+
+    const auto reachable = nexus::reachableFrom(
+        installed, {"wine"}, debianDetector());
+
+    EXPECT_EQ(reachable.count("libodbc1"), 1u);
+}
+
+TEST(RemovalTest, TheFlatViewStillReportsTheFirstAlternative) {
+    Component wine = make("wine");
+
+    wine.addRecommendation(nexus::Requirement(
+        std::vector<nexus::Constraint>{
+            nexus::Constraint("libodbc2"),
+            nexus::Constraint("libodbc1")
+        }
+    ));
+
+    ASSERT_EQ(wine.recommendedCapabilities().size(), 1u);
+    EXPECT_EQ(wine.recommendedCapabilities()[0].name(), "libodbc2");
+    EXPECT_EQ(wine.recommendations()[0].alternatives.size(), 2u);
+}

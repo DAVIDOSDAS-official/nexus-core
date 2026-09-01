@@ -20,6 +20,7 @@ add_executable(component_test
     unit/options_test.cpp
     unit/alias_test.cpp
     unit/diagnosis_test.cpp
+    unit/protection_test.cpp
     unit/rpm_version_test.cpp
     unit/xml_test.cpp
     unit/rpm_source_test.cpp

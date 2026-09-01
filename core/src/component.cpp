@@ -71,7 +71,9 @@ const std::vector<Requirement>& Component::requirements() const {
 }
 
 void Component::addRecommendedCapability(Capability capability) {
-    recommends_.push_back(std::move(capability));
+    recommends_.push_back(
+        Requirement(Constraint(capability.name()))
+    );
 }
 
 const std::vector<Capability>& Component::providedCapabilities() const {
@@ -97,8 +99,28 @@ std::vector<Capability> Component::requiredCapabilities() const {
     return flattened;
 }
 
-const std::vector<Capability>& Component::recommendedCapabilities() const {
+void Component::addRecommendation(Requirement requirement) {
+    recommends_.push_back(std::move(requirement));
+}
+
+const std::vector<Requirement>& Component::recommendations() const {
     return recommends_;
+}
+
+std::vector<Capability> Component::recommendedCapabilities() const {
+    std::vector<Capability> flattened;
+
+    for (const Requirement& requirement : recommends_) {
+        if (requirement.empty()) {
+            continue;
+        }
+
+        flattened.push_back(
+            Capability(requirement.alternatives.front().capability)
+        );
+    }
+
+    return flattened;
 }
 
 void Component::addConflict(Constraint constraint) {

@@ -153,9 +153,21 @@ DpkgSourceResult DpkgSource::loadFromStanzas(
             for (const DependencyClause& clause :
                  parseDependencyField(stanza.value("recommends"))) {
 
-                if (!clause.alternatives.empty()) {
-                    component.addRecommendedCapability(
-                        Capability(clause.alternatives.front().name)
+                std::vector<Constraint> options;
+
+                for (const DependencyTerm& term : clause.alternatives) {
+                    Constraint option = term.constraint
+                        ? Constraint(term.name, *term.constraint)
+                        : Constraint(term.name);
+
+                    option.architecture = term.architecture;
+
+                    options.push_back(std::move(option));
+                }
+
+                if (!options.empty()) {
+                    component.addRecommendation(
+                        Requirement(std::move(options))
                     );
                 }
             }

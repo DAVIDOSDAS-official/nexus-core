@@ -47,10 +47,15 @@ struct Diagnosis {
 // Every one of these is a question the resolver can already answer;
 // doctor is the command that asks all of them at once instead of
 // requiring somebody to know which to ask.
+// protectedIds are components that must never be proposed for
+// removal even when nothing needs them -- the running kernel above
+// all. The graph is right that nothing requires it; acting on that
+// would leave a machine that does not boot.
 Diagnosis diagnose(
     const std::vector<Component>& installed,
     const std::set<std::string>& roots,
-    const ConflictDetector& detector
+    const ConflictDetector& detector,
+    const std::set<std::string>& protectedIds = {}
 );
 
 std::string toString(Health health);

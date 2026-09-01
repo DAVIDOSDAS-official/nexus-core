@@ -314,3 +314,27 @@ TEST(DpkgSourceTest, MissingStatusFileThrows) {
 
     EXPECT_THROW(source.load(), std::runtime_error);
 }
+
+// Recommendations are clauses too, and the source has to keep all of
+// them or the reachability walk cannot follow what it never received.
+TEST(DpkgSourceTest, KeepsEveryRecommendedAlternative) {
+    const auto result = loadFixture(
+        "Package: wine-stable-amd64\n"
+        "Status: install ok installed\n"
+        "Version: 9.0\n"
+        "Recommends: libodbc2 | libodbc1, libgphoto2-6\n"
+    );
+
+    ASSERT_EQ(result.components.size(), 1u);
+
+    const auto& recommendations =
+        result.components[0].recommendations();
+
+    ASSERT_EQ(recommendations.size(), 2u);
+    ASSERT_EQ(recommendations[0].alternatives.size(), 2u);
+    EXPECT_EQ(recommendations[0].alternatives[0].capability,
+              "libodbc2");
+    EXPECT_EQ(recommendations[0].alternatives[1].capability,
+              "libodbc1");
+    EXPECT_EQ(recommendations[1].alternatives.size(), 1u);
+}

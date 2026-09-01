@@ -139,6 +139,28 @@ desktop, which was enough to hide all three. Scale tests now construct
 stack fails, so the test catches it on any machine rather than only on
 a big enough one.
 
+## 10. Read policy, do not encode it
+
+What must never be removed is a policy, and policies belong to
+distributions. apt keeps its own in `/etc/apt/apt.conf.d/01autoremove`:
+which names never go, what counts as a kernel, which sections are never
+marked automatic. Nexus reads that file.
+
+Written in C++ instead, "keep the newest kernel" is a guess that
+silently goes stale when the distribution changes its mind. Read from
+the file, it stays whatever the distribution decided.
+
+Where a policy cannot be read, Nexus does the true thing rather than
+the cautious one. apt keeps an extra old kernel as a fallback; Nexus
+protects the running kernel and reports the rest as unused, because
+they are. Matching apt's caution would mean encoding a number nobody
+can justify, and the finding is a warning rather than an action.
+
+The line: **protect what would break the machine, report everything
+else honestly.** Removing the running kernel leaves a system that does
+not boot, so that is refused outright. Removing a spare one is merely
+a choice, so it is described.
+
 ## 9. Print derived numbers, then disbelieve them
 
 Every wrong answer in this project was found by computing a summary and

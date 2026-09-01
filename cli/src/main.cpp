@@ -22,6 +22,7 @@
 #include <nexus/hardware/hardware.hpp>
 #include <nexus/system/apt_source.hpp>
 #include <nexus/system/rpm_database.hpp>
+#include <nexus/system/protection.hpp>
 #include <nexus/system/rpm_version.hpp>
 #include <nexus/system/rpm_repo.hpp>
 #include <nexus/system/profile_file.hpp>
@@ -827,7 +828,8 @@ int commandRemove(
     const std::vector<Component>& installed,
     const std::string& target,
     const std::string& statesPath,
-    const std::string& architecture
+    const std::string& architecture,
+    const std::set<std::string>& protectedIds
 ) {
     const auto automatic =
         nexus::system::readAutoInstalled(statesPath);
@@ -858,7 +860,8 @@ int commandRemove(
         installed,
         roots,
         nexus::ConflictDetector(versionComparator()),
-        architecture);
+        architecture,
+        protectedIds);
 
     std::cout
         << "Target:     " << plan.target << "\n"
@@ -909,7 +912,8 @@ int commandDoctor(
     const std::vector<Component>& installed,
     const nexus::hardware::HardwareInfo& hardware,
     const std::set<std::string>& roots,
-    bool havePackages
+    bool havePackages,
+    const std::set<std::string>& protectedIds
 ) {
     std::vector<nexus::Finding> findings;
 
@@ -958,7 +962,8 @@ int commandDoctor(
     if (havePackages) {
         const auto detail = nexus::diagnose(
             installed, roots,
-            nexus::ConflictDetector(versionComparator()));
+            nexus::ConflictDetector(versionComparator()),
+            protectedIds);
 
         for (const nexus::Finding& finding : detail.findings) {
             findings.push_back(finding);
@@ -1363,6 +1368,7 @@ int main(int argc, char** argv) {
     std::string sysfsRoot = "/";
     std::string statesPath = "/var/lib/apt/extended_states";
     std::string rpmCache = "/var/cache/libdnf5";
+    std::string aptConfigDir = "/etc/apt/apt.conf.d";
     std::string rpmRoot;
     std::string aliasDir;
 
@@ -1588,6 +1594,15 @@ int main(int argc, char** argv) {
             aliases = loaded.table;
         }
 
+        // What the distribution says must never be removed. Read
+        // from its own configuration rather than encoded here, so the
+        // policy stays whatever the distribution decided.
+        const auto protectionRules =
+            nexus::system::readProtectionRules(aptConfigDir);
+
+        const std::string runningKernel =
+            nexus::system::runningKernelRelease();
+
         // Commands that read the package database say so plainly when
         // there is not one, rather than failing on a file path the
         // user never mentioned.
@@ -1612,6 +1627,10 @@ int main(int argc, char** argv) {
         // that is already here.
         std::vector<Component> installed = result.components;
         installed.push_back(nexus::hardware::asComponent(hardware));
+
+        const std::set<std::string> protectedIds =
+            nexus::system::protectedComponents(
+                installed, protectionRules, runningKernel);
 
         std::vector<Component> universe = installed;
 
@@ -1765,7 +1784,7 @@ int main(int argc, char** argv) {
             }
 
             return commandRemove(
-                installed, argument, statesPath, arch);
+                installed, argument, statesPath, arch, protectedIds);
         }
 
         if (command == "doctor") {
@@ -1788,7 +1807,8 @@ int main(int argc, char** argv) {
             }
 
             return commandDoctor(
-                result, installed, hardware, roots, havePackages);
+                result, installed, hardware, roots, havePackages,
+                protectedIds);
         }
 
         if (command == "hardware") {

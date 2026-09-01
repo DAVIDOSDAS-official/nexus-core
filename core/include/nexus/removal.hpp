@@ -68,7 +68,8 @@ RemovalPlan planRemoval(
     const std::vector<Component>& installed,
     const std::set<std::string>& roots,
     const ConflictDetector& detector,
-    const std::string& architecture = {}
+    const std::string& architecture = {},
+    const std::set<std::string>& protectedIds = {}
 );
 
 }

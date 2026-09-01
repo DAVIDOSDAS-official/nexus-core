@@ -7,6 +7,7 @@ add_library(nexus_system
     src/apt_source.cpp
     src/identity.cpp
     src/auto_installed.cpp
+    src/protection.cpp
     src/rpm_version.cpp
     src/xml.cpp
     src/rpm_source.cpp

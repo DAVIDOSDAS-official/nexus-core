@@ -85,7 +85,8 @@ Health Diagnosis::overall() const {
 Diagnosis diagnose(
     const std::vector<Component>& installed,
     const std::set<std::string>& roots,
-    const ConflictDetector& detector
+    const ConflictDetector& detector,
+    const std::set<std::string>& protectedIds
 ) {
     Diagnosis diagnosis;
 
@@ -204,16 +205,30 @@ Diagnosis diagnose(
             const std::set<std::string> reachable =
                 reachableFrom(installed, roots, detector);
 
+            std::size_t held = 0;
+
             for (const Component& component : installed) {
-                if (reachable.count(component.id()) == 0) {
-                    keepExamples(finding, component.id());
+                if (reachable.count(component.id()) > 0) {
+                    continue;
                 }
+
+                if (protectedIds.count(component.id()) > 0) {
+                    held += 1;
+                    continue;
+                }
+
+                keepExamples(finding, component.id());
             }
 
             if (finding.total == 0) {
                 finding.health = Health::Ok;
                 finding.detail =
-                    "Everything installed is held up by something.";
+                    held == 0
+                        ? "Everything installed is held up by "
+                          "something."
+                        : "Everything installed is held up by "
+                          "something, or protected (" +
+                              std::to_string(held) + ").";
             } else {
                 // Not a problem. Unused is untidy, not broken, and
                 // calling it a problem trains people to ignore the

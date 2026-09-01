@@ -115,12 +115,19 @@ std::set<std::string> reachableFrom(
             }
         }
 
-        // Recommendations keep things alive too. Suggests do not:
-        // apt treats them as optional and so does this.
-        for (const Capability& recommended :
-             installed[position].recommendedCapabilities()) {
+        // Recommendations keep things alive too, and like
+        // requirements they may offer alternatives: "libodbc2 |
+        // libodbc1" is met by either. Following only the first left
+        // whichever one was actually installed looking unwanted.
+        //
+        // Suggests are not followed: apt treats them as optional and
+        // so does this.
+        for (const Requirement& recommended :
+             installed[position].recommendations()) {
 
-            follow(Constraint(recommended.name()));
+            for (const Constraint& option : recommended.alternatives) {
+                follow(option);
+            }
         }
     }
 
@@ -143,7 +150,8 @@ RemovalPlan planRemoval(
     const std::vector<Component>& installed,
     const std::set<std::string>& roots,
     const ConflictDetector& detector,
-    const std::string& architecture
+    const std::string& architecture,
+    const std::set<std::string>& protectedIds
 ) {
     (void)architecture;
 
@@ -159,6 +167,17 @@ RemovalPlan planRemoval(
     }
 
     plan.target = component->id();
+
+    // Protected components are refused outright. The graph may well
+    // say nothing needs the running kernel; acting on that leaves a
+    // machine that does not boot.
+    if (protectedIds.count(component->id()) > 0) {
+        plan.reason =
+            plan.target + " is protected and will not be removed. "
+            "The distribution's own rules mark it as one to keep.";
+
+        return plan;
+    }
 
     const std::set<std::string> before =
         reachableFrom(installed, roots, detector);
@@ -223,6 +242,11 @@ RemovalPlan planRemoval(
 
     for (const std::string& id : before) {
         if (id == component->id() || id == "system-hardware") {
+            continue;
+        }
+
+        // Never carry a protected component out as collateral.
+        if (protectedIds.count(id) > 0) {
             continue;
         }
 
