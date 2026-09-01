@@ -11,6 +11,7 @@ add_library(nexus_core
     src/options.cpp
     src/alias.cpp
     src/diagnosis.cpp
+    src/composition.cpp
     src/conflict_detector.cpp
     src/capability.cpp
     src/resolver.cpp

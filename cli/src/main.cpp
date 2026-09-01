@@ -14,6 +14,7 @@
 #include <nexus/conflict_detector.hpp>
 #include <nexus/profile_check.hpp>
 #include <nexus/alias.hpp>
+#include <nexus/composition.hpp>
 #include <nexus/diagnosis.hpp>
 #include <nexus/options.hpp>
 #include <nexus/system/alias_file.hpp>
@@ -62,7 +63,7 @@ void printUsage() {
         << "    nexus hardware\n"
         << "    nexus profile list\n"
         << "    nexus profile show <name>\n"
-        << "    nexus profile check <name>\n"
+        << "    nexus profile check <name>[,<name>...]\n"
         << "    nexus solve <capability> [--arch a] [--prefer id]\n"
         << "                             [--require id]\n"
         << "\n"
@@ -510,6 +511,96 @@ int commandSolve(
 // not something anybody can read. The point of generating it is that
 // it stays readable -- a build you cannot read is a build you cannot
 // audit.
+// Resolve a profile name, which may be several separated by commas.
+//
+// Somebody who wants a machine for school and gaming wants both, not
+// a choice between them. Returns false and explains when a name does
+// not exist.
+bool findComposition(
+    const std::vector<nexus::Profile>& available,
+    const std::string& name,
+    nexus::Composition& composition
+) {
+    std::vector<std::string> wanted;
+    std::string current;
+
+    for (char character : name) {
+        if (character == ',') {
+            if (!current.empty()) {
+                wanted.push_back(current);
+            }
+
+            current.clear();
+            continue;
+        }
+
+        current.push_back(character);
+    }
+
+    if (!current.empty()) {
+        wanted.push_back(current);
+    }
+
+    std::vector<nexus::Profile> picked;
+
+    for (const std::string& one : wanted) {
+        const nexus::Profile* found = nullptr;
+
+        for (const nexus::Profile& profile : available) {
+            if (profile.name == one) {
+                found = &profile;
+                break;
+            }
+        }
+
+        if (found == nullptr) {
+            std::cerr << "Unknown profile: " << one << "\n";
+            return false;
+        }
+
+        picked.push_back(*found);
+    }
+
+    if (picked.empty()) {
+        std::cerr << "No profile named.\n";
+        return false;
+    }
+
+    composition = nexus::compose(picked, name);
+
+    return true;
+}
+
+void reportComposition(const nexus::Composition& composition) {
+    if (composition.sources.size() < 2) {
+        return;
+    }
+
+    std::cout
+        << "Combined:    " << composition.sources.size()
+        << " profiles, "
+        << composition.profile.requirements.size()
+        << " requirement(s)";
+
+    if (!composition.shared.empty()) {
+        std::cout
+            << " (" << composition.shared.size()
+            << " shared, asked for more than once)";
+    }
+
+    std::cout << "\n";
+
+    for (const auto& clash : composition.clashes) {
+        std::cout
+            << "  note: " << clash.capability << " -> "
+            << clash.chosen << " (from " << clash.chosenBy
+            << "), not " << clash.overridden << " (from "
+            << clash.overriddenBy << ")\n";
+    }
+
+    std::cout << "\n";
+}
+
 int commandImage(
     const nexus::AliasTable& aliases,
     const std::vector<Component>& universe,
@@ -520,21 +611,13 @@ int commandImage(
     const auto loaded =
         nexus::system::parseProfileDirectory(directory);
 
-    const nexus::Profile* chosen = nullptr;
+    nexus::Composition composition;
 
-    for (const nexus::Profile& profile : loaded.profiles) {
-        if (profile.name == profileName) {
-            chosen = &profile;
-            break;
-        }
-    }
-
-    if (chosen == nullptr) {
-        std::cerr << "Unknown profile: " << profileName << "\n";
+    if (!findComposition(loaded.profiles, profileName, composition)) {
         return 1;
     }
 
-    nexus::Profile profile = *chosen;
+    nexus::Profile profile = composition.profile;
 
     if (!architecture.empty()) {
         profile.architecture = architecture;
@@ -1560,19 +1643,15 @@ int commandProfile(
         return 0;
     }
 
-    const nexus::Profile* chosen = nullptr;
+    nexus::Composition composition;
 
-    for (const nexus::Profile& profile : loaded.profiles) {
-        if (profile.name == name) {
-            chosen = &profile;
-            break;
-        }
-    }
-
-    if (chosen == nullptr) {
-        std::cerr << "Unknown profile: " << name << "\n";
+    if (!findComposition(loaded.profiles, name, composition)) {
         return 1;
     }
+
+    const nexus::Profile* chosen = &composition.profile;
+
+    reportComposition(composition);
 
     if (action == "show") {
         std::cout
