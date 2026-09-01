@@ -367,3 +367,103 @@ TEST(ArchitectureIntegrationTest, BothArchitecturesCanBeSelected) {
     EXPECT_TRUE(saw64);
     EXPECT_TRUE(saw32);
 }
+
+// Two builds of a Multi-Arch: same package share files, so dpkg
+// requires them to be at exactly the same version. Resolved
+// independently each is satisfiable and together they are impossible
+// -- which produced a thirteen-component Steam plan that apt refused.
+TEST(ArchitectureTest, MultiArchSameBuildsMustMatchVersions) {
+    Component app = make("app", "amd64");
+    app.addRequirement(Requirement(Constraint("libgl1")));
+
+    Constraint needs32("libgl1");
+    needs32.architecture = "i386";
+    app.addRequirement(Requirement(needs32));
+
+    Component amd64(
+        "libgl1:amd64", "libgl1", "1.7.0", ComponentType::Library);
+    amd64.setArchitecture("amd64");
+    amd64.setMultiArch(MultiArch::Same);
+    amd64.addProvidedCapability(nexus::Capability("libgl1"));
+
+    // The only 32-bit build is an older version.
+    Component i386(
+        "libgl1:i386", "libgl1", "1.4.0", ComponentType::Library);
+    i386.setArchitecture("i386");
+    i386.setMultiArch(MultiArch::Same);
+    i386.addProvidedCapability(nexus::Capability("libgl1"));
+
+    Solver solver({app, amd64, i386}, debianDetector());
+
+    SolverRequest request;
+    request.architecture = "amd64";
+    request.requirements.push_back(Requirement(Constraint("app")));
+
+    const auto result = solver.solve(request);
+
+    EXPECT_EQ(result.status, SolverStatus::Unsatisfiable);
+
+    // And the reason says why, rather than leaving somebody to guess.
+    EXPECT_NE(
+        result.blockedOn.find("same version"),
+        std::string::npos
+    );
+}
+
+TEST(ArchitectureTest, MatchingVersionsCoexistFine) {
+    Component app = make("app", "amd64");
+    app.addRequirement(Requirement(Constraint("libgl1")));
+
+    Constraint needs32("libgl1");
+    needs32.architecture = "i386";
+    app.addRequirement(Requirement(needs32));
+
+    Component amd64(
+        "libgl1:amd64", "libgl1", "1.7.0", ComponentType::Library);
+    amd64.setArchitecture("amd64");
+    amd64.setMultiArch(MultiArch::Same);
+    amd64.addProvidedCapability(nexus::Capability("libgl1"));
+
+    Component i386(
+        "libgl1:i386", "libgl1", "1.7.0", ComponentType::Library);
+    i386.setArchitecture("i386");
+    i386.setMultiArch(MultiArch::Same);
+    i386.addProvidedCapability(nexus::Capability("libgl1"));
+
+    Solver solver({app, amd64, i386}, debianDetector());
+
+    SolverRequest request;
+    request.architecture = "amd64";
+    request.requirements.push_back(Requirement(Constraint("app")));
+
+    EXPECT_EQ(solver.solve(request).status, SolverStatus::Success);
+}
+
+// Packages that are not Multi-Arch: same are unaffected: a foreign
+// build of a differently-marked package has no shared-file problem.
+TEST(ArchitectureTest, LockstepOnlyAppliesToMultiArchSame) {
+    Component app = make("app", "amd64");
+    app.addRequirement(Requirement(Constraint("tool")));
+
+    Constraint needs32("tool");
+    needs32.architecture = "i386";
+    app.addRequirement(Requirement(needs32));
+
+    Component amd64("tool:amd64", "tool", "2.0",
+                    ComponentType::Application);
+    amd64.setArchitecture("amd64");
+    amd64.addProvidedCapability(nexus::Capability("tool"));
+
+    Component i386("tool:i386", "tool", "1.0",
+                   ComponentType::Application);
+    i386.setArchitecture("i386");
+    i386.addProvidedCapability(nexus::Capability("tool"));
+
+    Solver solver({app, amd64, i386}, debianDetector());
+
+    SolverRequest request;
+    request.architecture = "amd64";
+    request.requirements.push_back(Requirement(Constraint("app")));
+
+    EXPECT_EQ(solver.solve(request).status, SolverStatus::Success);
+}

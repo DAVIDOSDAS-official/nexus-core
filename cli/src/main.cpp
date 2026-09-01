@@ -2,6 +2,7 @@
 #include <exception>
 #include <iostream>
 #include <cstdlib>
+#include <fstream>
 #include <filesystem>
 #include <map>
 #include <set>
@@ -22,6 +23,7 @@
 #include <nexus/hardware/hardware.hpp>
 #include <nexus/system/apt_source.hpp>
 #include <nexus/system/rpm_database.hpp>
+#include <nexus/system/plan_check.hpp>
 #include <nexus/system/protection.hpp>
 #include <nexus/system/rpm_version.hpp>
 #include <nexus/system/rpm_repo.hpp>
@@ -48,6 +50,7 @@ void printUsage() {
         << "    nexus gaps [kind]\n"
         << "    nexus conflicts\n"
         << "    nexus options <capability>\n"
+        << "    nexus install <capability> [--apply]\n"
         << "    nexus image <profile>\n"
         << "    nexus plan <capability>\n"
         << "    nexus remove <component>\n"
@@ -627,6 +630,181 @@ int commandImage(
 
         return 1;
     }
+
+    return 0;
+}
+
+// Check a plan against the package manager's own engine, without
+// changing anything.
+//
+// Resolution being correct and installation succeeding are different
+// claims. Nexus can prove the first from metadata; only the thing
+// that actually installs packages can speak to the second. apt will
+// say what it would do without doing it, so the plan can be checked
+// against the tool that would carry it out.
+//
+// Every other correctness question in this project was settled by
+// comparing against a native tool rather than by another assertion.
+// This is that, applied to the one part metadata cannot answer.
+int commandInstall(
+    const nexus::AliasTable& aliases,
+    const std::vector<Component>& universe,
+    const std::vector<Component>& installed,
+    const std::string& capability,
+    const std::string& architecture,
+    bool useRpm,
+    bool apply
+) {
+    nexus::SolverRequest request;
+
+    request.architecture = architecture;
+    request.requirements.push_back(
+        aliases.expand(nexus::Requirement(nexus::Constraint(capability)))
+    );
+
+    const auto solution = buildSolver(universe).solve(request);
+
+    if (solution.status != nexus::SolverStatus::Success) {
+        std::cout
+            << "Cannot be resolved: " << solution.reason << "\n";
+
+        if (!solution.blockedOn.empty()) {
+            std::cout
+                << "\nNothing available provides:\n    "
+                << solution.blockedOn << "\n";
+        }
+
+        return 1;
+    }
+
+    std::set<std::string> here;
+
+    for (const Component& component : installed) {
+        here.insert(component.name() + ":" + component.architecture());
+    }
+
+    std::set<std::string> expected;
+    std::string requested;
+
+    for (const std::string& id : solution.selected) {
+        for (const Component& component : universe) {
+            if (component.id() != id) {
+                continue;
+            }
+
+            if (requested.empty()) {
+                requested = component.name();
+            }
+
+            if (here.count(component.name() + ":" +
+                           component.architecture()) == 0) {
+                expected.insert(component.name());
+            }
+
+            break;
+        }
+    }
+
+    std::cout
+        << "Request:   " << capability << "\n"
+        << "Resolves:  " << requested << "\n"
+        << "New:       " << expected.size() << " component(s)\n";
+
+    if (useRpm) {
+        std::cout
+            << "\nPlans are only checked against apt so far, so this "
+            << "one\ncannot be verified and will not be applied.\n";
+        return 1;
+    }
+
+    const auto check =
+        nexus::system::checkPlanWithApt(requested, expected);
+
+    switch (check.agreement) {
+        case nexus::system::PlanAgreement::Agrees:
+            std::cout
+                << "Verified:  apt would do the same thing.\n";
+            break;
+
+        case nexus::system::PlanAgreement::Unavailable:
+            std::cout
+                << "\napt could not be asked, so this plan is "
+                << "unverified.\n";
+            break;
+
+        case nexus::system::PlanAgreement::Refused:
+            std::cout << "\napt refuses this plan:\n";
+
+            for (const std::string& message : check.refusal) {
+                std::cout << "    " << message << "\n";
+            }
+
+            std::cout
+                << "\nNexus resolved it from metadata, which does "
+                << "not describe\nrepository restrictions, holds or "
+                << "pins. apt knows those.\n";
+            break;
+
+        case nexus::system::PlanAgreement::Differs: {
+            std::cout
+                << "apt would install: " << check.theirs.size()
+                << "\n\nThe plans differ.\n";
+
+            const auto show =
+                [](const std::string& title,
+                   const std::vector<std::string>& names) {
+                    if (names.empty()) {
+                        return;
+                    }
+
+                    std::cout << "\n" << title << ":\n";
+
+                    std::size_t shown = 0;
+
+                    for (const std::string& name : names) {
+                        std::cout << "    " << name << "\n";
+
+                        if (++shown >= 10) {
+                            std::cout
+                                << "    ... and "
+                                << (names.size() - shown) << " more\n";
+                            break;
+                        }
+                    }
+                };
+
+            show("Nexus expects, apt does not", check.onlyOurs);
+            show("apt expects, Nexus does not", check.onlyTheirs);
+
+            std::cout
+                << "\nA difference is not automatically a fault: apt "
+                << "applies\npolicy Nexus does not model.\n";
+            break;
+        }
+    }
+
+    if (!apply) {
+        std::cout
+            << "\nNothing has been changed. Use --apply to install.\n";
+
+        return check.agreement == nexus::system::PlanAgreement::Agrees
+            ? 0
+            : 1;
+    }
+
+    // The interlock. A plan the package manager will not agree to is
+    // not applied, whatever Nexus thinks of it.
+    if (!check.safeToApply()) {
+        std::cout
+            << "\nRefusing to apply an unverified plan.\n"
+            << "Nothing has been changed.\n";
+
+        return 1;
+    }
+
+    std::cout
+        << "\nApplying is not implemented yet. The plan is verified "
+        << "and\nwould be safe to apply.\n";
 
     return 0;
 }
@@ -1384,12 +1562,18 @@ int main(int argc, char** argv) {
     bool forceDpkg = false;
     bool withAvailable = false;
     bool explain = false;
+    bool apply = false;
     std::vector<std::string> positional;
 
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         if (arguments[index] == "--status" && index + 1 < arguments.size()) {
             statusPath = arguments[index + 1];
             index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--apply") {
+            apply = true;
             continue;
         }
 
@@ -1746,6 +1930,17 @@ int main(int argc, char** argv) {
 
             return commandImage(
                 aliases, universe, argument, profileDir, arch);
+        }
+
+        if (command == "install") {
+            if (argument.empty()) {
+                std::cerr << "install requires a capability name.\n";
+                return 2;
+            }
+
+            return commandInstall(
+                aliases, universe, installed, argument, arch,
+                preferRpm, apply);
         }
 
         if (command == "options") {

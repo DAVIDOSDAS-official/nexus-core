@@ -186,6 +186,48 @@ SolverResult Solver::solve(const SolverRequest& request) const {
             return false;
         };
 
+    // Two builds of a Multi-Arch: same package must be at exactly the
+    // same version to coexist.
+    //
+    // They share files -- documentation, translations, anything in
+    // /usr/share is byte-identical between builds, which is what lets
+    // both own the same paths. Different versions would ship different
+    // content for one path, so dpkg refuses rather than letting one
+    // silently overwrite the other.
+    //
+    // Without this, two builds resolve independently, each is
+    // satisfiable, and together they are impossible. That produced a
+    // thirteen-component Steam plan that apt refused outright.
+    const auto lockstepBreach =
+        [&](const Component& candidate) -> std::string {
+            if (candidate.multiArch() != MultiArch::Same) {
+                return "";
+            }
+
+            for (std::size_t position : state.selected) {
+                const Component& chosen = components_[position];
+
+                if (chosen.name() != candidate.name()) {
+                    continue;
+                }
+
+                if (chosen.multiArch() != MultiArch::Same) {
+                    continue;
+                }
+
+                if (chosen.version() == candidate.version()) {
+                    continue;
+                }
+
+                return candidate.id() + " is " + candidate.version() +
+                       " but " + chosen.id() + " is " +
+                       chosen.version() + ". Multi-Arch: same builds "
+                       "share files and must be the same version.";
+            }
+
+            return "";
+        };
+
     // Would choosing this collide with anything already chosen, in
     // either direction? Looked up by name rather than scanned.
     const auto collidesWithSelection =
@@ -523,8 +565,15 @@ SolverResult Solver::solve(const SolverRequest& request) const {
                 break;
             }
 
-            const std::string collision =
-                collidesWithSelection(*candidate.component);
+            // Lockstep first: it explains the failure precisely,
+            // where a generic collision message would not.
+            std::string collision =
+                lockstepBreach(*candidate.component);
+
+            if (collision.empty()) {
+                collision =
+                    collidesWithSelection(*candidate.component);
+            }
 
             if (!collision.empty()) {
                 if (blockedOn.empty()) {
