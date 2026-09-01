@@ -10,6 +10,7 @@ add_library(nexus_core
     src/transaction.cpp
     src/options.cpp
     src/alias.cpp
+    src/diagnosis.cpp
     src/conflict_detector.cpp
     src/capability.cpp
     src/resolver.cpp

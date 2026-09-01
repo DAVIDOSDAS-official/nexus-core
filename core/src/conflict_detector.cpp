@@ -117,6 +117,16 @@ std::vector<Conflict> ConflictDetector::detect(
                     continue;
                 }
 
+                // Two builds of one package are not two packages.
+                // A Multi-Arch: same library declares a conflict
+                // against its own name to exclude older versions of
+                // itself, and the other architecture's build matches
+                // it -- while being precisely the thing multi-arch
+                // exists to allow alongside.
+                if (other.name() == declaring.name()) {
+                    continue;
+                }
+
                 if (!matches(other, constraint)) {
                     continue;
                 }
@@ -146,7 +156,8 @@ std::vector<Conflict> ConflictDetector::check(
     // The candidate conflicting with something already installed.
     for (const Constraint& constraint : candidate.conflicts()) {
         for (const Component& other : installed) {
-            if (other.id() == candidate.id()) {
+            if (other.id() == candidate.id() ||
+                other.name() == candidate.name()) {
                 continue;
             }
 
@@ -167,7 +178,8 @@ std::vector<Conflict> ConflictDetector::check(
 
     // Something already installed conflicting with the candidate.
     for (const Component& other : installed) {
-        if (other.id() == candidate.id()) {
+        if (other.id() == candidate.id() ||
+            other.name() == candidate.name()) {
             continue;
         }
 

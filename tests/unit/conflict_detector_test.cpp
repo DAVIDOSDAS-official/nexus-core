@@ -201,3 +201,37 @@ TEST(ConflictDetectorTest, ReasonNamesBothComponents) {
     EXPECT_NE(conflicts[0].reason.find("exim4"), std::string::npos);
     EXPECT_NE(conflicts[0].reason.find("postfix"), std::string::npos);
 }
+
+// Two builds of one package are not two packages. A Multi-Arch: same
+// library declares a conflict against its own name to exclude older
+// versions of itself, and the other architecture's build matches it --
+// while being exactly what multi-arch exists to allow alongside.
+TEST(ConflictDetectorTest, APackageDoesNotConflictWithItsOtherBuild) {
+    Component amd64("libjack:amd64", "libjack", "1.9",
+                    ComponentType::Library);
+    amd64.setArchitecture("amd64");
+    amd64.setMultiArch(nexus::MultiArch::Same);
+    amd64.addProvidedCapability(nexus::Capability("libjack"));
+    amd64.addConflict(Constraint("libjack"));
+
+    Component i386("libjack:i386", "libjack", "1.9",
+                   ComponentType::Library);
+    i386.setArchitecture("i386");
+    i386.setMultiArch(nexus::MultiArch::Same);
+    i386.addProvidedCapability(nexus::Capability("libjack"));
+    i386.addConflict(Constraint("libjack"));
+
+    EXPECT_TRUE(debianDetector().detect({amd64, i386}).empty());
+    EXPECT_TRUE(debianDetector().check(amd64, {i386}).empty());
+}
+
+// A genuine conflict between different packages still stands.
+TEST(ConflictDetectorTest, DifferentPackagesStillConflict) {
+    Component exim = make("exim4", "4.97");
+    exim.addConflict(Constraint("postfix"));
+
+    EXPECT_EQ(
+        debianDetector().detect({exim, make("postfix", "3.8")}).size(),
+        1u
+    );
+}

@@ -12,6 +12,7 @@
 #include <nexus/conflict_detector.hpp>
 #include <nexus/profile_check.hpp>
 #include <nexus/alias.hpp>
+#include <nexus/diagnosis.hpp>
 #include <nexus/options.hpp>
 #include <nexus/system/alias_file.hpp>
 #include <nexus/removal.hpp>
@@ -49,6 +50,7 @@ void printUsage() {
         << "    nexus image <profile>\n"
         << "    nexus plan <capability>\n"
         << "    nexus remove <component>\n"
+        << "    nexus doctor\n"
         << "    nexus hardware\n"
         << "    nexus profile list\n"
         << "    nexus profile show <name>\n"
@@ -902,6 +904,163 @@ int commandRemove(
     return 0;
 }
 
+int commandDoctor(
+    const SourceSummary& source,
+    const std::vector<Component>& installed,
+    const nexus::hardware::HardwareInfo& hardware,
+    const std::set<std::string>& roots,
+    bool havePackages
+) {
+    std::vector<nexus::Finding> findings;
+
+    // Whether the system can be examined at all comes first: every
+    // finding below is worthless if this one failed.
+    nexus::Finding source_;
+
+    source_.check = "Package database";
+
+    if (havePackages) {
+        source_.health = nexus::Health::Ok;
+        source_.detail =
+            std::to_string(source.components.size()) +
+            " components read from " + source.name + ".";
+    } else {
+        source_.health = nexus::Health::Problem;
+        source_.detail = "No package database could be read.";
+        source_.suggestion = "nexus scan";
+    }
+
+    findings.push_back(std::move(source_));
+
+    nexus::Finding metal;
+
+    metal.check = "Hardware";
+
+    if (hardware.unreadable.empty()) {
+        metal.health = nexus::Health::Ok;
+        metal.detail =
+            std::to_string(hardware.capabilities().size()) +
+            " capabilities detected.";
+    } else {
+        // Unreadable is not broken. A container has no EFI variables
+        // and that is correct, not a fault.
+        metal.health = nexus::Health::Warning;
+        metal.detail =
+            std::to_string(hardware.unreadable.size()) +
+            " thing(s) could not be read.";
+        metal.examples = hardware.unreadable;
+        metal.total = hardware.unreadable.size();
+        metal.suggestion = "nexus hardware";
+    }
+
+    findings.push_back(std::move(metal));
+
+    if (havePackages) {
+        const auto detail = nexus::diagnose(
+            installed, roots,
+            nexus::ConflictDetector(versionComparator()));
+
+        for (const nexus::Finding& finding : detail.findings) {
+            findings.push_back(finding);
+        }
+    }
+
+    if (!source.gaps.empty()) {
+        nexus::Finding gaps;
+
+        gaps.check = "Model";
+        gaps.health = nexus::Health::Warning;
+
+        std::size_t total = 0;
+
+        for (const auto& [kind, count] : source.gaps) {
+            total += count;
+            gaps.examples.push_back(
+                kind + " (" + std::to_string(count) + ")");
+        }
+
+        gaps.total = total;
+        gaps.detail =
+            std::to_string(total) +
+            " thing(s) in the metadata the model does not represent.";
+        gaps.suggestion = "nexus gaps";
+
+        findings.push_back(std::move(gaps));
+    }
+
+    nexus::Health worst = nexus::Health::Ok;
+
+    for (const nexus::Finding& finding : findings) {
+        if (finding.health == nexus::Health::Problem) {
+            worst = nexus::Health::Problem;
+        } else if (finding.health == nexus::Health::Warning &&
+                   worst == nexus::Health::Ok) {
+            worst = nexus::Health::Warning;
+        }
+    }
+
+    for (const nexus::Finding& finding : findings) {
+        std::string mark;
+
+        switch (finding.health) {
+            case nexus::Health::Ok:      mark = " ok "; break;
+            case nexus::Health::Warning: mark = "warn"; break;
+            case nexus::Health::Problem: mark = "FAIL"; break;
+            case nexus::Health::Unknown: mark = " ?  "; break;
+        }
+
+        std::string name = finding.check;
+
+        while (name.size() < 18) {
+            name.push_back(' ');
+        }
+
+        std::cout
+            << "  [" << mark << "]  " << name
+            << finding.detail << "\n";
+
+        for (const std::string& example : finding.examples) {
+            std::cout << "              " << example << "\n";
+        }
+
+        if (finding.total > finding.examples.size()) {
+            std::cout
+                << "              ... and "
+                << (finding.total - finding.examples.size())
+                << " more\n";
+        }
+
+        if (!finding.suggestion.empty()) {
+            std::cout
+                << "              try: " << finding.suggestion << "\n";
+        }
+    }
+
+    std::cout << "\n";
+
+    switch (worst) {
+        case nexus::Health::Ok:
+            std::cout << "Nothing wrong that can be seen from here.\n";
+            break;
+        case nexus::Health::Warning:
+            std::cout
+                << "Usable, with things worth looking at.\n";
+            break;
+        case nexus::Health::Problem:
+            std::cout
+                << "Something is wrong. The findings above say what.\n";
+            break;
+        case nexus::Health::Unknown:
+            std::cout << "Not enough information to judge.\n";
+            break;
+    }
+
+    std::cout
+        << "Nothing has been changed; this command only reports.\n";
+
+    return worst == nexus::Health::Problem ? 1 : 0;
+}
+
 int commandHardware(const nexus::hardware::HardwareInfo& info) {
     std::cout << "Graphics:\n";
 
@@ -1607,6 +1766,29 @@ int main(int argc, char** argv) {
 
             return commandRemove(
                 installed, argument, statesPath, arch);
+        }
+
+        if (command == "doctor") {
+            std::set<std::string> roots;
+
+            const auto automatic =
+                nexus::system::readAutoInstalled(statesPath);
+
+            for (const Component& component : installed) {
+                const std::string key =
+                    component.name() + ":" + component.architecture();
+
+                if (automatic.count(key) == 0) {
+                    roots.insert(component.id());
+                }
+            }
+
+            if (automatic.empty()) {
+                roots.clear();
+            }
+
+            return commandDoctor(
+                result, installed, hardware, roots, havePackages);
         }
 
         if (command == "hardware") {

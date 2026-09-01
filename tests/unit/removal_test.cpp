@@ -304,3 +304,43 @@ TEST(RemovalTest, HandlesADeepDependencyChain) {
     ASSERT_TRUE(plan.possible);
     EXPECT_EQ(plan.removed.size(), static_cast<std::size_t>(kDepth));
 }
+
+// Debian's Recommends means "you almost certainly want this", and apt
+// keeps such packages. Following only hard requirements made 381
+// deliberately-kept packages look abandoned on a machine where apt
+// considered 4 removable.
+TEST(RemovalTest, RecommendationsKeepAComponentAlive) {
+    Component desktop = make("desktop");
+
+    desktop.addRecommendedCapability(nexus::Capability("alsa-utils"));
+
+    const std::vector<Component> installed{
+        desktop,
+        make("alsa-utils"),
+        make("genuinely-orphaned")
+    };
+
+    const auto reachable = nexus::reachableFrom(
+        installed, {"desktop"}, debianDetector());
+
+    EXPECT_EQ(reachable.count("alsa-utils"), 1u);
+    EXPECT_EQ(reachable.count("genuinely-orphaned"), 0u);
+}
+
+TEST(RemovalTest, ARecommendedComponentIsNotProposedForRemoval) {
+    Component desktop = make("desktop");
+
+    desktop.addRecommendedCapability(nexus::Capability("helper"));
+
+    const std::vector<Component> installed{
+        desktop,
+        make("helper"),
+        make("target", {"helper"})
+    };
+
+    const RemovalPlan plan = planRemoval(
+        "target", installed, {"desktop", "target"}, debianDetector());
+
+    ASSERT_TRUE(plan.possible);
+    EXPECT_TRUE(plan.orphaned.empty());
+}

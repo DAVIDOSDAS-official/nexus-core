@@ -37,6 +37,12 @@ struct RemovalPlan {
 // choose and nothing to backtrack out of: a requirement is held up by
 // every installed component that satisfies it.
 //
+// Recommendations count as reasons to keep something. Debian's
+// Recommends means "you almost certainly want this", and apt keeps
+// such packages rather than removing them. Following only hard
+// requirements made 381 deliberately-kept packages look abandoned on
+// a machine where apt considered 4 removable.
+//
 // Where more than one installed component satisfies a requirement,
 // all of them are kept. That is the conservative direction: it can
 // leave something installed that could have gone, but it will never

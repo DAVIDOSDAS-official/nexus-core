@@ -93,22 +93,34 @@ std::set<std::string> reachableFrom(
 
         pending.pop_back();
 
+        const auto follow = [&](const Constraint& option) {
+            const auto entry = index.find(option.capability);
+
+            if (entry == index.end()) {
+                return;
+            }
+
+            for (std::size_t candidate : entry->second) {
+                if (detector.matches(installed[candidate], option)) {
+                    mark(candidate);
+                }
+            }
+        };
+
         for (const Requirement& requirement :
              installed[position].requirements()) {
 
             for (const Constraint& option : requirement.alternatives) {
-                const auto entry = index.find(option.capability);
-
-                if (entry == index.end()) {
-                    continue;
-                }
-
-                for (std::size_t candidate : entry->second) {
-                    if (detector.matches(installed[candidate], option)) {
-                        mark(candidate);
-                    }
-                }
+                follow(option);
             }
+        }
+
+        // Recommendations keep things alive too. Suggests do not:
+        // apt treats them as optional and so does this.
+        for (const Capability& recommended :
+             installed[position].recommendedCapabilities()) {
+
+            follow(Constraint(recommended.name()));
         }
     }
 

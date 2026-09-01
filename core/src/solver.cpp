@@ -199,6 +199,11 @@ SolverResult Solver::solve(const SolverRequest& request) const {
                 }
 
                 for (std::size_t position : entry->second) {
+                    if (components_[position].name() ==
+                        candidate.name()) {
+                        continue;
+                    }
+
                     if (detector_.matches(
                             components_[position], conflict)) {
 
@@ -228,6 +233,11 @@ SolverResult Solver::solve(const SolverRequest& request) const {
                 }
 
                 for (const auto& [position, conflict] : entry->second) {
+                    if (components_[position].name() ==
+                        candidate.name()) {
+                        continue;
+                    }
+
                     if (detector_.matches(candidate, *conflict)) {
                         return components_[position].id() +
                                " conflicts with " +
