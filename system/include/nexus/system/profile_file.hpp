@@ -20,6 +20,8 @@ namespace nexus::system {
 //     Prefers: audio=pipewire, display-server=wayland
 //     Prefers-When: gpu-vendor-nvidia -> nvidia-driver-libs
 //     Requires-Exactly: java=openjdk-21-jre
+//     Exclusive: yes
+//     Instead-Use: minimalism
 //
 // Parsing never throws on a malformed field; problems are collected
 // so the caller can report all of them at once.

@@ -338,3 +338,24 @@ TEST(ProfileCheckTest, ReportsPreferencesThatDidNotApply) {
         std::string::npos
     );
 }
+
+TEST(ProfileFileTest, ReadsExclusiveAndInsteadUse) {
+    const auto result = parse(
+        "Profile: minimal\n"
+        "Requires: terminal-emulator\n"
+        "Exclusive: yes\n"
+        "Instead-Use: minimalism\n"
+    );
+
+    ASSERT_EQ(result.profiles.size(), 1u);
+    EXPECT_TRUE(result.profiles[0].exclusive);
+    EXPECT_EQ(result.profiles[0].insteadUse, "minimalism");
+}
+
+TEST(ProfileFileTest, ProfilesAreCombinableByDefault) {
+    const auto result = parse(
+        "Profile: gaming\nRequires: steam\n");
+
+    ASSERT_EQ(result.profiles.size(), 1u);
+    EXPECT_FALSE(result.profiles[0].exclusive);
+}

@@ -601,6 +601,14 @@ void reportComposition(const nexus::Composition& composition) {
     std::cout << "\n";
 }
 
+// Note that this resolves against the archive alone, never against
+// what happens to be installed here.
+//
+// A generated list is a description of a machine that does not exist
+// yet, so what is on this one must not decide it -- otherwise two
+// people generating the same profile get different files, and a
+// profile called minimal picks up whatever desktop the generating
+// machine happened to run.
 int commandImage(
     const nexus::AliasTable& aliases,
     const std::vector<Component>& universe,
@@ -614,6 +622,11 @@ int commandImage(
     nexus::Composition composition;
 
     if (!findComposition(loaded.profiles, profileName, composition)) {
+        return 1;
+    }
+
+    if (composition.refused) {
+        std::cerr << composition.refusal << "\n";
         return 1;
     }
 
@@ -803,31 +816,31 @@ int commandInstall(
         << "Resolves:  " << requested << "\n"
         << "New:       " << expected.size() << " component(s)\n";
 
-    if (useRpm) {
-        std::cout
-            << "\nPlans are only checked against apt so far, so this "
-            << "one\ncannot be verified and will not be applied.\n";
-        return 1;
-    }
+    // The interlock is the same either way; only the tool asked
+    // differs.
+    const auto check = useRpm
+        ? nexus::system::checkPlanWithDnf(requested, expected)
+        : nexus::system::checkPlanWithApt(requested, expected);
 
-    const auto check =
-        nexus::system::checkPlanWithApt(requested, expected);
+    const std::string manager = useRpm ? "dnf" : "apt";
 
     switch (check.agreement) {
         case nexus::system::PlanAgreement::Agrees:
             std::cout
-                << "Verified:  apt would do the same thing.\n";
+                << "Verified:  " << manager
+                << " would do the same thing.\n";
             break;
 
         case nexus::system::PlanAgreement::Unavailable:
             std::cout
-                << "\napt could not be asked, so this plan is "
-                << "unverified.\nThat is not the same as apt "
-                << "objecting to it.\n";
+                << "\n" << manager << " could not be asked, so this "
+                << "plan is unverified.\nThat is not the same as "
+                << manager << " objecting to it.\n";
             break;
 
         case nexus::system::PlanAgreement::Refused:
-            std::cout << "\napt refuses this plan:\n";
+            std::cout
+                << "\n" << manager << " refuses this plan:\n";
 
             for (const std::string& message : check.refusal) {
                 std::cout << "    " << message << "\n";
@@ -836,12 +849,13 @@ int commandInstall(
             std::cout
                 << "\nNexus resolved it from metadata, which does "
                 << "not describe\nrepository restrictions, holds or "
-                << "pins. apt knows those.\n";
+                << "pins. " << manager << " knows those.\n";
             break;
 
         case nexus::system::PlanAgreement::Differs: {
             std::cout
-                << "apt would install: " << check.theirs.size()
+                << manager << " would install: "
+                << check.theirs.size()
                 << "\n\nThe plans differ.\n";
 
             const auto show =
@@ -867,12 +881,15 @@ int commandInstall(
                     }
                 };
 
-            show("Nexus expects, apt does not", check.onlyOurs);
-            show("apt expects, Nexus does not", check.onlyTheirs);
+            show("Nexus expects, " + manager + " does not",
+                 check.onlyOurs);
+            show(manager + " expects, Nexus does not",
+                 check.onlyTheirs);
 
             std::cout
-                << "\nA difference is not automatically a fault: apt "
-                << "applies\npolicy Nexus does not model.\n";
+                << "\nA difference is not automatically a fault: "
+                << manager << " applies\npolicy Nexus does not "
+                << "model.\n";
             break;
         }
     }
@@ -938,9 +955,11 @@ int commandInstall(
         }
     }
 
-    std::cout << "\nHanding the plan to apt.\n\n";
+    std::cout << "\nHanding the plan to " << manager << ".\n\n";
 
-    const auto applied = nexus::system::applyWithApt(requested);
+    const auto applied = useRpm
+        ? nexus::system::applyWithDnf(requested)
+        : nexus::system::applyWithApt(requested);
 
     for (const std::string& line : applied.output) {
         std::cout << line << "\n";
@@ -976,12 +995,13 @@ int commandInstall(
             return 1;
 
         case nexus::system::ApplyOutcome::Unavailable:
-            std::cout << "\napt is not available here.\n";
+            std::cout
+                << "\n" << manager << " is not available here.\n";
             return 1;
 
         default:
             std::cout
-                << "\napt did not complete (exit "
+                << "\n" << manager << " did not complete (exit "
                 << applied.exitCode << ").\n"
                 << "It manages its own recovery; the messages above "
                 << "are its own.\n";
@@ -1192,6 +1212,7 @@ int commandRemove(
     const std::set<std::string>& protectedIds,
     bool apply,
     bool assumeYes,
+    bool useRpm,
     const std::string& invocation
 ) {
     const auto automatic =
@@ -1298,9 +1319,13 @@ int commandRemove(
         }
     }
 
-    std::cout << "\nHanding the plan to apt.\n\n";
+    std::cout
+        << "\nHanding the plan to " << (useRpm ? "dnf" : "apt")
+        << ".\n\n";
 
-    const auto removed = nexus::system::removeWithApt(plan.removed);
+    const auto removed = useRpm
+        ? nexus::system::removeWithDnf(plan.removed)
+        : nexus::system::removeWithApt(plan.removed);
 
     for (const std::string& line : removed.output) {
         std::cout << line << "\n";
@@ -1333,7 +1358,8 @@ int commandRemove(
     }
 
     std::cout
-        << "\napt did not complete (exit " << removed.exitCode
+        << "\n" << (useRpm ? "dnf" : "apt")
+        << " did not complete (exit " << removed.exitCode
         << ").\nIt manages its own recovery; the messages above are "
         << "its own.\n";
 
@@ -1646,6 +1672,11 @@ int commandProfile(
     nexus::Composition composition;
 
     if (!findComposition(loaded.profiles, name, composition)) {
+        return 1;
+    }
+
+    if (composition.refused) {
+        std::cerr << composition.refusal << "\n";
         return 1;
     }
 
@@ -1988,11 +2019,18 @@ int main(int argc, char** argv) {
 
     const std::string command = positional[0];
 
-    // Installing something means installing something that is not
-    // here yet, which cannot be resolved from the installed set
-    // alone. Requiring the flag would only ever produce a confusing
-    // failure.
-    if (command == "install") {
+    // Both of these describe a machine other than this one, and
+    // neither can be answered from the installed set alone.
+    //
+    // Installing means installing something not here yet. Generating
+    // an image list means describing a machine that does not exist
+    // yet -- and resolving that against what happens to be on this
+    // one produced a "minimal" profile listing a full desktop's file
+    // manager, because that is what the generating machine ran.
+    //
+    // Making the archive optional here only ever produces a confusing
+    // failure or a quietly wrong answer.
+    if (command == "install" || command == "image") {
         withAvailable = true;
     }
     const std::string argument =
@@ -2146,6 +2184,10 @@ int main(int argc, char** argv) {
 
         std::vector<Component> universe = installed;
 
+        // Kept separate so that image generation can resolve against
+        // what exists rather than what is here.
+        std::vector<Component> availableOnly;
+
         bool haveAvailable = false;
 
         if (withAvailable && preferRpm) {
@@ -2159,6 +2201,8 @@ int main(int argc, char** argv) {
             }
 
             if (!available.components.empty()) {
+                availableOnly = available.components;
+
                 universe = nexus::system::mergeAvailable(
                     universe, available.components,
                     versionComparator());
@@ -2182,6 +2226,8 @@ int main(int argc, char** argv) {
             }
 
             if (!available.components.empty()) {
+                availableOnly = available.components;
+
                 universe = nexus::system::mergeAvailable(
                     universe, available.components,
                     versionComparator());
@@ -2256,8 +2302,17 @@ int main(int argc, char** argv) {
                 return 2;
             }
 
+            if (availableOnly.empty()) {
+                std::cerr
+                    << "No package archive could be read, so a "
+                    << "generated list would\ndescribe this machine "
+                    << "rather than the profile.\n";
+
+                return 1;
+            }
+
             return commandImage(
-                aliases, universe, argument, profileDir, arch);
+                aliases, availableOnly, argument, profileDir, arch);
         }
 
         if (command == "install") {
@@ -2308,7 +2363,7 @@ int main(int argc, char** argv) {
 
             return commandRemove(
                 installed, argument, statesPath, arch, protectedIds,
-                apply, assumeYes, invocation);
+                apply, assumeYes, preferRpm, invocation);
         }
 
         if (command == "history") {

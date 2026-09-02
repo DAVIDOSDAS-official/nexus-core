@@ -173,3 +173,45 @@ TEST(CompositionTest, ComposingNothingGivesAnEmptyProfile) {
     EXPECT_TRUE(composed.profile.requirements.empty());
     EXPECT_TRUE(composed.sources.empty());
 }
+
+// "The least that still works" plus anything else is not the least
+// that works. Combining it is a different request, not a smaller one.
+TEST(CompositionTest, AnExclusiveProfileRefusesToCombine) {
+    Profile minimal = profileOf("minimal", {"terminal-emulator"});
+
+    minimal.exclusive = true;
+    minimal.insteadUse = "minimalism";
+
+    const auto composed =
+        compose({minimal, profileOf("development", {"git"})});
+
+    EXPECT_TRUE(composed.refused);
+    EXPECT_NE(
+        composed.refusal.find("minimalism,development"),
+        std::string::npos);
+}
+
+// And it is refused, not quietly replaced. Substituting the thing
+// somebody asked for is the habit this project does not have.
+TEST(CompositionTest, ARefusedCompositionProducesNothing) {
+    Profile minimal = profileOf("minimal", {"terminal-emulator"});
+
+    minimal.exclusive = true;
+
+    const auto composed =
+        compose({minimal, profileOf("gaming", {"steam"})});
+
+    EXPECT_TRUE(composed.refused);
+    EXPECT_TRUE(composed.profile.requirements.empty());
+}
+
+TEST(CompositionTest, AnExclusiveProfileAloneIsFine) {
+    Profile minimal = profileOf("minimal", {"terminal-emulator"});
+
+    minimal.exclusive = true;
+
+    const auto composed = compose({minimal});
+
+    EXPECT_FALSE(composed.refused);
+    EXPECT_EQ(composed.profile.requirements.size(), 1u);
+}

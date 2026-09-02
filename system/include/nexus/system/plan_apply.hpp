@@ -50,6 +50,12 @@ ApplyResult removeWithApt(
     const std::vector<std::string>& packages
 );
 
+ApplyResult applyWithDnf(const std::string& requested);
+
+ApplyResult removeWithDnf(
+    const std::vector<std::string>& packages
+);
+
 bool haveRootPrivileges();
 
 std::string toString(ApplyOutcome outcome);

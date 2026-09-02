@@ -147,9 +147,9 @@ assert.
   0.4% of dependency clauses, and `nexus scan` reports the count.
 - **No rollback of its own.** On an image-based system the previous
   deployment provides it; on a traditional install it does not exist.
-- **Fedora writes are not implemented.** Plans are verified against
-  `apt` only, so `--apply` refuses on an rpm system rather than
-  proceeding unverified.
+- **Fedora writes are new.** `--apply` verifies against `dnf` and
+  hands the work to it, but that path has had far less use than the
+  `apt` one.
 
 ---
 

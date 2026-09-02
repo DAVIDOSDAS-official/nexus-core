@@ -14,6 +14,49 @@ Composition compose(
 
     composition.profile.name = name;
 
+    // A profile that describes the whole machine cannot be one
+    // ingredient among several.
+    if (profiles.size() > 1) {
+        for (const Profile& profile : profiles) {
+            if (!profile.exclusive) {
+                continue;
+            }
+
+            composition.refused = true;
+            composition.refusal =
+                profile.name + " describes a whole machine rather "
+                "than a set of things to add, so it cannot be "
+                "combined.";
+
+            if (!profile.insteadUse.empty()) {
+                std::string others;
+
+                for (const Profile& other : profiles) {
+                    if (other.name == profile.name) {
+                        continue;
+                    }
+
+                    if (!others.empty()) {
+                        others += ",";
+                    }
+
+                    others += other.name;
+                }
+
+                composition.refusal +=
+                    " Use " + profile.insteadUse;
+
+                if (!others.empty()) {
+                    composition.refusal += "," + others;
+                }
+
+                composition.refusal += " instead.";
+            }
+
+            return composition;
+        }
+    }
+
     std::vector<std::string> descriptions;
 
     // Written form -> which profile asked for it first.

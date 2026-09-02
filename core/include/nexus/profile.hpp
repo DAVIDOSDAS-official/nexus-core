@@ -35,6 +35,18 @@ struct Profile {
     // i386 for 32-bit game libraries.
     std::vector<std::string> additionalArchitectures;
 
+    // Some profiles are a statement about the whole machine rather
+    // than a set of things to add. "The least that still works" plus
+    // anything else is not the least that works, so combining it is
+    // not a smaller request -- it is a different one.
+    //
+    // Such a profile refuses to combine and names what to use
+    // instead. It does not quietly become that other profile:
+    // substituting the thing somebody asked for is the one habit this
+    // project does not have.
+    bool exclusive = false;
+    std::string insteadUse;
+
     std::vector<Requirement> requirements;
 
     // capability -> component id. A preference breaks a tie; it never

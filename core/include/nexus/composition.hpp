@@ -24,6 +24,12 @@ struct PreferenceClash {
 struct Composition {
     Profile profile;
 
+    // Set when a profile that refuses to combine was named alongside
+    // others. The composition is not valid; the message says why and
+    // what to use instead.
+    bool refused = false;
+    std::string refusal;
+
     std::vector<std::string> sources;
     std::vector<PreferenceClash> clashes;
 

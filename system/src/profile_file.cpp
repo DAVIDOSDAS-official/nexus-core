@@ -91,6 +91,8 @@ Profile fromStanza(
     profile.name = stanza.value("profile");
     profile.description = stanza.value("description");
     profile.architecture = stanza.value("architecture");
+    profile.exclusive = stanza.value("exclusive") == "yes";
+    profile.insteadUse = stanza.value("instead-use");
 
     if (profile.name.empty()) {
         problems.push_back("A profile stanza has no Profile: field");

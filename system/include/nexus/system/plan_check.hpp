@@ -48,4 +48,13 @@ PlanCheck checkPlanWithApt(
     const std::set<std::string>& expected
 );
 
+// The same question, asked of dnf.
+//
+// dnf's dry run reports what it would install in a table rather than
+// as "Inst" lines, so the parsing differs; the interlock does not.
+PlanCheck checkPlanWithDnf(
+    const std::string& requested,
+    const std::set<std::string>& expected
+);
+
 }
