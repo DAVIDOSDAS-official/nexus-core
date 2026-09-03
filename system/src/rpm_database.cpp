@@ -17,7 +17,8 @@ namespace {
 // One tab-separated record per line, tagged by kind, so a single rpm
 // invocation yields every package and all of its dependencies.
 const char* kFormat =
-    "PKG\\t%{NAME}\\t%{EPOCH}\\t%{VERSION}\\t%{RELEASE}\\t%{ARCH}\\n"
+    "PKG\\t%{NAME}\\t%{EPOCH}\\t%{VERSION}\\t%{RELEASE}\\t%{ARCH}"
+    "\\t%{SIZE}\\n"
     "[PRV\\t%{PROVIDENAME}\\t%{PROVIDEFLAGS:depflags}"
     "\\t%{PROVIDEVERSION}\\n]"
     "[REQ\\t%{REQUIRENAME}\\t%{REQUIREFLAGS:depflags}"
@@ -169,6 +170,12 @@ RpmDatabaseResult RpmDatabase::parse(const std::string& queryOutput) {
             component.setArchitecture(
                 normaliseRpmArchitecture(architecture)
             );
+
+            // Bytes, and it is the installed size: nothing is being
+            // downloaded for something already here.
+            component.setInstalledSize(
+                std::strtoull(
+                    field(fields, 6).c_str(), nullptr, 10));
 
             component.addProvidedCapability(Capability(name));
 

@@ -46,6 +46,22 @@ void Component::setId(std::string id) {
     id_ = std::move(id);
 }
 
+void Component::setDownloadSize(std::uint64_t bytes) {
+    downloadSize_ = bytes;
+}
+
+std::uint64_t Component::downloadSize() const {
+    return downloadSize_;
+}
+
+void Component::setInstalledSize(std::uint64_t bytes) {
+    installedSize_ = bytes;
+}
+
+std::uint64_t Component::installedSize() const {
+    return installedSize_;
+}
+
 void Component::setSource(Source source) {
     source_ = source;
 }

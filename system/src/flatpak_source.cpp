@@ -1,6 +1,7 @@
 #include <nexus/system/flatpak_source.hpp>
 
 #include <cstdio>
+#include <cctype>
 #include <cstdlib>
 #include <set>
 #include <sstream>
@@ -61,14 +62,32 @@ std::uint64_t parseHumanSize(const std::string& text) {
         return 0;
     }
 
-    // The unit follows a space: "196.9 MB".
-    const std::size_t space = text.rfind(' ');
+    // Find the unit rather than the separator between it and the
+    // number.
+    //
+    // Looking for a plain space assumes one, and glib formats sizes
+    // with a non-breaking space in some locales -- which left the
+    // unit unread, turned "196.9 MB" into 196 bytes, and printed
+    // every Flatpak as "0 kB to fetch". The unit is the alphabetic
+    // tail; whatever separates it does not matter.
+    std::size_t start = text.size();
 
-    if (space == std::string::npos) {
+    while (start > 0) {
+        const unsigned char character =
+            static_cast<unsigned char>(text[start - 1]);
+
+        if (std::isalpha(character) == 0) {
+            break;
+        }
+
+        start -= 1;
+    }
+
+    if (start >= text.size()) {
         return static_cast<std::uint64_t>(amount);
     }
 
-    const std::string unit = text.substr(space + 1);
+    const std::string unit = text.substr(start);
 
     // flatpak uses decimal units, and prints kB rather than KB.
     if (unit == "B") {
@@ -179,6 +198,10 @@ FlatpakSourceResult FlatpakSource::parse(
         component.setArchitecture(kArchitectureAll);
 
         component.addProvidedCapability(Capability(application));
+
+        if (fields.size() >= 4) {
+            component.setDownloadSize(parseHumanSize(fields[3]));
+        }
 
         result.components.push_back(std::move(component));
     }

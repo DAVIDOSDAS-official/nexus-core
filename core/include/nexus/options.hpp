@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,14 @@ struct Option {
 
     // Components it would add that are not already installed.
     std::size_t wouldAdd = 0;
+
+    // Bytes to fetch, and bytes on disk afterwards, counting only
+    // what is not already here. Zero means the metadata did not say,
+    // which stays distinguishable from zero bytes: a package with no
+    // recorded size must not look free.
+    std::uint64_t downloadBytes = 0;
+    std::uint64_t installBytes = 0;
+    bool sizeKnown = false;
 
     // Why it cannot be used, when it cannot.
     std::string blockedOn;

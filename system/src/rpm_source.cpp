@@ -1,5 +1,7 @@
 #include <nexus/system/rpm_source.hpp>
 
+#include <cstdint>
+#include <cstdlib>
 #include <utility>
 #include <vector>
 
@@ -134,6 +136,9 @@ RpmSourceResult parseRepodataPrimary(const std::string& document) {
     std::string version;
     std::string release;
 
+    std::uint64_t downloadSize = 0;
+    std::uint64_t installedSize = 0;
+
     std::string section;      // provides / requires / conflicts / ...
     std::vector<Entry> provides;
     std::vector<Entry> requires_;
@@ -172,6 +177,8 @@ RpmSourceResult parseRepodataPrimary(const std::string& document) {
         );
 
         component.setArchitecture(nativeArchitecture);
+        component.setDownloadSize(downloadSize);
+        component.setInstalledSize(installedSize);
 
         component.addProvidedCapability(Capability(name));
 
@@ -260,6 +267,8 @@ RpmSourceResult parseRepodataPrimary(const std::string& document) {
 
         name.clear();
         architecture.clear();
+        downloadSize = 0;
+        installedSize = 0;
         epoch.clear();
         version.clear();
         release.clear();
@@ -306,6 +315,18 @@ RpmSourceResult parseRepodataPrimary(const std::string& document) {
                 epoch = reader.attribute("epoch");
                 version = reader.attribute("ver");
                 release = reader.attribute("rel");
+                continue;
+            }
+
+            // Both attributes are bytes here, unlike Debian.
+            if (element == "size") {
+                downloadSize = std::strtoull(
+                    reader.attribute("package").c_str(), nullptr, 10);
+
+                installedSize = std::strtoull(
+                    reader.attribute("installed").c_str(),
+                    nullptr, 10);
+
                 continue;
             }
 

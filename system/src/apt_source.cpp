@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -117,6 +118,15 @@ Component fromStanza(const ControlStanza& stanza) {
     component.setArchitecture(architecture);
     component.setMultiArch(parseMultiArch(stanza.value("multi-arch")));
     component.addProvidedCapability(Capability(name));
+
+    // Size is bytes; Installed-Size is kibibytes. Mixing them up
+    // understates a package by a factor of a thousand.
+    component.setDownloadSize(
+        std::strtoull(stanza.value("size").c_str(), nullptr, 10));
+
+    component.setInstalledSize(
+        std::strtoull(
+            stanza.value("installed-size").c_str(), nullptr, 10) * 1024);
 
     for (const DependencyTerm& term :
          parseProvidesField(stanza.value("provides"))) {
@@ -289,7 +299,8 @@ AptSourceResult AptSource::load() const {
 
         static const std::set<std::string> wanted{
             "package", "version", "architecture", "multi-arch",
-            "section", "provides", "depends", "pre-depends",
+            "section", "size", "installed-size",
+            "provides", "depends", "pre-depends",
             "recommends", "conflicts", "breaks"
         };
 

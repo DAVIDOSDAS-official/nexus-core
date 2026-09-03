@@ -100,3 +100,21 @@ TEST(FlatpakTest, HandlesEmptyOutput) {
     EXPECT_TRUE(result.components.empty());
     EXPECT_EQ(result.remoteApps, 0u);
 }
+
+// Looking for a plain space assumes one. glib formats sizes with a
+// non-breaking space in some locales, which left the unit unread and
+// printed every Flatpak as "0 kB to fetch" -- a wrong number that
+// looked like a formatting choice.
+TEST(FlatpakTest, TheUnitIsFoundWhateverSeparatesIt) {
+    // U+00A0, as UTF-8.
+    const std::string nbsp = "\xc2\xa0";
+
+    EXPECT_EQ(parseHumanSize("196.9" + nbsp + "MB"), 196900000u);
+    EXPECT_EQ(parseHumanSize("532.0" + nbsp + "kB"), 532000u);
+
+    // And no separator at all.
+    EXPECT_EQ(parseHumanSize("15.6MB"), 15600000u);
+
+    // A bare number is bytes.
+    EXPECT_EQ(parseHumanSize("206358937"), 206358937u);
+}

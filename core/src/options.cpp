@@ -94,19 +94,34 @@ OptionsReport findOptions(
             for (const std::string& id : result.selected) {
                 // result.selected holds ids; map back through the
                 // universe to compare identities.
-                bool present = false;
+                const Component* found = nullptr;
 
                 for (const Component& other : universe) {
-                    if (other.id() != id) {
-                        continue;
+                    if (other.id() == id) {
+                        found = &other;
+                        break;
                     }
-
-                    present = installedIds.count(identityOf(other)) > 0;
-                    break;
                 }
 
-                if (!present) {
-                    option.wouldAdd += 1;
+                if (found == nullptr) {
+                    continue;
+                }
+
+                if (installedIds.count(identityOf(*found)) > 0) {
+                    continue;
+                }
+
+                option.wouldAdd += 1;
+
+                // Only what would actually be fetched counts.
+                if (found->downloadSize() > 0) {
+                    option.downloadBytes += found->downloadSize();
+                    option.sizeKnown = true;
+                }
+
+                if (found->installedSize() > 0) {
+                    option.installBytes += found->installedSize();
+                    option.sizeKnown = true;
                 }
             }
         } else {

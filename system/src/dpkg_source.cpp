@@ -1,5 +1,6 @@
 #include <nexus/system/dpkg_source.hpp>
 
+#include <cstdlib>
 #include <map>
 #include <string>
 #include <utility>
@@ -78,6 +79,12 @@ DpkgSourceResult DpkgSource::loadFromStanzas(
         );
 
         component.setArchitecture(architecture);
+
+        // Kibibytes in the status file.
+        component.setInstalledSize(
+            std::strtoull(
+                stanza.value("installed-size").c_str(),
+                nullptr, 10) * 1024);
         component.setMultiArch(
             parseMultiArch(stanza.value("multi-arch"))
         );

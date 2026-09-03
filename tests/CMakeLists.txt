@@ -24,6 +24,7 @@ add_executable(component_test
     unit/composition_test.cpp
     unit/source_test.cpp
     unit/flatpak_test.cpp
+    unit/size_test.cpp
     unit/protection_test.cpp
     unit/transaction_log_test.cpp
     unit/rpm_version_test.cpp

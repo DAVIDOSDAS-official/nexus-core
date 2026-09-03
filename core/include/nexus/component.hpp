@@ -7,6 +7,8 @@
 #include <nexus/architecture.hpp>
 #include <nexus/constraint.hpp>
 #include <nexus/requirement.hpp>
+#include <cstdint>
+
 #include <nexus/source.hpp>
 
 namespace nexus {
@@ -81,6 +83,23 @@ public:
     // Where this came from. Defaults to the distribution's own
     // repositories, which is where everything came from until there
     // was more than one place for it to come from.
+    // Bytes, always. Zero means unknown, which is different from
+    // zero bytes and has to stay distinguishable: metadata does not
+    // always carry a size, and reporting a missing one as nothing
+    // would make a package look free.
+    //
+    // Debian states Installed-Size in kibibytes and Size in bytes;
+    // rpm states both in bytes; flatpak prints "196.9 MB". The
+    // conversion belongs in the reader, so that everything past this
+    // point is comparing the same unit.
+    void setDownloadSize(std::uint64_t bytes);
+
+    std::uint64_t downloadSize() const;
+
+    void setInstalledSize(std::uint64_t bytes);
+
+    std::uint64_t installedSize() const;
+
     void setSource(Source source);
 
     Source source() const;
@@ -112,6 +131,8 @@ private:
     std::string architecture_ = kArchitectureAll;
     MultiArch multiArch_ = MultiArch::No;
     Source source_ = Source::Base;
+    std::uint64_t downloadSize_ = 0;
+    std::uint64_t installedSize_ = 0;
     std::vector<Requirement> recommends_;
     std::vector<Constraint> conflicts_;
 };

@@ -1073,7 +1073,38 @@ int commandOptions(
             std::cout
                 << "      " << option.componentCount
                 << " components, " << option.wouldAdd
-                << " of them new\n";
+                << " of them new";
+
+            // Counts and bytes are different questions, and one
+            // Flatpak is not cheaper than forty packages just
+            // because it is one thing. Both are stated; neither is
+            // folded into the other.
+            if (option.sizeKnown) {
+                std::cout << " (";
+
+                if (option.downloadBytes > 0) {
+                    std::cout
+                        << nexus::system::formatSize(
+                               option.downloadBytes)
+                        << " to fetch";
+                }
+
+                if (option.downloadBytes > 0 &&
+                    option.installBytes > 0) {
+                    std::cout << ", ";
+                }
+
+                if (option.installBytes > 0) {
+                    std::cout
+                        << nexus::system::formatSize(
+                               option.installBytes)
+                        << " on disk";
+                }
+
+                std::cout << ")";
+            }
+
+            std::cout << "\n";
         }
 
         if (!option.conflictsWith.empty()) {
