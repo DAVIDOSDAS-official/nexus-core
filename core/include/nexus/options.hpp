@@ -14,6 +14,7 @@ struct Option {
     std::string component;
     std::string version;
     std::string architecture;
+    Source source = Source::Base;
 
     // Already on this machine.
     bool installed = false;

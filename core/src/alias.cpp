@@ -12,6 +12,26 @@ void AliasTable::add(
     aliases_[capability] = std::move(alternatives);
 }
 
+void AliasTable::merge(const AliasTable& other) {
+    for (const auto& [capability, alternatives] : other.aliases_) {
+        std::vector<Constraint>& present = aliases_[capability];
+
+        for (const Constraint& option : alternatives) {
+            const bool already = std::any_of(
+                present.begin(),
+                present.end(),
+                [&option](const Constraint& existing) {
+                    return existing.capability == option.capability;
+                }
+            );
+
+            if (!already) {
+                present.push_back(option);
+            }
+        }
+    }
+}
+
 bool AliasTable::knows(const std::string& capability) const {
     return aliases_.count(capability) > 0;
 }

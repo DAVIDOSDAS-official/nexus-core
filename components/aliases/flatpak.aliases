@@ -1,0 +1,52 @@
+# What Flatpak calls the things profiles ask for.
+#
+# Application ids are reverse-DNS, so this is a third vocabulary
+# alongside dpkg and rpm rather than a third mechanism. It is loaded
+# in addition to the ecosystem's own table, not instead of it, so a
+# capability can be met from the base repositories or from Flatpak and
+# both appear as options.
+
+Capability: web-browser
+Resolves-To: org.mozilla.firefox | com.google.Chrome | org.chromium.Chromium
+
+Capability: word-processor
+Resolves-To: org.libreoffice.LibreOffice | org.onlyoffice.desktopeditors
+
+Capability: spreadsheet
+Resolves-To: org.libreoffice.LibreOffice | org.onlyoffice.desktopeditors
+
+Capability: image-viewer
+Resolves-To: org.gnome.Loupe | org.kde.gwenview
+
+Capability: image-editor
+Resolves-To: org.gimp.GIMP | org.kde.krita | com.github.PhotoFlare.photoflare
+
+Capability: video-editor
+Resolves-To: org.kde.kdenlive | org.shotcut.Shotcut | fr.natron.Natron
+
+Capability: video-player
+Resolves-To: org.videolan.VLC | io.mpv.Mpv | org.gnome.Totem
+
+Capability: audio-editor
+Resolves-To: org.audacityteam.Audacity | org.ardour.Ardour
+
+Capability: text-editor
+Resolves-To: org.gnome.TextEditor | org.kde.kate | com.vscodium.codium
+
+Capability: code-editor
+Resolves-To: com.vscodium.codium | org.kde.kdevelop | com.jetbrains.CLion
+
+Capability: chat-client
+Resolves-To: com.discordapp.Discord | org.telegram.desktop | im.riot.Riot
+
+Capability: steam
+Resolves-To: com.valvesoftware.Steam
+
+Capability: document-viewer
+Resolves-To: org.gnome.Evince | org.kde.okular
+
+Capability: archive-manager
+Resolves-To: org.gnome.FileRoller | org.kde.ark
+
+Capability: password-manager
+Resolves-To: org.keepassxc.KeePassXC | app.authpass.AuthPass

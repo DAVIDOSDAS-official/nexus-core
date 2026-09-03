@@ -46,6 +46,14 @@ void Component::setId(std::string id) {
     id_ = std::move(id);
 }
 
+void Component::setSource(Source source) {
+    source_ = source;
+}
+
+Source Component::source() const {
+    return source_;
+}
+
 void Component::setArchitecture(std::string architecture) {
     architecture_ = std::move(architecture);
 }

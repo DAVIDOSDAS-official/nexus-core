@@ -7,6 +7,7 @@
 #include <nexus/architecture.hpp>
 #include <nexus/constraint.hpp>
 #include <nexus/requirement.hpp>
+#include <nexus/source.hpp>
 
 namespace nexus {
 
@@ -77,6 +78,13 @@ public:
     // combined.
     void setId(std::string id);
 
+    // Where this came from. Defaults to the distribution's own
+    // repositories, which is where everything came from until there
+    // was more than one place for it to come from.
+    void setSource(Source source);
+
+    Source source() const;
+
     void setArchitecture(std::string architecture);
 
     const std::string& architecture() const;
@@ -103,6 +111,7 @@ private:
     std::vector<Requirement> requirements_;
     std::string architecture_ = kArchitectureAll;
     MultiArch multiArch_ = MultiArch::No;
+    Source source_ = Source::Base;
     std::vector<Requirement> recommends_;
     std::vector<Constraint> conflicts_;
 };

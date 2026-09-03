@@ -69,6 +69,7 @@ OptionsReport findOptions(
         option.component = component.id();
         option.version = component.version();
         option.architecture = component.architecture();
+        option.source = component.source();
         option.installed =
             installedIds.count(identityOf(component)) > 0;
 

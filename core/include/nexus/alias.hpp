@@ -31,6 +31,12 @@ public:
 
     bool knows(const std::string& capability) const;
 
+    // Add another table's entries to this one. Where both name a
+    // capability, the alternatives are appended rather than replaced:
+    // a capability offered by both the base repositories and Flatpak
+    // has options from both, and the existing ones stay first.
+    void merge(const AliasTable& other);
+
     // The requirement with any aliased capability expanded in place.
     Requirement expand(const Requirement& requirement) const;
 

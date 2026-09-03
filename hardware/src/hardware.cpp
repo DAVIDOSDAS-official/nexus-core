@@ -344,6 +344,7 @@ Component asComponent(const HardwareInfo& info) {
     // Arch independent: it describes the machine rather than running
     // on any particular architecture.
     component.setArchitecture(kArchitectureAll);
+    component.setSource(Source::Detected);
 
     for (const std::string& name : info.capabilities()) {
         component.addProvidedCapability(Capability(name));

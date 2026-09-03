@@ -240,3 +240,38 @@ TEST(AliasTest, GeneratedListsUseNamesNotQualifiedIds) {
     EXPECT_NE(qualified.id(), qualified.name());
     EXPECT_EQ(qualified.name(), "kate");
 }
+
+// A capability offered by both the base repositories and Flatpak has
+// options from both, and the existing ones stay first.
+TEST(AliasTest, MergingKeepsBothVocabularies) {
+    AliasTable base = parse(
+        "Capability: video-editor\nResolves-To: kdenlive | shotcut\n");
+
+    const AliasTable flatpak = parse(
+        "Capability: video-editor\n"
+        "Resolves-To: org.kde.kdenlive | org.shotcut.Shotcut\n");
+
+    base.merge(flatpak);
+
+    const auto names = namesOf(
+        base.expand(Requirement(Constraint("video-editor"))));
+
+    ASSERT_EQ(names.size(), 5u);
+    EXPECT_EQ(names[0], "video-editor");
+    EXPECT_EQ(names[1], "kdenlive");
+    EXPECT_EQ(names[3], "org.kde.kdenlive");
+}
+
+TEST(AliasTest, MergingDoesNotDuplicate) {
+    AliasTable first = parse(
+        "Capability: a\nResolves-To: shared | one\n");
+
+    const AliasTable second = parse(
+        "Capability: a\nResolves-To: shared | two\n");
+
+    first.merge(second);
+
+    EXPECT_EQ(
+        namesOf(first.expand(Requirement(Constraint("a")))).size(),
+        4u);
+}

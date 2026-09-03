@@ -22,8 +22,10 @@
 #include <nexus/transaction.hpp>
 #include <nexus/system/auto_installed.hpp>
 #include <nexus/solver.hpp>
+#include <nexus/hardware/encryption.hpp>
 #include <nexus/hardware/hardware.hpp>
 #include <nexus/system/apt_source.hpp>
+#include <nexus/system/flatpak_source.hpp>
 #include <nexus/system/rpm_database.hpp>
 #include <nexus/system/plan_apply.hpp>
 #include <nexus/system/transaction_log.hpp>
@@ -72,6 +74,7 @@ void printUsage() {
         << "    --profiles <dir>  profile directory\n"
         << "    --arch <arch>     target architecture\n"
         << "    --with-available  also read available packages\n"
+        << "    --with-flatpak    also offer Flatpak applications\n"
         << "    --rpm | --dpkg    force a package ecosystem\n"
         << "    --rpm-root <dir>  inspect an rpm root elsewhere\n"
         << "    --explain         reason for every component, not just choices\n"
@@ -1046,7 +1049,17 @@ int commandOptions(
             std::cout << "   [installed]";
         }
 
+        // Only worth saying when it is not the ordinary case.
+        if (option.source != nexus::Source::Base) {
+            std::cout << "   (" << toString(option.source) << ")";
+        }
+
         std::cout << "\n";
+
+        if (option.source != nexus::Source::Base) {
+            std::cout
+                << "      " << describe(option.source) << "\n";
+        }
 
         if (!option.workable) {
             std::cout
@@ -1426,6 +1439,7 @@ int commandDoctor(
     const SourceSummary& source,
     const std::vector<Component>& installed,
     const nexus::hardware::HardwareInfo& hardware,
+    const nexus::hardware::EncryptionReport& encryption,
     const std::set<std::string>& roots,
     bool havePackages,
     const std::set<std::string>& protectedIds
@@ -1473,6 +1487,64 @@ int commandDoctor(
     }
 
     findings.push_back(std::move(metal));
+
+    // What is protected when the machine is off. Full-disk encryption
+    // does nothing while it is running and nothing against root, so
+    // the finding says what it covers rather than declaring the
+    // system encrypted.
+    nexus::Finding locked;
+
+    locked.check = "Encryption";
+
+    if (!encryption.unreadable.empty()) {
+        locked.health = nexus::Health::Unknown;
+        locked.detail = "Could not be determined.";
+        locked.examples = encryption.unreadable;
+        locked.total = encryption.unreadable.size();
+    } else if (encryption.root != nexus::hardware::Encrypted::Yes) {
+        locked.health = nexus::Health::Warning;
+        locked.detail =
+            "The root filesystem is not encrypted; anyone with the "
+            "disk can read it.";
+    } else if (encryption.swapLeaksMemory()) {
+        // The gap almost nobody notices.
+        locked.health = nexus::Health::Warning;
+        locked.detail =
+            "Root is encrypted, swap is not.";
+        locked.examples.push_back(
+            "swap holds memory contents in plain text on disk");
+        locked.total = 1;
+    } else {
+        locked.health = nexus::Health::Ok;
+
+        locked.detail = "Root";
+
+        if (encryption.homeIsSeparate) {
+            locked.detail +=
+                encryption.home == nexus::hardware::Encrypted::Yes
+                    ? " and home"
+                    : " but not home";
+        }
+
+        if (encryption.hasSwap) {
+            locked.detail +=
+                encryption.swap == nexus::hardware::Encrypted::Yes
+                    ? " and swap"
+                    : "";
+        }
+
+        locked.detail += " encrypted";
+
+        if (!encryption.method.empty()) {
+            locked.detail += " (" + encryption.method + ")";
+        }
+
+        locked.detail +=
+            ". This protects the machine when it is off, not while it "
+            "is running.";
+    }
+
+    findings.push_back(std::move(locked));
 
     if (havePackages) {
         const auto detail = nexus::diagnose(
@@ -1906,6 +1978,7 @@ int main(int argc, char** argv) {
     bool forceRpm = false;
     bool forceDpkg = false;
     bool withAvailable = false;
+    bool withFlatpak = false;
     bool explain = false;
     bool apply = false;
     bool assumeYes = false;
@@ -1954,6 +2027,11 @@ int main(int argc, char** argv) {
             index + 1 < arguments.size()) {
             rpmRoot = arguments[index + 1];
             index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--with-flatpak") {
+            withFlatpak = true;
             continue;
         }
 
@@ -2144,6 +2222,20 @@ int main(int argc, char** argv) {
             aliases = loaded.table;
         }
 
+        // Flatpak names are a third vocabulary, loaded alongside the
+        // ecosystem's own rather than instead of it, so a capability
+        // can be offered from both and both show up as options.
+        if (withFlatpak) {
+            const auto loaded = nexus::system::parseAliasFile(
+                aliasDir + "/flatpak.aliases");
+
+            for (const std::string& problem : loaded.problems) {
+                std::cerr << "Warning: " << problem << "\n";
+            }
+
+            aliases.merge(loaded.table);
+        }
+
         // What the distribution says must never be removed. Read
         // from its own configuration rather than encoded here, so the
         // policy stays whatever the distribution decided.
@@ -2172,6 +2264,9 @@ int main(int argc, char** argv) {
         const nexus::hardware::HardwareDetector detector(sysfsRoot);
         const nexus::hardware::HardwareInfo hardware = detector.detect();
 
+        const nexus::hardware::EncryptionReport encryption =
+            nexus::hardware::EncryptionDetector(sysfsRoot).detect();
+
         // Hardware belongs in the installed baseline too: the GPU in
         // this machine is not something you install, it is something
         // that is already here.
@@ -2189,6 +2284,27 @@ int main(int argc, char** argv) {
         std::vector<Component> availableOnly;
 
         bool haveAvailable = false;
+
+        if (withFlatpak) {
+            const nexus::system::FlatpakSource flatpak;
+            const auto offered = flatpak.load();
+
+            if (!offered.error.empty()) {
+                std::cerr
+                    << "Warning: " << offered.error << "\n";
+            } else {
+                for (const Component& component : offered.components) {
+                    universe.push_back(component);
+                    availableOnly.push_back(component);
+                }
+
+                haveAvailable = true;
+
+                std::cerr
+                    << "Loaded " << offered.components.size()
+                    << " Flatpak application(s).\n";
+            }
+        }
 
         if (withAvailable && preferRpm) {
             const nexus::system::RpmRepository repositories(rpmCache);
@@ -2391,8 +2507,8 @@ int main(int argc, char** argv) {
             }
 
             return commandDoctor(
-                result, installed, hardware, roots, havePackages,
-                protectedIds);
+                result, installed, hardware, encryption, roots,
+                havePackages, protectedIds);
         }
 
         if (command == "hardware") {
