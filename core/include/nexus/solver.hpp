@@ -1,6 +1,7 @@
 #pragma once
 
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -8,6 +9,7 @@
 #include <nexus/component.hpp>
 #include <nexus/conflict_detector.hpp>
 #include <nexus/requirement.hpp>
+#include <nexus/source.hpp>
 
 namespace nexus {
 
@@ -60,6 +62,25 @@ struct SolverRequest {
     // preference needs: "on this machine prefer the Mesa driver"
     // rather than "for capability X prefer Y".
     std::set<std::string> preferredComponents;
+
+    // Sources in the order they are wanted, most first. Empty means
+    // no opinion, and then the order of alternatives decides -- which
+    // already puts the base repositories first, because that is the
+    // order the alias tables are merged in.
+    //
+    // Naming a source outranks that order, because "I want the
+    // Flatpak" is a choice somebody made and the alias order is only
+    // a default.
+    std::vector<Source> preferredSources;
+
+    // Restrict the whole solve to one source.
+    //
+    // Scope propagates from whatever is selected, but the first
+    // requirement has nothing above it to inherit from -- so costing
+    // an Arch package by asking for its name resolved whichever
+    // package answered to that name first, and reported a Debian
+    // dependency tree as the Arch one's.
+    std::optional<Source> scope;
 };
 
 // Resolves requirements against a set of available components,

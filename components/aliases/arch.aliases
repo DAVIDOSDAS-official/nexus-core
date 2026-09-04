@@ -1,0 +1,169 @@
+# What Arch calls the things profiles ask for.
+#
+# A fourth vocabulary. These are reachable through a container rather
+# than by installing them on the base system, which is what makes
+# "packages from another distribution" possible without mixing
+# binaries in one root filesystem.
+#
+# Arch names are often the upstream project name unchanged, so many
+# entries here look like the Debian ones. Where they differ they
+# differ sharply -- base-devel rather than build-essential, and no
+# lib prefix on anything.
+#
+# A capability with no entry here loads its packages and offers none
+# of them, which looks exactly like the source being empty. That is
+# the maintenance cost of the alias layer, and it is the reason to
+# keep the capability set small and shared rather than per-profile.
+
+Capability: web-browser
+Resolves-To: firefox | chromium | epiphany | falkon
+
+Capability: terminal-emulator
+Resolves-To: foot | alacritty | kitty | konsole | gnome-terminal | xterm
+
+Capability: file-manager
+Resolves-To: dolphin | nautilus | thunar | pcmanfm
+
+Capability: text-editor
+Resolves-To: nano | vim | neovim | kate | gedit
+
+Capability: code-editor
+Resolves-To: code | kdevelop | neovim
+
+Capability: document-viewer
+Resolves-To: okular | evince | zathura
+
+Capability: image-viewer
+Resolves-To: gwenview | loupe | imv | feh
+
+Capability: image-editor
+Resolves-To: gimp | krita | inkscape
+
+Capability: video-editor
+Resolves-To: kdenlive | shotcut | flowblade
+
+Capability: video-player
+Resolves-To: vlc | mpv | celluloid
+
+Capability: audio-editor
+Resolves-To: audacity | ardour
+
+Capability: word-processor
+Resolves-To: libreoffice-fresh | libreoffice-still | abiword
+
+Capability: spreadsheet
+Resolves-To: libreoffice-fresh | libreoffice-still | gnumeric
+
+Capability: mail-transport-agent
+Resolves-To: postfix | opensmtpd | msmtp-mta
+
+Capability: audio-server
+Resolves-To: pipewire | pulseaudio
+
+Capability: vulkan-driver
+Resolves-To: vulkan-radeon | vulkan-intel | nvidia-utils
+
+Capability: opengl
+Resolves-To: mesa | libglvnd
+
+Capability: firewall
+Resolves-To: ufw | nftables | iptables | firewalld
+
+Capability: time-sync
+Resolves-To: chrony | ntp | openntpd
+
+Capability: ssh-server
+Resolves-To: openssh
+
+Capability: compiler-toolchain
+Resolves-To: base-devel | gcc | clang
+
+Capability: vpn-client
+Resolves-To: wireguard-tools
+
+Capability: steam
+Resolves-To: steam
+
+Capability: init
+Resolves-To: systemd-sysvcompat | systemd
+
+Capability: c-library
+Resolves-To: glibc | musl
+
+Capability: core-utilities
+Resolves-To: coreutils
+
+Capability: package-manager
+Resolves-To: pacman
+
+Capability: archiver
+Resolves-To: tar
+
+Capability: desktop-session
+Resolves-To: plasma-desktop | gnome-shell | xfce4-session
+
+Capability: display-manager
+Resolves-To: sddm | gdm | lightdm
+
+Capability: archive-manager
+Resolves-To: ark | file-roller | xarchiver
+
+Capability: system-settings
+Resolves-To: systemsettings | gnome-control-center
+
+Capability: screenshot-tool
+Resolves-To: spectacle | flameshot | grim
+
+Capability: lightweight-session
+Resolves-To: openbox | i3-wm | fluxbox | xfce4-session
+
+Capability: compositor-effects
+Resolves-To: kwin | mutter | picom
+
+Capability: icon-theme
+Resolves-To: breeze-icons | adwaita-icon-theme | papirus-icon-theme
+
+Capability: cursor-theme
+Resolves-To: breeze | adwaita-cursors
+
+Capability: font-collection
+Resolves-To: noto-fonts | ttf-dejavu | ttf-liberation
+
+Capability: network-applet
+Resolves-To: plasma-nm | network-manager-applet
+
+Capability: volume-applet
+Resolves-To: plasma-pa | pavucontrol
+
+Capability: desktop-portal
+Resolves-To: xdg-desktop-portal-kde | xdg-desktop-portal-gnome | xdg-desktop-portal-gtk
+
+Capability: window-manager
+Resolves-To: sway | hyprland | i3-wm | bspwm | dwm | river
+
+Capability: status-bar
+Resolves-To: waybar | polybar | i3status
+
+Capability: application-launcher
+Resolves-To: fuzzel | rofi | wofi | dmenu | bemenu
+
+Capability: notification-daemon
+Resolves-To: mako | dunst
+
+Capability: screen-locker
+Resolves-To: swaylock | i3lock | xsecurelock
+
+Capability: wallpaper-setter
+Resolves-To: swaybg | feh | nitrogen
+
+Capability: compositor
+Resolves-To: picom | xcompmgr
+
+Capability: modern-shell
+Resolves-To: zsh | fish
+
+Capability: terminal-multiplexer
+Resolves-To: tmux | zellij | screen
+
+Capability: fuzzy-finder
+Resolves-To: fzf | skim

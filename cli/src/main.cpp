@@ -3,6 +3,7 @@
 #include <iostream>
 #include <istream>
 #include <cstdlib>
+#include <optional>
 #include <fstream>
 #include <filesystem>
 #include <map>
@@ -26,6 +27,7 @@
 #include <nexus/hardware/hardware.hpp>
 #include <nexus/system/apt_source.hpp>
 #include <nexus/system/flatpak_source.hpp>
+#include <nexus/system/pacman_source.hpp>
 #include <nexus/system/rpm_database.hpp>
 #include <nexus/system/plan_apply.hpp>
 #include <nexus/system/transaction_log.hpp>
@@ -75,6 +77,8 @@ void printUsage() {
         << "    --arch <arch>     target architecture\n"
         << "    --with-available  also read available packages\n"
         << "    --with-flatpak    also offer Flatpak applications\n"
+        << "    --with-arch <db>  also offer Arch packages, via a container\n"
+        << "    --from <source>   only options from base, flatpak, container or nix\n"
         << "    --rpm | --dpkg    force a package ecosystem\n"
         << "    --rpm-root <dir>  inspect an rpm root elsewhere\n"
         << "    --explain         reason for every component, not just choices\n"
@@ -1017,21 +1021,28 @@ int commandOptions(
     const std::vector<Component>& universe,
     const std::vector<Component>& installed,
     const std::string& capability,
-    const std::string& architecture
+    const std::string& architecture,
+    const std::optional<nexus::Source>& only
 ) {
     const nexus::ConflictDetector detector(versionComparator());
 
     const auto report = nexus::findOptions(
         capability, universe, installed,
-        buildSolver(universe), detector, architecture, aliases);
+        buildSolver(universe), detector, architecture, aliases, only);
 
     std::cout << "Capability:  " << capability << "\n";
 
     if (report.options.empty()) {
+        std::cout << "\nNothing available provides it";
+
+        if (only.has_value()) {
+            std::cout << " from " << toString(*only);
+        }
+
         std::cout
-            << "\nNothing available provides it.\n"
-            << "Try --with-available to include packages that are "
-            << "not installed.\n";
+            << ".\nTry --with-available or --with-flatpak to widen "
+            << "the search.\n";
+
         return 1;
     }
 
@@ -2010,6 +2021,8 @@ int main(int argc, char** argv) {
     bool forceDpkg = false;
     bool withAvailable = false;
     bool withFlatpak = false;
+    std::optional<nexus::Source> onlySource;
+    std::vector<std::string> archDatabases;
     bool explain = false;
     bool apply = false;
     bool assumeYes = false;
@@ -2057,6 +2070,37 @@ int main(int argc, char** argv) {
         if (arguments[index] == "--rpm-root" &&
             index + 1 < arguments.size()) {
             rpmRoot = arguments[index + 1];
+            index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--from" &&
+            index + 1 < arguments.size()) {
+            const std::string named = arguments[index + 1];
+
+            if (named == "base") {
+                onlySource = nexus::Source::Base;
+            } else if (named == "flatpak") {
+                onlySource = nexus::Source::Flatpak;
+                withFlatpak = true;
+            } else if (named == "container") {
+                onlySource = nexus::Source::Container;
+            } else if (named == "nix") {
+                onlySource = nexus::Source::Nix;
+            } else {
+                std::cerr
+                    << "Unknown source: " << named << "\n"
+                    << "Known: base, flatpak, container, nix\n";
+                return 2;
+            }
+
+            index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--with-arch" &&
+            index + 1 < arguments.size()) {
+            archDatabases.push_back(arguments[index + 1]);
             index += 1;
             continue;
         }
@@ -2253,9 +2297,25 @@ int main(int argc, char** argv) {
             aliases = loaded.table;
         }
 
-        // Flatpak names are a third vocabulary, loaded alongside the
-        // ecosystem's own rather than instead of it, so a capability
-        // can be offered from both and both show up as options.
+        // Each additional source brings its own vocabulary, loaded
+        // alongside the ecosystem's own rather than instead of it, so
+        // a capability offered from several places shows options from
+        // all of them.
+        //
+        // Reading a source's packages without its aliases loads the
+        // components and offers none of them, which looks exactly
+        // like the source being empty.
+        if (!archDatabases.empty()) {
+            const auto loaded = nexus::system::parseAliasFile(
+                aliasDir + "/arch.aliases");
+
+            for (const std::string& problem : loaded.problems) {
+                std::cerr << "Warning: " << problem << "\n";
+            }
+
+            aliases.merge(loaded.table);
+        }
+
         if (withFlatpak) {
             const auto loaded = nexus::system::parseAliasFile(
                 aliasDir + "/flatpak.aliases");
@@ -2315,6 +2375,30 @@ int main(int argc, char** argv) {
         std::vector<Component> availableOnly;
 
         bool haveAvailable = false;
+
+        // An Arch database read on a machine that is not Arch: the
+        // packages are real and reachable, through a container rather
+        // than by installing them here.
+        for (const std::string& database : archDatabases) {
+            const auto arch =
+                nexus::system::readPacmanDatabase(database);
+
+            if (!arch.error.empty()) {
+                std::cerr << "Warning: " << arch.error << "\n";
+                continue;
+            }
+
+            for (const Component& component : arch.components) {
+                universe.push_back(component);
+                availableOnly.push_back(component);
+            }
+
+            haveAvailable = true;
+
+            std::cerr
+                << "Loaded " << arch.components.size()
+                << " Arch package(s) from " << database << ".\n";
+        }
 
         if (withFlatpak) {
             const nexus::system::FlatpakSource flatpak;
@@ -2480,7 +2564,8 @@ int main(int argc, char** argv) {
             }
 
             return commandOptions(
-                aliases, universe, installed, argument, arch);
+                aliases, universe, installed, argument, arch,
+                onlySource);
         }
 
         if (command == "plan") {

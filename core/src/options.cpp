@@ -23,7 +23,8 @@ OptionsReport findOptions(
     const Solver& solver,
     const ConflictDetector& detector,
     const std::string& architecture,
-    const AliasTable& aliases
+    const AliasTable& aliases,
+    const std::optional<Source>& only
 ) {
     OptionsReport report;
 
@@ -35,8 +36,13 @@ OptionsReport findOptions(
     // component can be "mawk" in the installed set and "mawk:amd64"
     // in the universe. Matching by id silently finds nothing, and the
     // output stays plausible while being wrong.
+    // Identity includes the source. Arch's kdenlive and Debian's
+    // share a name and are not the same package: without this an Arch
+    // option is reported as already installed because something with
+    // that name is.
     const auto identityOf = [](const Component& component) {
-        return component.name() + ":" + component.architecture();
+        return toString(component.source()) + "/" +
+               component.name() + ":" + component.architecture();
     };
 
     std::set<std::string> installedIds;
@@ -52,6 +58,10 @@ OptionsReport findOptions(
         aliases.expand(Requirement(Constraint(capability)));
 
     for (const Component& component : universe) {
+        if (only.has_value() && component.source() != *only) {
+            continue;
+        }
+
         const bool fits = std::any_of(
             wanted.alternatives.begin(),
             wanted.alternatives.end(),
@@ -80,6 +90,14 @@ OptionsReport findOptions(
         SolverRequest request;
 
         request.architecture = architecture;
+
+        // Cost this option within its own source. Names collide
+        // across sources, so asking for one by name is not enough to
+        // say which one is meant.
+        request.scope = component.source() == Source::Detected
+            ? std::optional<Source>()
+            : std::optional<Source>(component.source());
+
         request.requirements.push_back(
             Requirement(Constraint(component.id()))
         );

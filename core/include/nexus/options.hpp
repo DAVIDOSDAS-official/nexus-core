@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -69,7 +70,11 @@ OptionsReport findOptions(
     const Solver& solver,
     const ConflictDetector& detector,
     const std::string& architecture = {},
-    const AliasTable& aliases = AliasTable{}
+    const AliasTable& aliases = AliasTable{},
+    // When set, only options from this source are reported. Asking
+    // "what can Flatpak give me" is a different question from "what
+    // are my options", and both are worth being able to ask.
+    const std::optional<Source>& only = std::nullopt
 );
 
 }

@@ -4,12 +4,21 @@
 #include <functional>
 #include <utility>
 #include <map>
+#include <optional>
 #include <set>
 #include <utility>
 
 namespace nexus {
 
 namespace {
+
+// The same shape as the solver's Pending, declared where the state
+// can hold it.
+struct PendingWork {
+    Requirement requirement;
+    std::string architecture;
+    std::optional<Source> scope;
+};
 
 struct SearchState {
     // The pending work list lives here, not in the recursion.
@@ -18,7 +27,7 @@ struct SearchState {
     // vector that can hold thousands of entries. On a large system
     // that is megabytes per stack frame, and the search overflows the
     // stack long before it runs out of options.
-    std::vector<std::pair<Requirement, std::string>> queue;
+    std::vector<PendingWork> queue;
 
     // Tracked by index rather than id. Identity is the source's
     // business; the solver must not silently merge two distinct
@@ -166,7 +175,8 @@ SolverResult Solver::solve(const SolverRequest& request) const {
     // Is this requirement already met by something we have chosen?
     const auto alreadySatisfied =
         [&](const Requirement& requirement,
-            const std::string& arch) -> bool {
+            const std::string& arch,
+            const std::optional<Source>& scope) -> bool {
             for (const Constraint& option : requirement.alternatives) {
                 const auto entry =
                     state.provided.find(option.capability);
@@ -176,6 +186,13 @@ SolverResult Solver::solve(const SolverRequest& request) const {
                 }
 
                 for (std::size_t position : entry->second) {
+                    if (scope.has_value() &&
+                        components_[position].source() != *scope &&
+                        components_[position].source() !=
+                            Source::Detected) {
+                        continue;
+                    }
+
                     if (detector_.matches(
                             components_[position], option, arch)) {
                         return true;
@@ -296,7 +313,23 @@ SolverResult Solver::solve(const SolverRequest& request) const {
     // Each pending item carries the architecture of the component
     // that asked for it, because "libfoo" from an amd64 package means
     // libfoo:amd64 unless the provider is marked foreign.
-    using Pending = std::pair<Requirement, std::string>;
+    // A requirement, the architecture that asked for it, and the
+    // source it must be satisfied from.
+    //
+    // Scope is the one that matters here. Components from an isolated
+    // source do not share a root filesystem with the base system, so
+    // an Arch package's dependency cannot be met by a Debian package
+    // that happens to share a name. Without this the universe is one
+    // flat namespace and an Arch kdenlive reports itself satisfied by
+    // 654 Debian components.
+    //
+    // It propagates the same way architecture does: whatever is
+    // selected sets the scope for what it needs.
+    struct Pending {
+        Requirement requirement;
+        std::string architecture;
+        std::optional<Source> scope;
+    };
 
     // The recursion carries only a position in the shared queue.
     struct Candidate {
@@ -312,6 +345,7 @@ SolverResult Solver::solve(const SolverRequest& request) const {
     const auto gather =
         [&](const Requirement& requirement,
             const std::string& requesterArchitecture,
+            const std::optional<Source>& scope,
             std::vector<Candidate>& candidates) {
 
             for (std::size_t index = 0;
@@ -330,6 +364,14 @@ SolverResult Solver::solve(const SolverRequest& request) const {
 
                 for (std::size_t position : entry->second) {
                     const Component& component = components_[position];
+
+                    // Detected components describe the machine and
+                    // belong to no source, so they satisfy anything.
+                    if (scope.has_value() &&
+                        component.source() != *scope &&
+                        component.source() != Source::Detected) {
+                        continue;
+                    }
 
                     if (!detector_.matches(
                             component,
@@ -410,6 +452,36 @@ SolverResult Solver::solve(const SolverRequest& request) const {
                         return leftWins;
                     }
 
+                    // A named source outranks the order of
+                    // alternatives: asking for the Flatpak is a
+                    // choice, and alias order is only a default.
+                    if (!request.preferredSources.empty()) {
+                        const auto rankOf =
+                            [&request](Source source) {
+                                for (std::size_t index = 0;
+                                     index <
+                                         request.preferredSources.size();
+                                     ++index) {
+
+                                    if (request.preferredSources[index] ==
+                                        source) {
+                                        return index;
+                                    }
+                                }
+
+                                return request.preferredSources.size();
+                            };
+
+                        const std::size_t leftRank =
+                            rankOf(left.component->source());
+                        const std::size_t rightRank =
+                            rankOf(right.component->source());
+
+                        if (leftRank != rightRank) {
+                            return leftRank < rightRank;
+                        }
+                    }
+
                     // The order of alternatives is the packager's
                     // stated preference and outranks everything below.
                     if (left.rank != right.rank) {
@@ -459,6 +531,7 @@ SolverResult Solver::solve(const SolverRequest& request) const {
         std::size_t head = 0;
         Requirement requirement;
         std::string architecture;
+        std::optional<Source> scope;
         std::vector<Candidate> candidates;
         std::size_t next = 0;
         bool firstAttempt = true;
@@ -476,11 +549,15 @@ SolverResult Solver::solve(const SolverRequest& request) const {
     // queue runs out.
     const auto openFrame = [&](std::size_t head) -> bool {
         while (head < state.queue.size()) {
-            const Requirement requirement = state.queue[head].first;
-            const std::string architecture = state.queue[head].second;
+            const Requirement requirement =
+                state.queue[head].requirement;
+            const std::string architecture =
+                state.queue[head].architecture;
+            const std::optional<Source> scope =
+                state.queue[head].scope;
 
             if (requirement.empty() ||
-                alreadySatisfied(requirement, architecture)) {
+                alreadySatisfied(requirement, architecture, scope)) {
                 head += 1;
                 continue;
             }
@@ -490,8 +567,9 @@ SolverResult Solver::solve(const SolverRequest& request) const {
             frame.head = head;
             frame.requirement = requirement;
             frame.architecture = architecture;
+            frame.scope = scope;
 
-            gather(frame.requirement, frame.architecture,
+            gather(frame.requirement, frame.architecture, frame.scope,
                    frame.candidates);
 
             frames.push_back(std::move(frame));
@@ -508,7 +586,8 @@ SolverResult Solver::solve(const SolverRequest& request) const {
 
     for (const Requirement& requirement : request.requirements) {
         state.queue.push_back(
-            Pending{requirement, request.architecture}
+            PendingWork{requirement, request.architecture,
+                        request.scope}
         );
     }
 
@@ -687,8 +766,18 @@ SolverResult Solver::solve(const SolverRequest& request) const {
             for (const Requirement& theirs :
                  candidate.component->requirements()) {
 
+                // Whatever was selected sets the scope for what it
+                // needs, the same way it sets the architecture.
                 state.queue.push_back(
-                    Pending{theirs, childArchitecture}
+                    PendingWork{
+                        theirs,
+                        childArchitecture,
+                        candidate.component->source() ==
+                            Source::Detected
+                            ? std::nullopt
+                            : std::optional<Source>(
+                                  candidate.component->source())
+                    }
                 );
             }
 

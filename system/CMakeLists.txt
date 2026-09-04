@@ -12,6 +12,7 @@ add_library(nexus_system
     src/plan_apply.cpp
     src/transaction_log.cpp
     src/flatpak_source.cpp
+    src/pacman_source.cpp
     src/rpm_version.cpp
     src/xml.cpp
     src/rpm_source.cpp
