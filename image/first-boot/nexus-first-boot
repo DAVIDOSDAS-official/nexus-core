@@ -27,6 +27,7 @@ if [ ! -x "${NEXUS}" ]; then
 fi
 
 finish() {
+    restore_printk
     mkdir -p "$(dirname "${MARKER}")" 2>/dev/null
     date -u +%Y-%m-%dT%H:%M:%SZ > "${MARKER}" 2>/dev/null
 }
@@ -34,6 +35,22 @@ finish() {
 # Written even on interruption: a half-finished setup that asks again
 # on every boot is worse than one that stopped.
 trap finish EXIT
+
+# The kernel logs to the same console. Without this a message lands
+# on top of the prompt while somebody is typing into it, and the line
+# they submit is not the line they wrote.
+QUIET_APPLIED=0
+
+if [ -w /proc/sys/kernel/printk ]; then
+    PRINTK_WAS="$(cat /proc/sys/kernel/printk 2>/dev/null)"
+    echo 1 > /proc/sys/kernel/printk 2>/dev/null && QUIET_APPLIED=1
+fi
+
+restore_printk() {
+    if [ "${QUIET_APPLIED}" = "1" ] && [ -n "${PRINTK_WAS:-}" ]; then
+        echo "${PRINTK_WAS}" > /proc/sys/kernel/printk 2>/dev/null
+    fi
+}
 
 clear 2>/dev/null
 

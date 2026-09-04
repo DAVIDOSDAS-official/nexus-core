@@ -576,6 +576,40 @@ bool findComposition(
 
         if (found == nullptr) {
             std::cerr << "Unknown profile: " << one << "\n";
+
+            // Somebody typing a name from memory gets it close.
+            // "cybersecurity" for "security" is a better thing to
+            // answer than a list of eleven names.
+            std::vector<std::string> near;
+
+            for (const nexus::Profile& profile : available) {
+                const bool contains =
+                    profile.name.find(one) != std::string::npos ||
+                    one.find(profile.name) != std::string::npos;
+
+                if (contains) {
+                    near.push_back(profile.name);
+                }
+            }
+
+            if (!near.empty()) {
+                std::cerr << "Did you mean:";
+
+                for (const std::string& name : near) {
+                    std::cerr << " " << name;
+                }
+
+                std::cerr << "?\n";
+            } else {
+                std::cerr << "Known profiles:";
+
+                for (const nexus::Profile& profile : available) {
+                    std::cerr << " " << profile.name;
+                }
+
+                std::cerr << "\n";
+            }
+
             return false;
         }
 
