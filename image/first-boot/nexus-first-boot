@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+#
+# The first thing a new machine does.
+#
+# This is a thin wrapper: it asks, and nexus decides. Every question
+# it can answer is answered by asking nexus rather than by knowing
+# anything itself -- which profiles exist, what they cost here, what
+# hardware is present. A second place that knows those things would
+# eventually disagree with the first.
+#
+# It runs once. The marker is written whatever happens, including when
+# somebody declines, because a setup that asks again every boot is
+# worse than one that never asked.
+
+set -uo pipefail
+
+MARKER="${NEXUS_SETUP_MARKER:-/var/lib/nexus/setup-complete}"
+NEXUS="${NEXUS_BINARY:-/usr/bin/nexus}"
+
+if [ -e "${MARKER}" ]; then
+    exit 0
+fi
+
+if [ ! -x "${NEXUS}" ]; then
+    echo "nexus is not installed at ${NEXUS}; skipping setup." >&2
+    exit 0
+fi
+
+finish() {
+    mkdir -p "$(dirname "${MARKER}")" 2>/dev/null
+    date -u +%Y-%m-%dT%H:%M:%SZ > "${MARKER}" 2>/dev/null
+}
+
+# Written even on interruption: a half-finished setup that asks again
+# on every boot is worse than one that stopped.
+trap finish EXIT
+
+clear 2>/dev/null
+
+cat <<'BANNER'
+
+  Nexus
+
+  This machine has not been set up yet. Nexus will show you what it
+  can be, and what each choice would cost here.
+
+  Nothing is installed until you say so.
+
+BANNER
+
+# --with-available matters: without the archive nothing is available,
+# every missing requirement reports that nothing provides it, and the
+# machine looks unimprovable rather than unconfigured.
+"${NEXUS}" setup --with-available || true
+
+echo
+echo "  Type one or more names separated by commas, or press Enter to"
+echo "  skip. You can run 'nexus setup' again at any time."
+echo
+printf "  > "
+
+read -r CHOICE || CHOICE=""
+
+CHOICE="$(echo "${CHOICE}" | tr -d '[:space:]')"
+
+if [ -z "${CHOICE}" ]; then
+    echo
+    echo "  Nothing has been changed. Run 'nexus setup' when you are"
+    echo "  ready."
+    echo
+    exit 0
+fi
+
+echo
+"${NEXUS}" setup "${CHOICE}" --with-available --apply --yes
+STATUS=$?
+
+echo
+
+if [ "${STATUS}" -eq 0 ]; then
+    echo "  Done. 'nexus doctor' will tell you how the machine is."
+else
+    # Partial success is still success for the parts that worked.
+    echo "  Some things did not install. The system is usable; run"
+    echo "  'nexus setup ${CHOICE}' to try the rest."
+fi
+
+echo
+
+exit 0

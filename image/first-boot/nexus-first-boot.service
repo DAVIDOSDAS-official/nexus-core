@@ -1,0 +1,34 @@
+[Unit]
+Description=Nexus first-boot setup
+Documentation=man:nexus(1)
+
+# Runs once. The condition is the marker rather than a flag inside the
+# script, so systemd itself skips the unit on every subsequent boot
+# instead of starting a process that immediately exits.
+ConditionPathExists=!/var/lib/nexus/setup-complete
+
+# Before the display manager, so the question is answered on a plain
+# console rather than behind a login screen. After the network,
+# because the answer usually means downloading something.
+Before=display-manager.service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Interactive on the first console. systemd will not give a service a
+# terminal unless it is told to, and without one the prompt is
+# invisible and the read returns immediately.
+StandardInput=tty
+StandardOutput=tty
+StandardError=journal
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+
+ExecStart=/usr/bin/nexus-first-boot
+
+[Install]
+WantedBy=multi-user.target

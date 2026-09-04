@@ -155,6 +155,14 @@ LABEL org.opencontainers.image.description="A Linux system that explains its own
 LABEL containers.bootc="1"
 
 # Where the CLI looks for profiles on an installed system.
+# The first thing a new machine does. See image/first-boot/README.md.
+COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
+COPY image/first-boot/nexus-first-boot.service \
+     /usr/lib/systemd/system/nexus-first-boot.service
+
+RUN chmod 0755 /usr/bin/nexus-first-boot \
+    && systemctl enable nexus-first-boot.service
+
 ENV NEXUS_PROFILES=/usr/share/nexus/profiles
 ENV NEXUS_ALIASES=/usr/share/nexus/aliases
 

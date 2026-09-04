@@ -1886,6 +1886,7 @@ int commandSetup(
         << here.items.size() << "\n\n";
 
     std::vector<std::string> wanted;
+    std::size_t unavailable = 0;
 
     for (std::size_t index = 0; index < here.items.size(); ++index) {
         const auto& item = here.items[index];
@@ -1900,14 +1901,29 @@ int commandSetup(
             !possible.items[index].provided.empty();
 
         if (!available) {
+            unavailable += 1;
+
             std::cout
                 << "  [missing] " << item.requirement
                 << "\n            nothing available provides this\n";
             continue;
         }
 
-        const std::string& name =
+        const std::string& selected =
             possible.items[index].provided.front();
+
+        // The package name, not the internal id. Ids carry an
+        // architecture suffix so multilib builds stay distinct in the
+        // resolver, and "gamemode:amd64" is not something apt will
+        // accept.
+        std::string name = selected;
+
+        for (const Component& component : universe) {
+            if (component.id() == selected) {
+                name = component.name();
+                break;
+            }
+        }
 
         std::cout
             << "  [install] " << item.requirement
@@ -1917,6 +1933,19 @@ int commandSetup(
     }
 
     if (wanted.empty()) {
+        // Nothing to install is two different situations, and calling
+        // both of them success told somebody their machine was
+        // already what they asked for while six requirements went
+        // unmet.
+        if (unavailable > 0) {
+            std::cout
+                << "\n" << unavailable
+                << " requirement(s) cannot be met from what is "
+                << "available.\nNothing has been changed.\n";
+
+            return 1;
+        }
+
         std::cout
             << "\nThis machine already is what you asked for.\n";
 
@@ -1933,10 +1962,13 @@ int commandSetup(
     }
 
     if (!nexus::system::haveRootPrivileges()) {
+        // The invocation already carries the profile and the flags.
+        // Appending them again produced a suggestion that named the
+        // profile twice and --apply twice.
         std::cout
             << "\nInstalling needs root. Re-run with sudo:\n"
-            << "    sudo " << invocation << " " << chosen
-            << " --apply\n\nNothing has been changed.\n";
+            << "    sudo " << invocation
+            << "\n\nNothing has been changed.\n";
 
         return 1;
     }
