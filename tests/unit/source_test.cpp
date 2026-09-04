@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <nexus/system/pacman_source.hpp>
 #include <nexus/hardware/hardware.hpp>
 
 #include <nexus/options.hpp>
@@ -338,4 +339,52 @@ TEST(SourceTest, CostingHappensWithinTheOptionsOwnSource) {
             EXPECT_EQ(option.componentCount, 2u);
         }
     }
+}
+
+// Version ordering belongs to the ecosystem a component came from,
+// not to the machine doing the comparing.
+TEST(SourceTest, EachSourceOrdersVersionsItsOwnWay) {
+    nexus::ConflictDetector detector;
+
+    // The default is strict: 2.42.3-1 is not 2.42.3.
+    detector = nexus::ConflictDetector(
+        [](const std::string& left, const std::string& right) {
+            return nexus::system::compareVersions(left, right);
+        });
+
+    // Arch packages compare at the constraint's precision.
+    detector.setComparatorFor(
+        Source::Container,
+        [](const std::string& provided, const std::string& required) {
+            return nexus::system::comparePacmanConstraint(
+                provided, required);
+        });
+
+    const auto exactly =
+        [](const std::string& name, const std::string& version) {
+            nexus::Constraint constraint(name);
+
+            constraint.version = nexus::VersionConstraint{
+                nexus::VersionRelation::Exactly, version};
+
+            return constraint;
+        };
+
+    Component base("util-linux", "util-linux", "2.42.3-1",
+                   ComponentType::Library);
+    base.setSource(Source::Base);
+    base.addProvidedCapability(Capability("util-linux"));
+
+    Component arch("util-linux-libs", "util-linux-libs", "2.42.3-1",
+                   ComponentType::Library);
+    arch.setSource(Source::Container);
+    arch.addProvidedCapability(Capability("util-linux-libs"));
+
+    // Debian rules: the revision is part of the version.
+    EXPECT_FALSE(
+        detector.matches(base, exactly("util-linux", "2.42.3")));
+
+    // pacman rules: it is not, unless named.
+    EXPECT_TRUE(
+        detector.matches(arch, exactly("util-linux-libs", "2.42.3")));
 }

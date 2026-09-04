@@ -10,6 +10,7 @@
 #include <nexus/constraint.hpp>
 #include <nexus/requirement.hpp>
 #include <nexus/system/rpm_source.hpp>
+#include <nexus/system/rpm_version.hpp>
 
 namespace nexus::system {
 
@@ -31,6 +32,13 @@ bool isFieldName(const std::string& line) {
     return line.size() >= 3 && line.front() == '%' && line.back() == '%';
 }
 
+}
+
+int comparePacmanConstraint(
+    const std::string& provided,
+    const std::string& required
+) {
+    return compareRpmConstraint(provided, required);
 }
 
 Constraint parsePacmanDependency(const std::string& text) {

@@ -173,11 +173,24 @@ nexus::VersionComparator versionComparator() {
     };
 }
 
+// A detector that knows how each source orders its versions.
+nexus::ConflictDetector buildDetector() {
+    nexus::ConflictDetector detector(versionComparator());
+
+    // Arch packages, reachable through a container, order versions
+    // pacman's way regardless of what this machine runs.
+    detector.setComparatorFor(
+        nexus::Source::Container,
+        [](const std::string& provided, const std::string& required) {
+            return nexus::system::comparePacmanConstraint(
+                provided, required);
+        });
+
+    return detector;
+}
+
 nexus::Solver buildSolver(const std::vector<Component>& components) {
-    return nexus::Solver(
-        components,
-        nexus::ConflictDetector(versionComparator())
-    );
+    return nexus::Solver(components, buildDetector());
 }
 
 // What a package source reported, without saying which one it was.
@@ -1185,7 +1198,7 @@ int commandPlan(
     const auto plan = nexus::planTransaction(
         solution.selected,
         universe,
-        nexus::ConflictDetector(versionComparator())
+        buildDetector()
     );
 
     std::cout
@@ -1298,7 +1311,7 @@ int commandRemove(
         target,
         installed,
         roots,
-        nexus::ConflictDetector(versionComparator()),
+        buildDetector(),
         architecture,
         protectedIds);
 
@@ -1591,7 +1604,7 @@ int commandDoctor(
     if (havePackages) {
         const auto detail = nexus::diagnose(
             installed, roots,
-            nexus::ConflictDetector(versionComparator()),
+            buildDetector(),
             protectedIds);
 
         for (const nexus::Finding& finding : detail.findings) {

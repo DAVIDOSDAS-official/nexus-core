@@ -53,4 +53,19 @@ PacmanSourceResult readPacmanDatabase(
 // "glibc>=2.38" and "attr" as pacman writes them.
 Constraint parsePacmanDependency(const std::string& text);
 
+// Compare a provided version against a pacman constraint.
+//
+// pacman's vercmp descends from rpm's, and shares the rule that
+// matters: a constraint is compared only as precisely as it was
+// written, so "= 2.42.3" is satisfied by 2.42.3-1. Arch relies on
+// that heavily for inter-package dependencies.
+//
+// It is a thin wrapper rather than a copy, because the two really are
+// the same algorithm and pretending otherwise would mean maintaining
+// two of them.
+int comparePacmanConstraint(
+    const std::string& provided,
+    const std::string& required
+);
+
 }

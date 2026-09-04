@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include <map>
+
 #include <nexus/component.hpp>
 #include <nexus/constraint.hpp>
 
@@ -34,6 +36,20 @@ public:
     // comparison would rule out, but it never hides one.
     explicit ConflictDetector(VersionComparator comparator = {});
 
+    // Version ordering is a property of the ecosystem a component
+    // came from, not of the machine doing the comparing.
+    //
+    // dpkg, rpm and pacman order versions by different rules, and
+    // pacman follows rpm in comparing a constraint only as precisely
+    // as it was written: "= 2.42.3" matches 2.42.3-1. Running Arch
+    // packages through Debian's comparator declared every one of them
+    // unsatisfiable on a Debian machine, which looked like the
+    // packages being broken.
+    //
+    // Set one per source; anything without its own falls back to the
+    // comparator this was constructed with.
+    void setComparatorFor(Source source, VersionComparator comparator);
+
     // Every conflict among the given components.
     std::vector<Conflict> detect(
         const std::vector<Component>& components
@@ -62,6 +78,9 @@ public:
 
 private:
     VersionComparator comparator_;
+    std::map<Source, VersionComparator> bySource_;
+
+    const VersionComparator& comparatorFor(Source source) const;
 };
 
 }

@@ -61,6 +61,21 @@ const std::string* providedVersion(
 
 }
 
+void ConflictDetector::setComparatorFor(
+    Source source,
+    VersionComparator comparator
+) {
+    bySource_[source] = std::move(comparator);
+}
+
+const VersionComparator& ConflictDetector::comparatorFor(
+    Source source
+) const {
+    const auto found = bySource_.find(source);
+
+    return found == bySource_.end() ? comparator_ : found->second;
+}
+
 ConflictDetector::ConflictDetector(VersionComparator comparator)
     : comparator_(std::move(comparator)) {
 }
@@ -93,14 +108,18 @@ bool ConflictDetector::matches(
         return true;
     }
 
-    if (!comparator_) {
+    // The component's own ecosystem decides how its versions order.
+    const VersionComparator& comparator =
+        comparatorFor(component.source());
+
+    if (!comparator) {
         // No way to compare versions, so assume the condition holds.
         // Over-reporting a conflict is safe; missing one is not.
         return true;
     }
 
     const int comparison =
-        comparator_(*version, constraint.version->version);
+        comparator(*version, constraint.version->version);
 
     return relationHolds(constraint.version->relation, comparison);
 }

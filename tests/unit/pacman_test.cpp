@@ -190,3 +190,22 @@ TEST(PacmanTest, ReadsConflicts) {
 TEST(PacmanTest, HandlesAnEmptyDatabase) {
     EXPECT_TRUE(parsePacmanDatabase("").components.empty());
 }
+
+// pacman shares rpm's rule that a constraint is compared only as
+// precisely as it was written. Arch relies on it heavily: "= 2.42.3"
+// against a package at 2.42.3-1 is the normal case, and running those
+// through Debian's comparator declared every Arch package
+// unsatisfiable on a Debian machine.
+TEST(PacmanTest, AConstraintIsComparedAtItsOwnPrecision) {
+    using nexus::system::comparePacmanConstraint;
+
+    EXPECT_EQ(comparePacmanConstraint("2.42.3-1", "2.42.3"), 0);
+    EXPECT_EQ(comparePacmanConstraint("26.08.0-1", "26.08.0"), 0);
+
+    // A named pkgrel is still compared.
+    EXPECT_LT(comparePacmanConstraint("2.42.3-1", "2.42.3-2"), 0);
+
+    // And the version itself still decides.
+    EXPECT_LT(comparePacmanConstraint("2.42.2-9", "2.42.3"), 0);
+    EXPECT_GT(comparePacmanConstraint("2.42.4-1", "2.42.3"), 0);
+}
