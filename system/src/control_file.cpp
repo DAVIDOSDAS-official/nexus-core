@@ -1,6 +1,7 @@
 #include <nexus/system/control_file.hpp>
 
 #include <cctype>
+#include <filesystem>
 #include <fstream>
 #include <set>
 #include <istream>
@@ -169,6 +170,17 @@ std::vector<ControlStanza> parseControlStream(std::istream& input) {
 }
 
 std::vector<ControlStanza> parseControlFile(const std::string& path) {
+    // A directory opens successfully and reads as nothing, so a
+    // system with a broken path reports zero packages rather than an
+    // error -- and everything downstream reasons happily from that.
+    // An empty result from broken input is the dangerous failure.
+    std::error_code error;
+
+    if (std::filesystem::is_directory(path, error)) {
+        throw std::runtime_error(
+            "Not a control file, it is a directory: " + path);
+    }
+
     std::ifstream input(path);
 
     if (!input) {

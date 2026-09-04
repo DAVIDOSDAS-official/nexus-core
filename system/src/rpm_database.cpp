@@ -143,6 +143,14 @@ RpmDatabaseResult RpmDatabase::parse(const std::string& queryOutput) {
             finish();
 
             const std::string name = field(fields, 1);
+
+            // A header line with nothing after it is not a package,
+            // and inventing one from it would put a nameless
+            // component into the model.
+            if (name.empty()) {
+                open = false;
+                continue;
+            }
             const std::string epoch = field(fields, 2);
             const std::string version = field(fields, 3);
             const std::string release = field(fields, 4);

@@ -161,6 +161,27 @@ else honestly.** Removing the running kernel leaves a system that does
 not boot, so that is refused outright. Removing a spare one is merely
 a choice, so it is described.
 
+## 11. An empty result from broken input is the dangerous failure
+
+A reader given something corrupt has two ways to be wrong. It can
+crash, which is loud and gets fixed. Or it can return nothing, which
+looks exactly like a system with no packages -- and everything
+downstream reasons happily from that.
+
+The second is worse and it is the one that happens. Opening a
+directory as a file succeeds on Linux and reads as zero bytes; a
+truncated database ends mid-record; a query returns a header with no
+rows. Each of those produced an empty, confident, wrong answer.
+
+So every reader is fed hostile input on purpose: truncated,
+garbage, absent, a directory, unreadable, enormous, deeply nested.
+The assertion is always the same -- **say so, or read what is
+genuinely there, but never return nothing as though nothing were
+there.**
+
+That suite found two real bugs the moment it was written, which is
+about the expected rate.
+
 ## 9. Print derived numbers, then disbelieve them
 
 Every wrong answer in this project was found by computing a summary and
