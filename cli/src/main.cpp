@@ -65,6 +65,7 @@ void printUsage() {
         << "    nexus doctor\n"
         << "    nexus history\n"
         << "    nexus hardware\n"
+        << "    nexus setup [<profile>[,<profile>...]] [--apply]\n"
         << "    nexus profile list\n"
         << "    nexus profile show <name>\n"
         << "    nexus profile check <name>[,<name>...]\n"
@@ -1758,6 +1759,243 @@ int commandHardware(const nexus::hardware::HardwareInfo& info) {
     return 0;
 }
 
+// The first thing somebody sees.
+//
+// Everything under this already exists -- profiles, composition,
+// hardware detection, verified installs. What was missing was
+// anything that presents them, and a system nobody can choose is a
+// system nobody uses.
+//
+// It states what each profile would cost on this machine before
+// asking, rather than after. Choosing between names alone is not
+// choosing.
+int commandSetup(
+    const nexus::AliasTable& aliases,
+    const std::vector<Component>& installed,
+    const std::vector<Component>& universe,
+    const nexus::hardware::HardwareInfo& hardware,
+    const std::string& directory,
+    const std::string& architecture,
+    const std::string& chosen,
+    bool apply,
+    bool assumeYes,
+    const std::string& invocation
+) {
+    const auto loaded =
+        nexus::system::parseProfileDirectory(directory);
+
+    if (loaded.profiles.empty()) {
+        std::cerr << "No profiles found in " << directory << ".\n";
+        return 1;
+    }
+
+    std::cout << "This machine\n\n";
+
+    for (const std::string& capability : hardware.capabilities()) {
+        std::cout << "    " << capability << "\n";
+    }
+
+    if (!hardware.unreadable.empty()) {
+        for (const std::string& problem : hardware.unreadable) {
+            std::cout << "    (" << problem << ")\n";
+        }
+    }
+
+    std::cout << "\n";
+
+    // What each profile would mean here, before anything is chosen.
+    if (chosen.empty()) {
+        std::cout << "What would you like this machine to be?\n\n";
+
+        for (const nexus::Profile& profile : loaded.profiles) {
+            nexus::Profile local = profile;
+
+            if (!architecture.empty()) {
+                local.architecture = architecture;
+            }
+
+            // Against what is installed, not against what could be.
+            // Checking the whole universe reports every profile as
+            // satisfied the moment its packages exist in an archive,
+            // which is every profile.
+            const auto report = nexus::checkProfile(
+                local, buildSolver(installed), aliases);
+
+            const std::size_t missing =
+                report.items.size() - report.satisfied;
+
+            std::cout
+                << "  " << profile.name << "\n"
+                << "      " << profile.description << "\n"
+                << "      ";
+
+            if (missing == 0) {
+                std::cout << "already satisfied";
+            } else {
+                std::cout
+                    << missing << " of " << report.items.size()
+                    << " requirement(s) missing";
+            }
+
+            if (profile.exclusive) {
+                std::cout << "; cannot be combined";
+            }
+
+            std::cout << "\n\n";
+        }
+
+        std::cout
+            << "Choose one, or several separated by commas:\n"
+            << "    " << invocation << " <name>[,<name>...]\n"
+            << "\nNothing has been changed.\n";
+
+        return 0;
+    }
+
+    nexus::Composition composition;
+
+    if (!findComposition(loaded.profiles, chosen, composition)) {
+        return 1;
+    }
+
+    if (composition.refused) {
+        std::cerr << composition.refusal << "\n";
+        return 1;
+    }
+
+    nexus::Profile profile = composition.profile;
+
+    if (!architecture.empty()) {
+        profile.architecture = architecture;
+    }
+
+    reportComposition(composition);
+
+    // Two phases, as elsewhere: what is here decides what is
+    // satisfied, and only then does the archive say what would fix
+    // the rest.
+    const auto here = nexus::checkProfile(
+        profile, buildSolver(installed), aliases);
+
+    const auto possible = nexus::checkProfile(
+        profile, buildSolver(universe), aliases);
+
+    std::cout
+        << "Chosen:      " << chosen << "\n"
+        << "Satisfied:   " << here.satisfied << " of "
+        << here.items.size() << "\n\n";
+
+    std::vector<std::string> wanted;
+
+    for (std::size_t index = 0; index < here.items.size(); ++index) {
+        const auto& item = here.items[index];
+
+        if (item.satisfied) {
+            continue;
+        }
+
+        const bool available =
+            index < possible.items.size() &&
+            possible.items[index].satisfied &&
+            !possible.items[index].provided.empty();
+
+        if (!available) {
+            std::cout
+                << "  [missing] " << item.requirement
+                << "\n            nothing available provides this\n";
+            continue;
+        }
+
+        const std::string& name =
+            possible.items[index].provided.front();
+
+        std::cout
+            << "  [install] " << item.requirement
+            << "\n            " << name << "\n";
+
+        wanted.push_back(name);
+    }
+
+    if (wanted.empty()) {
+        std::cout
+            << "\nThis machine already is what you asked for.\n";
+
+        return 0;
+    }
+
+    if (!apply) {
+        std::cout
+            << "\n" << wanted.size()
+            << " thing(s) would be installed.\n"
+            << "Use --apply to do it.\n";
+
+        return 0;
+    }
+
+    if (!nexus::system::haveRootPrivileges()) {
+        std::cout
+            << "\nInstalling needs root. Re-run with sudo:\n"
+            << "    sudo " << invocation << " " << chosen
+            << " --apply\n\nNothing has been changed.\n";
+
+        return 1;
+    }
+
+    if (!assumeYes) {
+        std::cout
+            << "\nInstall " << wanted.size()
+            << " thing(s)? [y/N] ";
+
+        std::string answer;
+
+        std::getline(std::cin, answer);
+
+        if (answer != "y" && answer != "Y" && answer != "yes") {
+            std::cout << "Nothing has been changed.\n";
+            return 1;
+        }
+    }
+
+    // One at a time, each verified before it is applied. A setup that
+    // half-succeeds should leave the parts that worked, and say which
+    // ones did not.
+    std::size_t done = 0;
+    std::vector<std::string> failed;
+
+    for (const std::string& name : wanted) {
+        std::cout << "\n=== " << name << " ===\n";
+
+        const int status = commandInstall(
+            aliases, universe, installed, name, architecture,
+            gUseRpmVersions, true, true, invocation);
+
+        if (status == 0) {
+            done += 1;
+        } else {
+            failed.push_back(name);
+        }
+    }
+
+    std::cout
+        << "\n" << done << " of " << wanted.size()
+        << " installed.\n";
+
+    if (!failed.empty()) {
+        std::cout << "\nDid not install:\n";
+
+        for (const std::string& name : failed) {
+            std::cout << "    " << name << "\n";
+        }
+
+        std::cout
+            << "\nThe rest of the system is unchanged and usable.\n";
+
+        return 1;
+    }
+
+    return 0;
+}
+
 int commandProfile(
     const nexus::AliasTable& aliases,
     const std::vector<Component>& installed,
@@ -2644,6 +2882,12 @@ int main(int argc, char** argv) {
             return commandHardware(hardware);
         }
 
+
+        if (command == "setup") {
+            return commandSetup(
+                aliases, installed, universe, hardware, profileDir,
+                arch, argument, apply, assumeYes, invocation);
+        }
 
         if (command == "profile") {
             const std::string action =

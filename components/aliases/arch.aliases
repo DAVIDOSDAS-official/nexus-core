@@ -14,6 +14,18 @@
 # of them, which looks exactly like the source being empty. That is
 # the maintenance cost of the alias layer, and it is the reason to
 # keep the capability set small and shared rather than per-profile.
+#
+# Arch repositories layer, and they have to be loaded together:
+#
+#     core.db        the base system
+#     extra.db       applications, including metasploit and ghidra
+#     blackarch.db   a security overlay, ~5,000 tools
+#
+# BlackArch is an overlay rather than a distribution: its packages
+# depend on Arch's, so loading it alone gives tools whose
+# dependencies cannot resolve. Loading one database and finding
+# "cannot be used: git" means a lower layer is missing, not that the
+# package is broken.
 
 Capability: web-browser
 Resolves-To: firefox | chromium | epiphany | falkon
@@ -167,3 +179,27 @@ Resolves-To: tmux | zellij | screen
 
 Capability: fuzzy-finder
 Resolves-To: fzf | skim
+
+Capability: network-scanner
+Resolves-To: nmap | masscan | zmap
+
+Capability: packet-analyser
+Resolves-To: wireshark-qt | wireshark-cli | tcpdump | termshark
+
+Capability: password-cracker
+Resolves-To: john | hashcat | hydra
+
+Capability: web-scanner
+Resolves-To: nikto | dirb | gobuster | wapiti
+
+Capability: network-auditor
+Resolves-To: aircrack-ng | kismet | bettercap
+
+Capability: reverse-engineering
+Resolves-To: radare2 | rizin | ghidra | gdb
+
+Capability: forensics-toolkit
+Resolves-To: sleuthkit | binwalk | foremost | testdisk
+
+Capability: exploitation-framework
+Resolves-To: metasploit

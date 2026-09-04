@@ -273,3 +273,51 @@ TEST(MergeAvailableTest, WithoutAComparatorInstalledStillWins) {
     ASSERT_EQ(merged.size(), 1u);
     EXPECT_EQ(merged[0].version(), "3.122.2");
 }
+
+// Arch's git and Debian's git share a name and are not the same
+// package. Keying only on name dropped one of them from the universe,
+// and a resolution scoped to the other source then found nothing --
+// which read as the package being unavailable.
+TEST(MergeAvailableTest, ComponentsFromDifferentSourcesBothSurvive) {
+    const auto comparator =
+        [](const std::string& left, const std::string& right) {
+            return nexus::system::compareVersions(left, right);
+        };
+
+    Component debian = make("git", "2.34.1");
+    debian.setSource(nexus::Source::Base);
+
+    Component arch = make("git", "2.51.0");
+    arch.setSource(nexus::Source::Container);
+
+    const auto merged = mergeAvailable({debian}, {arch}, comparator);
+
+    ASSERT_EQ(merged.size(), 2u);
+
+    bool sawBase = false;
+    bool sawContainer = false;
+
+    for (const auto& component : merged) {
+        sawBase = sawBase ||
+                  component.source() == nexus::Source::Base;
+        sawContainer = sawContainer ||
+                       component.source() == nexus::Source::Container;
+    }
+
+    EXPECT_TRUE(sawBase);
+    EXPECT_TRUE(sawContainer);
+}
+
+// And within one source the newer still wins.
+TEST(MergeAvailableTest, TheNewerStillWinsWithinASource) {
+    const auto comparator =
+        [](const std::string& left, const std::string& right) {
+            return nexus::system::compareVersions(left, right);
+        };
+
+    const auto merged = mergeAvailable(
+        {make("git", "2.34.1")}, {make("git", "2.51.0")}, comparator);
+
+    ASSERT_EQ(merged.size(), 1u);
+    EXPECT_EQ(merged[0].version(), "2.51.0");
+}

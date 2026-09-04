@@ -146,3 +146,27 @@ Resolves-To: tmux | zellij | screen
 
 Capability: fuzzy-finder
 Resolves-To: fzf | skim
+
+Capability: network-scanner
+Resolves-To: nmap | masscan | zmap
+
+Capability: packet-analyser
+Resolves-To: wireshark | tshark | tcpdump | termshark
+
+Capability: password-cracker
+Resolves-To: john | hashcat | hydra
+
+Capability: web-scanner
+Resolves-To: nikto | dirb | gobuster | wapiti
+
+Capability: network-auditor
+Resolves-To: aircrack-ng | kismet | bettercap
+
+Capability: reverse-engineering
+Resolves-To: radare2 | rizin | ghidra | gdb
+
+Capability: forensics-toolkit
+Resolves-To: sleuthkit | binwalk | foremost | testdisk
+
+Capability: exploitation-framework
+Resolves-To: metasploit-framework

@@ -161,6 +161,23 @@ else honestly.** Removing the running kernel leaves a system that does
 not boot, so that is refused outright. Removing a spare one is merely
 a choice, so it is described.
 
+## 12. A source is a whole ecosystem, not a shelf
+
+Repositories layer, and a source has to be loaded complete or its
+packages dangle. Arch is `core` plus `extra` plus whatever overlays;
+BlackArch is an overlay of security tools that depend on both. Loading
+only the overlay produces packages whose dependencies cannot be met,
+which reads as the packages being broken rather than the source being
+half-read.
+
+The related rule, learned the same way: a component from one source
+cannot borrow another's. An Arch package needing `git` is not
+satisfied by the Debian `git` sitting on the machine -- they do not
+share a root filesystem, and pretending they do produces plans that
+cannot be carried out.
+
+Both failures look like the package's fault and are the loader's.
+
 ## 11. An empty result from broken input is the dangerous failure
 
 A reader given something corrupt has two ways to be wrong. It can

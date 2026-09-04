@@ -57,7 +57,12 @@ private:
 // Combine an installed set with an available set into the universe
 // the resolver plans against.
 //
-// The newer version wins, not the installed one.
+// Components are matched by source as well as by name. Arch's git
+// and Debian's git share a name and are not the same package: keying
+// only on name dropped one of them from the universe entirely, and a
+// resolution scoped to the other source then found nothing.
+//
+// The newer version wins within a source, not across them.
 //
 // Installed-wins is right for describing this machine and wrong for
 // planning: an upgrade that exists in the archive is a thing you can

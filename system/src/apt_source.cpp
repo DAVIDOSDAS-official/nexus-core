@@ -357,14 +357,17 @@ std::vector<Component> mergeAvailable(
 
     std::map<std::string, std::size_t> present;
 
+    const auto keyOf = [](const Component& component) {
+        return toString(component.source()) + "/" +
+               component.name() + ":" + component.architecture();
+    };
+
     for (std::size_t index = 0; index < installed.size(); ++index) {
-        present[installed[index].name() + ":" +
-                installed[index].architecture()] = index;
+        present[keyOf(installed[index])] = index;
     }
 
     for (const Component& component : available) {
-        const std::string key =
-            component.name() + ":" + component.architecture();
+        const std::string key = keyOf(component);
 
         const auto existing = present.find(key);
 

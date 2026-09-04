@@ -35,6 +35,7 @@ pulseaudio-libs.i686 libX11.i686 libXext.i686 libXinerama.i686
 libXrandr.i686 libXScrnSaver.i686 nss.i686
 steam gamemode gamescope mangohud vulkan-tools
 kernel-modules-extra libratbag-ratbagd
+nmap wireshark tcpdump john hashcat hydra nikto radare2 aircrack-ng
 pipewire pipewire-pulseaudio wireplumber
 "
 
