@@ -161,6 +161,30 @@ else honestly.** Removing the running kernel leaves a system that does
 not boot, so that is refused outright. Removing a spare one is merely
 a choice, so it is described.
 
+## 13. Read from the plumbing, act through the tool
+
+A tool built for interactive use is the wrong thing to read from.
+
+`distrobox enter` truncates its output when it is not attached to a
+terminal, and truncates by a different amount each time: the same
+query returned 39,158 lines once and 9,987 the next. No amount of
+careful reading recovers output a writer never wrote.
+
+A distrobox container is a podman container. So Nexus reads through
+`podman exec` -- a plain pipe with no terminal handling -- and acts
+through distrobox, whose integration of the home directory, the
+display and the user is the reason to use it at all.
+
+The same split holds elsewhere: read `dpkg`'s status file, act through
+`apt`. Read the rpm database through `rpm -qa`, act through `dnf`.
+
+**And read every subprocess to the end.** `fgets` returns null at the
+end of input and also when interrupted by a signal, and treating the
+second as the first stops reading early on a clean line boundary --
+so the output looks complete. Every reader here goes through one
+function that checks `feof` and retries on `EINTR`, because that
+mistake is invisible and was present in all seven of them.
+
 ## 12. A source is a whole ecosystem, not a shelf
 
 Repositories layer, and a source has to be loaded complete or its

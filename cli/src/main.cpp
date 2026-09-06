@@ -19,6 +19,7 @@
 #include <nexus/diagnosis.hpp>
 #include <nexus/options.hpp>
 #include <nexus/system/container.hpp>
+#include <nexus/system/services.hpp>
 #include <nexus/system/alias_file.hpp>
 #include <nexus/removal.hpp>
 #include <nexus/transaction.hpp>
@@ -66,6 +67,7 @@ void printUsage() {
         << "    nexus remove <component> [--apply] [--yes]\n"
         << "    nexus doctor\n"
         << "    nexus history\n"
+        << "    nexus services [--all]\n"
         << "    nexus hardware\n"
         << "    nexus setup [<profile>[,<profile>...]] [--apply]\n"
         << "    nexus profile list\n"
@@ -1745,6 +1747,75 @@ int commandDoctor(
     return worst == nexus::Health::Problem ? 1 : 0;
 }
 
+// What this machine runs.
+//
+// "Enabled" is the question people mean: not what is installed, and
+// not what happens to be running this minute, but what will start the
+// next time the machine boots.
+int commandServices(bool showAll) {
+    const auto result = nexus::system::readServices();
+
+    if (!result.error.empty()) {
+        std::cerr << result.error << "\n";
+        return 1;
+    }
+
+    std::cout
+        << "Services:    " << result.services.size() << " unit(s)\n"
+        << "Starts at boot: " << result.enabled << "\n";
+
+    if (result.systemdRunning) {
+        std::cout << "Failed:      " << result.failedCount << "\n";
+    } else {
+        // Unit files can be read without a running systemd; whether
+        // anything is running now cannot.
+        std::cout
+            << "Running:     unknown (systemd is not running here)\n";
+    }
+
+    std::cout << "\n";
+
+    std::size_t shown = 0;
+
+    for (const auto& service : result.services) {
+        if (!showAll && !service.startsAtBoot() && !service.failed) {
+            continue;
+        }
+
+        std::cout << "  ";
+
+        if (service.failed) {
+            std::cout << "[failed] ";
+        } else if (service.startsAtBoot()) {
+            std::cout << "[boot]   ";
+        } else {
+            std::cout << "         ";
+        }
+
+        std::cout << service.name;
+
+        if (!service.startsAtBoot() && !service.failed) {
+            std::cout << "  (" << toString(service.state) << ")";
+        }
+
+        std::cout << "\n";
+
+        shown += 1;
+    }
+
+    if (shown == 0) {
+        std::cout << "  nothing starts at boot\n";
+    }
+
+    if (!showAll) {
+        std::cout
+            << "\nShowing what starts at boot. --all for every "
+            << "unit.\n";
+    }
+
+    return 0;
+}
+
 int commandHardware(const nexus::hardware::HardwareInfo& info) {
     std::cout << "Graphics:\n";
 
@@ -2574,12 +2645,18 @@ int main(int argc, char** argv) {
     bool explain = false;
     bool apply = false;
     bool assumeYes = false;
+    bool showAll = false;
     std::vector<std::string> positional;
 
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         if (arguments[index] == "--status" && index + 1 < arguments.size()) {
             statusPath = arguments[index + 1];
             index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--all") {
+            showAll = true;
             continue;
         }
 
@@ -3180,6 +3257,10 @@ int main(int argc, char** argv) {
             return commandDoctor(
                 result, installed, hardware, encryption, roots,
                 havePackages, protectedIds);
+        }
+
+        if (command == "services") {
+            return commandServices(argument == "all" || showAll);
         }
 
         if (command == "hardware") {

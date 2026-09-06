@@ -29,6 +29,7 @@ add_executable(component_test
     unit/hostile_test.cpp
     unit/container_test.cpp
     unit/process_test.cpp
+    unit/services_test.cpp
     unit/protection_test.cpp
     unit/transaction_log_test.cpp
     unit/rpm_version_test.cpp

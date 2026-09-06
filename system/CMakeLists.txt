@@ -15,6 +15,7 @@ add_library(nexus_system
     src/pacman_source.cpp
     src/container.cpp
     src/process.cpp
+    src/services.cpp
     src/rpm_version.cpp
     src/xml.cpp
     src/rpm_source.cpp
