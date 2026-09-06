@@ -1,5 +1,7 @@
 #include <nexus/system/compression.hpp>
 
+#include <nexus/system/process.hpp>
+
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -97,8 +99,7 @@ bool readPossiblyCompressed(
 
     const std::string tool = decompressTool(path);
 
-    if (std::system(("command -v " + tool +
-                     " > /dev/null 2>&1").c_str()) != 0) {
+    if (!commandExists(tool)) {
         reason = "needs '" + tool + "', which is not installed";
         return false;
     }
@@ -110,23 +111,16 @@ bool readPossiblyCompressed(
     const std::string errors =
         "/tmp/nexus-decompress-" + std::to_string(::getpid());
 
-    std::FILE* pipe = popen(
-        (command + " '" + path + "' 2>" + errors).c_str(), "r");
+    const ProcessResult ran = runCommand(
+        command + " '" + path + "' 2>" + errors, false);
 
-    if (pipe == nullptr) {
+    if (!ran.ran) {
         reason = "could not run " + tool;
         return false;
     }
 
-    std::string output;
-    char buffer[65536];
-    std::size_t read = 0;
-
-    while ((read = std::fread(buffer, 1, sizeof(buffer), pipe)) > 0) {
-        output.append(buffer, read);
-    }
-
-    const int status = pclose(pipe);
+    const std::string& output = ran.text;
+    const int status = ran.exitCode;
 
     if (status != 0 || output.empty()) {
         reason = tool + " failed";

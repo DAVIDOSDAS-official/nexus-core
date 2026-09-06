@@ -13,6 +13,8 @@ add_library(nexus_system
     src/transaction_log.cpp
     src/flatpak_source.cpp
     src/pacman_source.cpp
+    src/container.cpp
+    src/process.cpp
     src/rpm_version.cpp
     src/xml.cpp
     src/rpm_source.cpp

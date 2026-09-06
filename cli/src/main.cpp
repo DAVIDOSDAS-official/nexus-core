@@ -18,6 +18,7 @@
 #include <nexus/composition.hpp>
 #include <nexus/diagnosis.hpp>
 #include <nexus/options.hpp>
+#include <nexus/system/container.hpp>
 #include <nexus/system/alias_file.hpp>
 #include <nexus/removal.hpp>
 #include <nexus/transaction.hpp>
@@ -59,6 +60,7 @@ void printUsage() {
         << "    nexus conflicts\n"
         << "    nexus options <capability>\n"
         << "    nexus install <capability> [--apply] [--yes]\n"
+        << "    nexus container <package> [--from-distro d] [--apply]\n"
         << "    nexus image <profile>\n"
         << "    nexus plan <capability>\n"
         << "    nexus remove <component> [--apply] [--yes]\n"
@@ -1803,6 +1805,229 @@ int commandHardware(const nexus::hardware::HardwareInfo& info) {
 // It states what each profile would cost on this machine before
 // asking, rather than after. Choosing between names alone is not
 // choosing.
+// Install a package from another distribution, through a container.
+//
+// The container is distrobox's: it creates it, wires the home
+// directory and the display, and exports the binary onto the host
+// PATH. Nexus decides which distribution, which container, and which
+// package -- and says what it will cost before doing any of it.
+int commandContainerInstall(
+    const std::vector<Component>& universe,
+    const std::string& requested,
+    const std::string& distribution,
+    bool apply,
+    bool assumeYes
+) {
+    if (!nexus::system::Containers::available()) {
+        std::cerr
+            << "distrobox is not installed.\n"
+            << "It creates and wires the container; Nexus only "
+            << "decides what goes in it.\n";
+
+        return 1;
+    }
+
+    const std::string image =
+        nexus::system::containerImageFor(distribution);
+
+    if (image.empty()) {
+        std::cerr
+            << "No container image known for '" << distribution
+            << "'.\nKnown: arch, fedora, debian, ubuntu\n";
+
+        return 1;
+    }
+
+    const std::string container =
+        nexus::system::containerNameFor(distribution);
+
+    // What this actually costs, before anything is created.
+    const Component* found = nullptr;
+
+    for (const Component& component : universe) {
+        if (component.name() == requested &&
+            component.source() == nexus::Source::Container) {
+            found = &component;
+            break;
+        }
+    }
+
+    std::cout
+        << "Package:     " << requested << "\n"
+        << "From:        " << distribution << " (" << image << ")\n"
+        << "Container:   " << container << "\n";
+
+    if (found != nullptr && found->downloadSize() > 0) {
+        std::cout
+            << "Package:     "
+            << nexus::system::formatSize(found->downloadSize())
+            << " to fetch\n";
+    }
+
+    std::cout
+        << "\nThe container is a whole distribution. The first "
+        << "package from it\ncosts several hundred megabytes; "
+        << "later ones cost only themselves.\n";
+
+    if (!apply) {
+        std::cout
+            << "\nNothing has been changed. Use --apply to do it.\n";
+
+        return 0;
+    }
+
+    if (!assumeYes) {
+        std::cout << "\nProceed? [y/N] ";
+
+        std::string answer;
+
+        std::getline(std::cin, answer);
+
+        if (answer != "y" && answer != "Y" && answer != "yes") {
+            std::cout << "Nothing has been changed.\n";
+            return 1;
+        }
+    }
+
+    std::cout << "\nPreparing the container.\n";
+
+    const auto prepared =
+        nexus::system::Containers::ensure(container, image);
+
+    for (const std::string& line : prepared.output) {
+        std::cout << line << "\n";
+    }
+
+    if (!prepared.ok) {
+        std::cerr
+            << "\nCould not prepare the container";
+
+        if (!prepared.error.empty()) {
+            std::cerr << ": " << prepared.error;
+        }
+
+        std::cerr << "\nNothing has been changed on the host.\n";
+
+        return 1;
+    }
+
+    std::cout << "\nInstalling inside it.\n";
+
+    // The container's own package manager does the installing, the
+    // same way apt does on the host.
+    const std::string install =
+        distribution == "arch"
+            ? "sudo pacman -Sy --noconfirm " + requested
+            : distribution == "fedora"
+                ? "sudo dnf install -y " + requested
+                : "sudo apt-get install -y " + requested;
+
+    const auto installed =
+        nexus::system::Containers::run(container, install);
+
+    for (const std::string& line : installed.output) {
+        std::cout << line << "\n";
+    }
+
+    if (!installed.ok) {
+        std::cerr
+            << "\nThe package did not install. The container is "
+            << "still there\nand the host is unchanged.\n";
+
+        return 1;
+    }
+
+    std::cout << "\nFinding out what it installed.\n";
+
+    // Not "the binary named after the package". Arch's metasploit
+    // ships msfconsole, msfvenom and msfdb, and nothing called
+    // metasploit.
+    const auto binaries = nexus::system::Containers::binariesOf(
+        container, distribution, requested);
+
+    if (binaries.paths.empty()) {
+        // Say which of the two things happened.
+        if (!binaries.queried || binaries.linesSeen == 0) {
+            std::cout
+                << "\nCould not ask the container what it installed"
+                << " (" << binaries.linesSeen << " line(s) back).\n";
+
+            if (!binaries.firstLine.empty()) {
+                std::cout
+                    << "First line was: " << binaries.firstLine
+                    << "\n";
+            }
+        } else {
+            std::cout
+                << "\nInstalled. Its " << binaries.linesSeen
+                << " file(s) include no commands under /usr/bin.\n";
+
+            if (!binaries.firstLine.empty()) {
+                std::cout
+                    << "First line was: " << binaries.firstLine
+                    << "\n";
+            }
+        }
+
+        std::cout
+            << "Reach the container with:\n"
+            << "    distrobox enter " << container << "\n";
+
+        return 0;
+    }
+
+    std::cout
+        << "\nPutting " << binaries.paths.size()
+        << " command(s) on your PATH.\n";
+
+    std::vector<std::string> exported;
+    std::vector<std::string> refused;
+
+    for (const std::string& path : binaries.paths) {
+        const auto result =
+            nexus::system::Containers::exportBinary(container, path);
+
+        const std::size_t slash = path.rfind('/');
+
+        const std::string command =
+            slash == std::string::npos
+                ? path
+                : path.substr(slash + 1);
+
+        if (result.ok) {
+            exported.push_back(command);
+        } else {
+            refused.push_back(command);
+        }
+    }
+
+    for (const std::string& command : exported) {
+        std::cout << "    " << command << "\n";
+    }
+
+    if (exported.empty()) {
+        std::cout
+            << "\nInstalled, but nothing could be exported. Reach "
+            << "it with:\n"
+            << "    distrobox enter " << container << "\n";
+
+        return 0;
+    }
+
+    std::cout
+        << "\nDone. Those run inside " << container
+        << ". They are on your PATH at\n"
+        << "~/.local/bin, so a new shell will find them.\n";
+
+    if (!refused.empty()) {
+        std::cout
+            << "\n" << refused.size()
+            << " could not be exported.\n";
+    }
+
+    return 0;
+}
+
 int commandSetup(
     const nexus::AliasTable& aliases,
     const std::vector<Component>& installed,
@@ -1821,6 +2046,22 @@ int commandSetup(
     if (loaded.profiles.empty()) {
         std::cerr << "No profiles found in " << directory << ".\n";
         return 1;
+    }
+
+    // The name is checked before anything is described. An error
+    // that arrives after a paragraph of context nobody asked for
+    // reads as though the context mattered.
+    nexus::Composition composition;
+
+    if (!chosen.empty()) {
+        if (!findComposition(loaded.profiles, chosen, composition)) {
+            return 1;
+        }
+
+        if (composition.refused) {
+            std::cerr << composition.refusal << "\n";
+            return 1;
+        }
     }
 
     std::cout << "This machine\n\n";
@@ -1884,17 +2125,6 @@ int commandSetup(
             << "\nNothing has been changed.\n";
 
         return 0;
-    }
-
-    nexus::Composition composition;
-
-    if (!findComposition(loaded.profiles, chosen, composition)) {
-        return 1;
-    }
-
-    if (composition.refused) {
-        std::cerr << composition.refusal << "\n";
-        return 1;
     }
 
     nexus::Profile profile = composition.profile;
@@ -2340,6 +2570,7 @@ int main(int argc, char** argv) {
     bool withFlatpak = false;
     std::optional<nexus::Source> onlySource;
     std::vector<std::string> archDatabases;
+    std::string fromDistribution = "arch";
     bool explain = false;
     bool apply = false;
     bool assumeYes = false;
@@ -2411,6 +2642,13 @@ int main(int argc, char** argv) {
                 return 2;
             }
 
+            index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--from-distro" &&
+            index + 1 < arguments.size()) {
+            fromDistribution = arguments[index + 1];
             index += 1;
             continue;
         }
@@ -2948,6 +3186,20 @@ int main(int argc, char** argv) {
             return commandHardware(hardware);
         }
 
+
+        if (command == "container") {
+            if (argument.empty()) {
+                std::cerr
+                    << "container requires a package name.\n"
+                    << "    nexus container <package> "
+                    << "[--from-distro arch] [--apply]\n";
+                return 2;
+            }
+
+            return commandContainerInstall(
+                universe, argument, fromDistribution, apply,
+                assumeYes);
+        }
 
         if (command == "setup") {
             return commandSetup(

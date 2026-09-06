@@ -2,7 +2,7 @@
 
 #include <cstdio>
 #include <cstdlib>
-#include <sys/wait.h>
+#include <nexus/system/process.hpp>
 #include <unistd.h>
 
 namespace nexus::system {
@@ -33,7 +33,7 @@ namespace {
 ApplyResult runApt(const std::string& arguments) {
     ApplyResult result;
 
-    if (std::system("apt-get --version > /dev/null 2>&1") != 0) {
+    if (!commandExists("apt-get")) {
         result.outcome = ApplyOutcome::Unavailable;
         return result;
     }
@@ -43,31 +43,16 @@ ApplyResult runApt(const std::string& arguments) {
         return result;
     }
 
-    const std::string command = "apt-get " + arguments + " 2>&1";
+    const ProcessResult ran = runCommand("apt-get " + arguments);
 
-    std::FILE* pipe = popen(command.c_str(), "r");
-
-    if (pipe == nullptr) {
+    if (!ran.ran) {
         result.outcome = ApplyOutcome::Failed;
         return result;
     }
 
-    char line[4096];
-
-    while (std::fgets(line, sizeof(line), pipe) != nullptr) {
-        std::string text(line);
-
-        if (!text.empty() && text.back() == '\n') {
-            text.pop_back();
-        }
-
-        result.output.push_back(text);
-    }
-
-    const int status = pclose(pipe);
-
-    result.exitCode = status == -1 ? -1 : WEXITSTATUS(status);
-    result.outcome = result.exitCode == 0
+    result.output = ran.lines;
+    result.exitCode = ran.exitCode;
+    result.outcome = ran.ok
         ? ApplyOutcome::Applied
         : ApplyOutcome::Failed;
 
@@ -81,7 +66,7 @@ namespace {
 ApplyResult runDnf(const std::string& arguments) {
     ApplyResult result;
 
-    if (std::system("dnf --version > /dev/null 2>&1") != 0) {
+    if (!commandExists("dnf")) {
         result.outcome = ApplyOutcome::Unavailable;
         return result;
     }
@@ -91,31 +76,16 @@ ApplyResult runDnf(const std::string& arguments) {
         return result;
     }
 
-    const std::string command = "dnf " + arguments + " 2>&1";
+    const ProcessResult ran = runCommand("dnf " + arguments);
 
-    std::FILE* pipe = popen(command.c_str(), "r");
-
-    if (pipe == nullptr) {
+    if (!ran.ran) {
         result.outcome = ApplyOutcome::Failed;
         return result;
     }
 
-    char line[4096];
-
-    while (std::fgets(line, sizeof(line), pipe) != nullptr) {
-        std::string text(line);
-
-        if (!text.empty() && text.back() == '\n') {
-            text.pop_back();
-        }
-
-        result.output.push_back(text);
-    }
-
-    const int status = pclose(pipe);
-
-    result.exitCode = status == -1 ? -1 : WEXITSTATUS(status);
-    result.outcome = result.exitCode == 0
+    result.output = ran.lines;
+    result.exitCode = ran.exitCode;
+    result.outcome = ran.ok
         ? ApplyOutcome::Applied
         : ApplyOutcome::Failed;
 
@@ -169,7 +139,7 @@ ApplyResult removeWithApt(
 ApplyResult applyWithApt(const std::string& requested) {
     ApplyResult result;
 
-    if (std::system("apt-get --version > /dev/null 2>&1") != 0) {
+    if (!commandExists("apt-get")) {
         result.outcome = ApplyOutcome::Unavailable;
         return result;
     }

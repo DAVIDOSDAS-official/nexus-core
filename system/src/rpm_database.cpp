@@ -1,5 +1,7 @@
 #include <nexus/system/rpm_database.hpp>
 
+#include <nexus/system/process.hpp>
+
 #include <cstdio>
 #include <cstdlib>
 #include <sstream>
@@ -106,7 +108,7 @@ RpmDatabase::RpmDatabase(std::string root)
 }
 
 bool RpmDatabase::available() {
-    return std::system("rpm --version > /dev/null 2>&1") == 0;
+    return commandExists("rpm");
 }
 
 RpmDatabaseResult RpmDatabase::parse(const std::string& queryOutput) {
@@ -295,22 +297,14 @@ RpmDatabaseResult RpmDatabase::load() const {
     command += kFormat;
     command += "' 2>/dev/null";
 
-    std::FILE* pipe = popen(command.c_str(), "r");
+    const ProcessResult ran = runCommand(command, false);
 
-    if (pipe == nullptr) {
+    if (!ran.ran) {
         result.error = "could not run rpm";
         return result;
     }
 
-    std::string output;
-    char buffer[65536];
-    std::size_t read = 0;
-
-    while ((read = std::fread(buffer, 1, sizeof(buffer), pipe)) > 0) {
-        output.append(buffer, read);
-    }
-
-    pclose(pipe);
+    const std::string& output = ran.text;
 
     if (output.empty()) {
         result.error = "rpm returned nothing";

@@ -1,5 +1,7 @@
 #include <nexus/system/plan_check.hpp>
 
+#include <nexus/system/process.hpp>
+
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -16,7 +18,7 @@ PlanCheck checkPlanWithApt(
 ) {
     PlanCheck check;
 
-    if (std::system("apt-get --version > /dev/null 2>&1") != 0) {
+    if (!commandExists("apt-get")) {
         check.agreement = PlanAgreement::Unavailable;
         return check;
     }
@@ -170,7 +172,7 @@ PlanCheck checkPlanWithDnf(
 ) {
     PlanCheck check;
 
-    if (std::system("dnf --version > /dev/null 2>&1") != 0) {
+    if (!commandExists("dnf")) {
         check.agreement = PlanAgreement::Unavailable;
         return check;
     }

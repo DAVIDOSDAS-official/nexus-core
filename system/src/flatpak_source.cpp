@@ -1,5 +1,7 @@
 #include <nexus/system/flatpak_source.hpp>
 
+#include <nexus/system/process.hpp>
+
 #include <cstdio>
 #include <cctype>
 #include <cstdlib>
@@ -30,23 +32,7 @@ std::vector<std::string> splitTabs(const std::string& line) {
 }
 
 std::string run(const std::string& command) {
-    std::FILE* pipe = popen((command + " 2>/dev/null").c_str(), "r");
-
-    if (pipe == nullptr) {
-        return "";
-    }
-
-    std::string output;
-    char buffer[65536];
-    std::size_t read = 0;
-
-    while ((read = std::fread(buffer, 1, sizeof(buffer), pipe)) > 0) {
-        output.append(buffer, read);
-    }
-
-    pclose(pipe);
-
-    return output;
+    return runCommand(command, false).text;
 }
 
 }
@@ -131,7 +117,7 @@ std::string formatSize(std::uint64_t bytes) {
 }
 
 bool FlatpakSource::available() {
-    return std::system("flatpak --version > /dev/null 2>&1") == 0;
+    return commandExists("flatpak");
 }
 
 FlatpakSourceResult FlatpakSource::parse(

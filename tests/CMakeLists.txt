@@ -27,6 +27,8 @@ add_executable(component_test
     unit/size_test.cpp
     unit/pacman_test.cpp
     unit/hostile_test.cpp
+    unit/container_test.cpp
+    unit/process_test.cpp
     unit/protection_test.cpp
     unit/transaction_log_test.cpp
     unit/rpm_version_test.cpp

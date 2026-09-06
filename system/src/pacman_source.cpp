@@ -1,5 +1,7 @@
 #include <nexus/system/pacman_source.hpp>
 
+#include <nexus/system/process.hpp>
+
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -206,7 +208,7 @@ PacmanSourceResult readPacmanDatabase(
 ) {
     PacmanSourceResult result;
 
-    if (std::system("tar --version > /dev/null 2>&1") != 0) {
+    if (!commandExists("tar")) {
         result.error = "tar is not available";
         return result;
     }
@@ -224,22 +226,14 @@ PacmanSourceResult readPacmanDatabase(
     const std::string command =
         "tar -xaOf '" + path + "' 2>" + errors;
 
-    std::FILE* pipe = popen(command.c_str(), "r");
+    const ProcessResult ran = runCommand(command, false);
 
-    if (pipe == nullptr) {
+    if (!ran.ran) {
         result.error = "could not run tar on " + path;
         return result;
     }
 
-    std::string text;
-    char buffer[65536];
-    std::size_t read = 0;
-
-    while ((read = std::fread(buffer, 1, sizeof(buffer), pipe)) > 0) {
-        text.append(buffer, read);
-    }
-
-    pclose(pipe);
+    const std::string& text = ran.text;
 
     if (text.empty()) {
         result.error = path + ": ";
