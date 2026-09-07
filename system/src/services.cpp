@@ -4,6 +4,7 @@
 #include <sstream>
 
 #include <nexus/system/process.hpp>
+#include <nexus/system/snap_source.hpp>
 
 namespace nexus::system {
 
@@ -251,6 +252,19 @@ void applyDpkgOwners(
 void attachOwners(ServicesResult& result, bool useRpm) {
     if (result.services.empty()) {
         return;
+    }
+
+    // A snap unit is named snap.<snap>.<app>.service, so it says who
+    // owns it and no query is needed. Without this a snap's service
+    // looks unowned -- which is a different problem from being
+    // orphaned, and the two are indistinguishable if the source
+    // cannot be read at all.
+    for (Service& service : result.services) {
+        const std::string snap = snapOwningUnit(service.name);
+
+        if (!snap.empty()) {
+            service.owner = snap + " (snap)";
+        }
     }
 
     std::string paths;

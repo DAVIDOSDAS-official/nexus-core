@@ -1,0 +1,53 @@
+# What Snap calls the things profiles ask for.
+#
+# A fifth vocabulary. Snaps are confined and self-contained like
+# Flatpaks, and unlike them they can also be system components:
+# core22 is a base, snapd is the daemon, and a snap can ship a
+# service. That is why a snap turned up as a service with no owning
+# package -- it had an owner, in a source Nexus could not read.
+#
+# Snap names are usually the upstream project name unchanged, which
+# makes this table shorter than the others rather than easier: the
+# ones that differ are the ones worth writing down.
+
+Capability: web-browser
+Resolves-To: firefox | chromium | brave
+
+Capability: code-editor
+Resolves-To: code | codium | intellij-idea-community
+
+Capability: text-editor
+Resolves-To: notepad-plus-plus
+
+Capability: word-processor
+Resolves-To: libreoffice | onlyoffice-desktopeditors
+
+Capability: spreadsheet
+Resolves-To: libreoffice | onlyoffice-desktopeditors
+
+Capability: image-editor
+Resolves-To: gimp | krita | inkscape
+
+Capability: video-editor
+Resolves-To: kdenlive | shotcut
+
+Capability: video-player
+Resolves-To: vlc | mpv
+
+Capability: audio-editor
+Resolves-To: audacity
+
+Capability: chat-client
+Resolves-To: discord | telegram-desktop | slack
+
+Capability: steam
+Resolves-To: steam
+
+Capability: exploitation-framework
+Resolves-To: metasploit-framework
+
+Capability: network-scanner
+Resolves-To: nmap
+
+Capability: container-runtime
+Resolves-To: docker | lxd

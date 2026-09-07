@@ -30,6 +30,7 @@ add_executable(component_test
     unit/container_test.cpp
     unit/process_test.cpp
     unit/services_test.cpp
+    unit/snap_test.cpp
     unit/protection_test.cpp
     unit/transaction_log_test.cpp
     unit/rpm_version_test.cpp

@@ -20,6 +20,7 @@
 #include <nexus/options.hpp>
 #include <nexus/system/container.hpp>
 #include <nexus/system/services.hpp>
+#include <nexus/system/snap_source.hpp>
 #include <nexus/system/alias_file.hpp>
 #include <nexus/removal.hpp>
 #include <nexus/transaction.hpp>
@@ -82,6 +83,7 @@ void printUsage() {
         << "    --arch <arch>     target architecture\n"
         << "    --with-available  also read available packages\n"
         << "    --with-flatpak    also offer Flatpak applications\n"
+        << "    --with-snap       also read installed snaps\n"
         << "    --with-arch <db>  also offer Arch packages, via a container\n"
         << "    --from <source>   only options from base, flatpak, container or nix\n"
         << "    --rpm | --dpkg    force a package ecosystem\n"
@@ -2657,6 +2659,7 @@ int main(int argc, char** argv) {
     bool forceDpkg = false;
     bool withAvailable = false;
     bool withFlatpak = false;
+    bool withSnap = false;
     std::optional<nexus::Source> onlySource;
     std::vector<std::string> archDatabases;
     std::string fromDistribution = "arch";
@@ -2726,6 +2729,9 @@ int main(int argc, char** argv) {
             } else if (named == "flatpak") {
                 onlySource = nexus::Source::Flatpak;
                 withFlatpak = true;
+            } else if (named == "snap") {
+                onlySource = nexus::Source::Snap;
+                withSnap = true;
             } else if (named == "container") {
                 onlySource = nexus::Source::Container;
             } else if (named == "nix") {
@@ -2733,7 +2739,7 @@ int main(int argc, char** argv) {
             } else {
                 std::cerr
                     << "Unknown source: " << named << "\n"
-                    << "Known: base, flatpak, container, nix\n";
+                    << "Known: base, flatpak, snap, container, nix\n";
                 return 2;
             }
 
@@ -2752,6 +2758,11 @@ int main(int argc, char** argv) {
             index + 1 < arguments.size()) {
             archDatabases.push_back(arguments[index + 1]);
             index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--with-snap") {
+            withSnap = true;
             continue;
         }
 
@@ -3048,6 +3059,35 @@ int main(int argc, char** argv) {
             std::cerr
                 << "Loaded " << arch.components.size()
                 << " Arch package(s) from " << database << ".\n";
+        }
+
+        if (withSnap) {
+            const auto snaps = nexus::system::readSnaps();
+
+            if (!snaps.error.empty()) {
+                std::cerr << "Warning: " << snaps.error << "\n";
+            } else {
+                for (const Component& component : snaps.components) {
+                    universe.push_back(component);
+                    availableOnly.push_back(component);
+                }
+
+                haveAvailable = true;
+
+                std::cerr
+                    << "Loaded " << snaps.installed
+                    << " snap(s) and " << snaps.infrastructure
+                    << " base(s).\n";
+            }
+
+            const auto loaded = nexus::system::parseAliasFile(
+                aliasDir + "/snap.aliases");
+
+            for (const std::string& problem : loaded.problems) {
+                std::cerr << "Warning: " << problem << "\n";
+            }
+
+            aliases.merge(loaded.table);
         }
 
         if (withFlatpak) {

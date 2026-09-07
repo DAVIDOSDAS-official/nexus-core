@@ -17,6 +17,7 @@ namespace nexus {
 enum class Source {
     Base,        // the distribution's own repositories
     Flatpak,
+    Snap,
     Container,   // distrobox, toolbx: another distribution, isolated
     Nix,
     AppImage,

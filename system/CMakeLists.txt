@@ -16,6 +16,7 @@ add_library(nexus_system
     src/container.cpp
     src/process.cpp
     src/services.cpp
+    src/snap_source.cpp
     src/rpm_version.cpp
     src/xml.cpp
     src/rpm_source.cpp

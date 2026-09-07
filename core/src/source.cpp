@@ -6,6 +6,7 @@ std::string toString(Source source) {
     switch (source) {
         case Source::Base:      return "base";
         case Source::Flatpak:   return "flatpak";
+        case Source::Snap:      return "snap";
         case Source::Container: return "container";
         case Source::Nix:       return "nix";
         case Source::AppImage:  return "appimage";
@@ -22,6 +23,9 @@ std::string describe(Source source) {
         case Source::Flatpak:
             return "current and sandboxed, larger, weaker desktop "
                    "integration";
+        case Source::Snap:
+            return "confined and self-updating, slower to start, "
+                   "one store";
         case Source::Container:
             return "another distribution's package, behind a boundary";
         case Source::Nix:
@@ -38,6 +42,7 @@ std::string describe(Source source) {
 bool isIsolated(Source source) {
     switch (source) {
         case Source::Flatpak:
+        case Source::Snap:
         case Source::Container:
         case Source::Nix:
         case Source::AppImage:
