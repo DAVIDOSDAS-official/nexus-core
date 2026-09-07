@@ -2,6 +2,7 @@
 #include <exception>
 #include <iostream>
 #include <istream>
+#include <cstdio>
 #include <cstdlib>
 #include <optional>
 #include <fstream>
@@ -19,6 +20,7 @@
 #include <nexus/diagnosis.hpp>
 #include <nexus/options.hpp>
 #include <nexus/system/container.hpp>
+#include <nexus/system/process.hpp>
 #include <nexus/system/services.hpp>
 #include <nexus/system/snap_source.hpp>
 #include <nexus/system/alias_file.hpp>
@@ -54,6 +56,7 @@ void printUsage() {
         << "nexus - read-only system inspection\n"
         << "\n"
         << "Usage:\n"
+        << "    nexus guide            how to work this system\n"
         << "    nexus scan\n"
         << "    nexus what-provides <capability>\n"
         << "    nexus why <component>\n"
@@ -68,6 +71,7 @@ void printUsage() {
         << "    nexus remove <component> [--apply] [--yes]\n"
         << "    nexus doctor\n"
         << "    nexus history\n"
+        << "    nexus largest [count] [--unused]\n"
         << "    nexus services [--all]\n"
         << "    nexus hardware\n"
         << "    nexus setup [<profile>[,<profile>...]] [--apply]\n"
@@ -88,6 +92,7 @@ void printUsage() {
         << "    --from <source>   only options from base, flatpak, container or nix\n"
         << "    --rpm | --dpkg    force a package ecosystem\n"
         << "    --rpm-root <dir>  inspect an rpm root elsewhere\n"
+        << "    --commands        print the commands instead of running them\n"
         << "    --explain         reason for every component, not just choices\n"
         << "    --lists <dir>     apt lists directory\n"
         << "    --sysfs <dir>     root for hardware detection\n"
@@ -818,6 +823,7 @@ int commandInstall(
     bool useRpm,
     bool apply,
     bool assumeYes,
+    bool showCommands,
     const std::string& invocation
 ) {
     nexus::SolverRequest request;
@@ -955,9 +961,32 @@ int commandInstall(
         }
     }
 
+    if (showCommands) {
+        // The commands, not the outcome.
+        //
+        // The appeal of assembling a system by hand is not the
+        // typing, it is knowing what happened. A tool that resolves
+        // and explains and then hands over the exact commands gives
+        // that without hiding anything -- and without pretending the
+        // base is something it is not.
+        std::cout
+            << "\nWhat this would run:\n\n"
+            << "    sudo " << (useRpm ? "dnf" : "apt-get")
+            << " install "
+            << (useRpm
+                    ? "--setopt=install_weak_deps=False "
+                    : "--no-install-recommends ")
+            << requested << "\n"
+            << "\nRun it yourself, or use --apply to have Nexus do "
+            << "it.\n";
+
+        return 0;
+    }
+
     if (!apply) {
         std::cout
-            << "\nNothing has been changed. Use --apply to install.\n";
+            << "\nNothing has been changed. Use --apply to install, "
+            << "or\n--commands to see what it would run.\n";
 
         return check.agreement == nexus::system::PlanAgreement::Agrees
             ? 0
@@ -1322,6 +1351,7 @@ int commandRemove(
     bool apply,
     bool assumeYes,
     bool useRpm,
+    bool showCommands,
     const std::string& invocation
 ) {
     const auto automatic =
@@ -1394,9 +1424,25 @@ int commandRemove(
         std::cout << "    " << id << "  (nothing else needs it)\n";
     }
 
+    if (showCommands) {
+        std::cout << "\nWhat this would run:\n\n    sudo "
+                  << (useRpm ? "dnf" : "apt-get") << " remove";
+
+        for (const std::string& name : plan.removed) {
+            std::cout << " " << name;
+        }
+
+        std::cout
+            << "\n\nRun it yourself, or use --apply to have Nexus "
+            << "do it.\n";
+
+        return 0;
+    }
+
     if (!apply) {
         std::cout
-            << "\nNothing has been changed. Use --apply to remove.\n";
+            << "\nNothing has been changed. Use --apply to remove, "
+            << "or\n--commands to see what it would run.\n";
 
         return 0;
     }
@@ -1754,6 +1800,237 @@ int commandDoctor(
 // "Enabled" is the question people mean: not what is installed, and
 // not what happens to be running this minute, but what will start the
 // next time the machine boots.
+// What is taking up the room.
+//
+// A system's size is not evenly spread: on a Fedora base a handful of
+// components are most of it, and knowing which ones is the difference
+// between "the image is 2.9 GB" and "the image is 2.9 GB because
+// firmware for every device on earth is 1.2 GB of it".
+//
+// Sizes come from the same metadata everything else does, so this is
+// a report rather than a measurement -- it says what the packages
+// claim, which can differ from what is on disk.
+// How to work this system, by task rather than by command.
+//
+// The question somebody has is "how do I update this", not "what
+// commands exist". Every distribution answers it differently and the
+// answer is usually somewhere else -- a wiki, a forum, a video. It
+// belongs in the tool.
+//
+// What Nexus does not do is listed too. A guide that only says what
+// works leaves somebody searching for the rest.
+int commandGuide(bool useRpm) {
+    const std::string manager = useRpm ? "dnf" : "apt";
+
+    std::cout << R"(Nexus - how to work this system
+
+Nexus decides and explains; )" << manager << R"( does the work.
+Every command reads by default. Only --apply changes anything.
+
+WHAT IS ON THIS MACHINE
+
+  nexus doctor                  is anything wrong?
+  nexus scan                    what is installed, in summary
+  nexus hardware                what this machine is
+  nexus services                what starts when it boots
+  nexus largest 20              what is taking up the room
+  nexus largest 20 --unused     what is big and needed by nothing
+  nexus history                 what Nexus has changed
+
+INSTALLING AND REMOVING
+
+  nexus options web-browser     every way to get one, with costs
+  nexus install firefox         what it would do, and nothing more
+  nexus install firefox --commands
+                                the exact commands, to run yourself
+  sudo nexus install firefox --apply
+  nexus remove firefox          what removing it would take with it
+  sudo nexus remove firefox --apply
+
+  --commands works on install, remove and setup. Nexus works out
+  what to do and hands you the commands; nothing is hidden and
+  nothing is run. The appeal of assembling a system by hand is
+  knowing what happened, and that does not require doing the
+  resolving by hand as well.
+
+  Nexus checks the plan with )" << manager << R"( before applying it,
+  and refuses to apply one )" << manager << R"( will not agree to.
+
+UPDATING
+
+  Nexus does not update the system. Use )" << manager << R"( directly:
+)";
+
+    if (useRpm) {
+        std::cout << R"(
+      sudo dnf upgrade                 update everything
+      sudo bootc upgrade               if this is an image-based
+                                       system, then reboot
+)";
+    } else {
+        std::cout << R"(
+      sudo apt update                  refresh what is available
+      sudo apt upgrade                 update everything
+)";
+    }
+
+    std::cout << R"(
+  Updating is one operation with one correct implementation, and it
+  already exists. A second one would only be a way to get it wrong.
+
+SETTING UP A MACHINE
+
+  nexus setup                   what this machine could be
+  nexus setup gaming            what that would take
+  sudo nexus setup gaming --apply
+
+  Several at once: nexus setup school,gaming
+
+SOFTWARE FROM ELSEWHERE
+
+  nexus options X --with-flatpak     also offer Flatpaks
+  nexus options X --with-snap        also read installed snaps
+  nexus container metasploit --apply run another distribution's
+                                     package, in a container
+
+  Packages from different distributions cannot share one filesystem.
+  They can run beside each other in containers, and Nexus says what
+  that costs before you agree to it.
+
+WHEN SOMETHING IS WRONG
+
+  nexus doctor                  start here
+  nexus why <component>         what pulled this in
+  nexus conflicts               what collides with what
+  nexus solve X --explain       why every component was chosen
+  nexus services                anything failing or restarting
+
+WHAT NEXUS DOES NOT DO
+
+  It does not update, and it does not unpack, configure or remove
+  files. )" << manager << R"( does those, correctly, and a second
+  implementation would be a second set of bugs.
+
+  It does not mix distributions in one filesystem. Nothing can.
+
+  It does not know about services beyond what systemd reports, or
+  about anything installed by a script rather than a package. Those
+  show up in nexus services with no owner, which is worth looking at.
+
+)";
+
+    return 0;
+}
+
+int commandLargest(
+    const std::vector<Component>& installed,
+    std::size_t howMany,
+    bool onlyUnused,
+    const std::set<std::string>& unused
+) {
+    std::vector<const Component*> ordered;
+
+    std::uint64_t total = 0;
+    std::size_t unknown = 0;
+
+    for (const Component& component : installed) {
+        // Whether to filter is a flag, not something inferred from
+        // the set being empty. An empty set means both "no filter
+        // asked for" and "nothing is unused", and treating the second
+        // as the first showed every component on a system that had no
+        // unused ones at all.
+        if (onlyUnused && unused.count(component.id()) == 0) {
+            continue;
+        }
+
+        if (component.installedSize() == 0) {
+            // Unknown is not zero, and counting it as zero would
+            // understate the total by however much it actually is.
+            unknown += 1;
+            continue;
+        }
+
+        total += component.installedSize();
+        ordered.push_back(&component);
+    }
+
+    std::sort(
+        ordered.begin(),
+        ordered.end(),
+        [](const Component* left, const Component* right) {
+            return left->installedSize() > right->installedSize();
+        }
+    );
+
+    std::cout
+        << "Components:  " << ordered.size() << "\n"
+        << "Accounted:   "
+        << nexus::system::formatSize(total) << "\n";
+
+    if (onlyUnused) {
+        // The two halves together are the question somebody actually
+        // has about an image: not what is big, and not what is
+        // unneeded, but what is both.
+        std::cout
+            << "Showing only what nothing needs.\n";
+
+        if (ordered.empty()) {
+            std::cout
+                << "\nNothing is both installed and unneeded.\n";
+        }
+    }
+
+    if (unknown > 0) {
+        std::cout
+            << "Unknown:     " << unknown
+            << " component(s) report no size\n";
+    }
+
+    std::cout << "\n";
+
+    std::uint64_t shown = 0;
+    std::size_t count = 0;
+
+    for (const Component* component : ordered) {
+        if (count >= howMany) {
+            break;
+        }
+
+        const double share =
+            total == 0
+                ? 0.0
+                : 100.0 * static_cast<double>(
+                      component->installedSize()) /
+                  static_cast<double>(total);
+
+        std::string size = nexus::system::formatSize(
+            component->installedSize());
+
+        while (size.size() < 8) {
+            size = " " + size;
+        }
+
+        std::printf(
+            "  %s  %5.1f%%  %s\n",
+            size.c_str(),
+            share,
+            component->id().c_str());
+
+        shown += component->installedSize();
+        count += 1;
+    }
+
+    if (total > 0) {
+        std::printf(
+            "\nThose %zu are %.0f%% of the total.\n",
+            count,
+            100.0 * static_cast<double>(shown) /
+                static_cast<double>(total));
+    }
+
+    return 0;
+}
+
 int commandServices(bool showAll, bool useRpm) {
     auto result = nexus::system::readServices();
 
@@ -2129,6 +2406,7 @@ int commandSetup(
     const std::string& chosen,
     bool apply,
     bool assumeYes,
+    bool showCommands,
     const std::string& invocation
 ) {
     const auto loaded =
@@ -2307,11 +2585,34 @@ int commandSetup(
         return 0;
     }
 
+    if (showCommands) {
+        std::cout
+            << "\nWhat this would run:\n\n";
+
+        for (const std::string& name : wanted) {
+            std::cout
+                << "    sudo "
+                << (gUseRpmVersions ? "dnf" : "apt-get")
+                << " install "
+                << (gUseRpmVersions
+                        ? "--setopt=install_weak_deps=False "
+                        : "--no-install-recommends ")
+                << name << "\n";
+        }
+
+        std::cout
+            << "\nOne at a time on purpose: if the fourth fails the "
+            << "first three\nstill happened, and you can see which.\n";
+
+        return 0;
+    }
+
     if (!apply) {
         std::cout
             << "\n" << wanted.size()
             << " thing(s) would be installed.\n"
-            << "Use --apply to do it.\n";
+            << "Use --apply to do it, or --commands to see what it "
+            << "would run.\n";
 
         return 0;
     }
@@ -2354,7 +2655,7 @@ int commandSetup(
 
         const int status = commandInstall(
             aliases, universe, installed, name, architecture,
-            gUseRpmVersions, true, true, invocation);
+            gUseRpmVersions, true, true, false, invocation);
 
         if (status == 0) {
             done += 1;
@@ -2667,12 +2968,24 @@ int main(int argc, char** argv) {
     bool apply = false;
     bool assumeYes = false;
     bool showAll = false;
+    bool showUnused = false;
+    bool showCommands = false;
     std::vector<std::string> positional;
 
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         if (arguments[index] == "--status" && index + 1 < arguments.size()) {
             statusPath = arguments[index + 1];
             index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--commands") {
+            showCommands = true;
+            continue;
+        }
+
+        if (arguments[index] == "--unused") {
+            showUnused = true;
             continue;
         }
 
@@ -2833,8 +3146,13 @@ int main(int argc, char** argv) {
 
     const std::string command = positional[0];
 
-    // Both of these describe a machine other than this one, and
-    // neither can be answered from the installed set alone.
+    // These describe a machine other than this one, and none of them
+    // can be answered from the installed set alone.
+    //
+    // setup is the one that was missed: it exists to install things
+    // that are not here, so without the archive every gap reads as
+    // "nothing available provides this" and the machine looks
+    // unimprovable rather than unconfigured.
     //
     // Installing means installing something not here yet. Generating
     // an image list means describing a machine that does not exist
@@ -2844,7 +3162,8 @@ int main(int argc, char** argv) {
     //
     // Making the archive optional here only ever produces a confusing
     // failure or a quietly wrong answer.
-    if (command == "install" || command == "image") {
+    if (command == "install" || command == "image" ||
+        command == "setup") {
         withAvailable = true;
     }
     const std::string argument =
@@ -3244,7 +3563,8 @@ int main(int argc, char** argv) {
 
             return commandInstall(
                 aliases, universe, installed, argument, arch,
-                preferRpm, apply, assumeYes, invocation);
+                preferRpm, apply, assumeYes, showCommands,
+                invocation);
         }
 
         if (command == "options") {
@@ -3285,7 +3605,8 @@ int main(int argc, char** argv) {
 
             return commandRemove(
                 installed, argument, statesPath, arch, protectedIds,
-                apply, assumeYes, preferRpm, invocation);
+                apply, assumeYes, preferRpm, showCommands,
+                invocation);
         }
 
         if (command == "history") {
@@ -3317,6 +3638,98 @@ int main(int argc, char** argv) {
                 havePackages, protectedIds);
         }
 
+        if (command == "guide" || command == "help") {
+            return commandGuide(preferRpm);
+        }
+
+        if (command == "largest") {
+            if (!havePackages) {
+                requirePackages();
+                return 1;
+            }
+
+            const std::size_t howMany =
+                argument.empty()
+                    ? 15
+                    : static_cast<std::size_t>(
+                          std::strtoul(argument.c_str(), nullptr, 10));
+
+            std::set<std::string> unusedOnly;
+
+            if (showUnused) {
+                std::set<std::string> roots;
+                bool knowWhatWasWanted = false;
+
+                if (preferRpm) {
+                    // dnf records which packages a person asked for.
+                    const auto asked = nexus::system::runCommand(
+                        "dnf repoquery --userinstalled --qf "
+                        "'%{name}' 2>/dev/null", false);
+
+                    for (const std::string& name : asked.lines) {
+                        if (name.empty()) {
+                            continue;
+                        }
+
+                        for (const Component& component : installed) {
+                            if (component.name() == name) {
+                                roots.insert(component.id());
+                            }
+                        }
+                    }
+
+                    knowWhatWasWanted = !roots.empty();
+                } else {
+                    const auto automatic =
+                        nexus::system::readAutoInstalled(statesPath);
+
+                    knowWhatWasWanted = !automatic.empty();
+
+                    for (const Component& component : installed) {
+                        const std::string key =
+                            component.name() + ":" +
+                            component.architecture();
+
+                        if (automatic.count(key) == 0) {
+                            roots.insert(component.id());
+                        }
+                    }
+                }
+
+                // With no record of what was asked for, nothing can
+                // be called unused. Treating that as "everything is
+                // unused" listed all 525 components of a base image
+                // as removable, which is the same mistake as reading
+                // an empty result from broken input.
+                if (!knowWhatWasWanted) {
+                    std::cerr
+                        << "No record of which components were asked "
+                        << "for, so nothing\ncan be called unused. "
+                        << "Showing everything by size instead.\n\n";
+
+                    showUnused = false;
+                } else {
+                    const std::set<std::string> reachable =
+                        nexus::reachableFrom(
+                            installed, roots, buildDetector());
+
+                    for (const Component& component : installed) {
+                        if (protectedIds.count(component.id()) > 0) {
+                            continue;
+                        }
+
+                        if (reachable.count(component.id()) == 0) {
+                            unusedOnly.insert(component.id());
+                        }
+                    }
+                }
+            }
+
+            return commandLargest(
+                result.components, howMany == 0 ? 15 : howMany,
+                showUnused, unusedOnly);
+        }
+
         if (command == "services") {
             return commandServices(
                 argument == "all" || showAll, preferRpm);
@@ -3344,7 +3757,8 @@ int main(int argc, char** argv) {
         if (command == "setup") {
             return commandSetup(
                 aliases, installed, universe, hardware, profileDir,
-                arch, argument, apply, assumeYes, invocation);
+                arch, argument, apply, assumeYes, showCommands,
+                invocation);
         }
 
         if (command == "profile") {

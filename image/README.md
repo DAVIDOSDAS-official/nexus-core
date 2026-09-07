@@ -24,6 +24,25 @@ Four stages, built separately so a failure names the layer:
 | `gaming` | 32-bit stack, Steam, Gamescope, GameMode, MangoHud, controllers |
 | `final` | Labels, and `bootc container lint` |
 
+## One pipeline, several machines
+
+Which profile an image is built from is a build argument:
+
+```
+podman build --target desktop --build-arg NEXUS_PROFILE=minimal \
+    -t localhost/nexus-os:minimal -f image/Containerfile .
+```
+
+`minimal` produces a light system for hardware that cannot afford a
+full desktop; `minimalism` produces the KDE one; `showcase` adds the
+effects. Same Containerfile, same pipeline, different machines --
+which is the claim the design rests on, and hardcoding one profile
+would have left it untested.
+
+Not every profile can produce an image. `server` and `security` add
+things to a machine rather than describing one, so generating an image
+from either alone gives a system with no way to log in.
+
 ## The package list is generated
 
 The desktop stage installs what the `minimalism` profile resolves to,
@@ -31,13 +50,7 @@ not a list somebody typed. Regenerate it inside the image, where the
 Fedora repositories are:
 
 ```
-podman run --rm \
-    -v ./components/profiles:/usr/share/nexus/profiles:ro \
-    -v ./components/aliases:/usr/share/nexus/aliases:ro \
-    localhost/nexus-os:base bash -c \
-    'dnf makecache -q > /dev/null 2>&1
-     nexus image minimalism --with-available' \
-    > image/generated/minimalism.rpm.list
+./image/generate-lists.sh
 ```
 
 The mounts matter. Without them the profiles baked into the image are

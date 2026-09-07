@@ -35,6 +35,33 @@ Not built:
   updates.
 - Services, throughout. Nexus has no concept of one.
 
+## Source-based is a base, not a flag
+
+"Let the user compile everything, like Gentoo" is a reasonable thing
+to want and it is not an option Nexus can offer on a binary base.
+Gentoo is source-based because portage compiles; Arch is binary
+because pacman ships binaries. A tool sitting on top cannot change
+what the base does, and a menu item claiming otherwise would be a
+lie told in the interface.
+
+What is real:
+
+- **A Nexus image built from Gentoo.** Coherent, and a genuine piece
+  of work: portage's metadata is a third format to read, alongside
+  control files and repodata, and USE flags have no equivalent in the
+  capability model yet.
+- **Source builds per package**, on any base. `apt-get source` and
+  `dnf download --source` exist; building one package with chosen
+  flags is the part of Gentoo's benefit anybody actually uses. Nobody
+  needs a source-built `less`.
+- **`--commands`**, which already exists. It gives the autonomy half
+  of the appeal -- knowing exactly what happened -- without
+  pretending the base is something it is not.
+
+The distinction to keep: **what a system is made of is decided when
+the image is built; what it does is decided by profiles at runtime.**
+Confusing the two produces options that cannot work.
+
 ## Two numbers to be careful with
 
 The mockups below show `Expected compatibility: 87%` and `Privacy
