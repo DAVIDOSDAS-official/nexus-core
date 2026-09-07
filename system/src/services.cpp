@@ -1,5 +1,6 @@
 #include <nexus/system/services.hpp>
 
+#include <map>
 #include <sstream>
 
 #include <nexus/system/process.hpp>
@@ -182,6 +183,173 @@ void applyFailedUnits(
     }
 }
 
+namespace {
+
+// Where a unit file may live. The first two are the same directory on
+// a usr-merged system, and package databases disagree about which
+// name they recorded.
+std::vector<std::string> candidatePaths(const std::string& name) {
+    return {
+        "/usr/lib/systemd/system/" + name,
+        "/lib/systemd/system/" + name,
+        "/etc/systemd/system/" + name,
+    };
+}
+
+std::string baseName(const std::string& path) {
+    const std::size_t slash = path.rfind('/');
+
+    return slash == std::string::npos ? path : path.substr(slash + 1);
+}
+
+}
+
+void applyDpkgOwners(
+    ServicesResult& result,
+    const std::string& text
+) {
+    // dpkg -S prints "package: path" for what it knows and complains
+    // about the rest. Both arrive together, so the shape of the line
+    // is what separates them.
+    std::map<std::string, std::string> owners;
+
+    std::istringstream input(text);
+    std::string line;
+
+    while (std::getline(input, line)) {
+        const std::size_t colon = line.find(": ");
+
+        if (colon == std::string::npos) {
+            continue;
+        }
+
+        const std::string package = line.substr(0, colon);
+        const std::string path = line.substr(colon + 2);
+
+        if (package.empty() || path.empty() || path.front() != '/') {
+            continue;
+        }
+
+        // A diversion lists several packages for one path; the first
+        // is the one that shipped it.
+        const std::string unit = baseName(path);
+
+        if (owners.count(unit) == 0) {
+            owners[unit] = package;
+        }
+    }
+
+    for (Service& service : result.services) {
+        const auto found = owners.find(service.name);
+
+        if (found != owners.end()) {
+            service.owner = found->second;
+        }
+    }
+}
+
+void attachOwners(ServicesResult& result, bool useRpm) {
+    if (result.services.empty()) {
+        return;
+    }
+
+    std::string paths;
+
+    for (const Service& service : result.services) {
+        for (const std::string& path : candidatePaths(service.name)) {
+            paths += " '" + path + "'";
+        }
+    }
+
+    if (useRpm) {
+        if (!commandExists("rpm")) {
+            return;
+        }
+
+        // rpm prints one line per path in the order given, including
+        // its complaints, so position is what ties an answer to its
+        // question.
+        const ProcessResult owned = runCommand(
+            "rpm -qf --queryformat '%{NAME}\n'" + paths, true);
+
+        std::size_t index = 0;
+
+        for (Service& service : result.services) {
+            for (std::size_t candidate = 0; candidate < 3; ++candidate) {
+                if (index >= owned.lines.size()) {
+                    break;
+                }
+
+                const std::string& answer = owned.lines[index];
+
+                index += 1;
+
+                if (service.owner.empty() &&
+                    !answer.empty() &&
+                    answer.find("not owned") == std::string::npos &&
+                    answer.find("No such file") == std::string::npos) {
+                    service.owner = answer;
+                }
+            }
+        }
+
+        return;
+    }
+
+    if (!commandExists("dpkg")) {
+        return;
+    }
+
+    applyDpkgOwners(result, runCommand("dpkg -S" + paths, true).text);
+}
+
+void applyRestartingUnits(
+    ServicesResult& result,
+    const std::string& text
+) {
+    std::istringstream input(text);
+    std::string line;
+
+    while (std::getline(input, line)) {
+        const auto fields = columns(line);
+
+        std::string name;
+
+        for (const std::string& field : fields) {
+            if (field.size() > 8 &&
+                field.compare(field.size() - 8, 8, ".service") == 0) {
+                name = field;
+                break;
+            }
+        }
+
+        if (name.empty()) {
+            continue;
+        }
+
+        bool found = false;
+
+        for (Service& service : result.services) {
+            if (service.name == name) {
+                service.restarting = true;
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            Service service;
+
+            service.name = name;
+            service.restarting = true;
+
+            result.services.push_back(std::move(service));
+        }
+
+        result.restartingCount += 1;
+    }
+}
+
 ServicesResult readServices() {
     ServicesResult result;
 
@@ -218,6 +386,15 @@ ServicesResult readServices() {
 
         if (failed.ran) {
             applyFailedUnits(result, failed.text);
+        }
+
+        // A unit that keeps being restarted never reaches "failed".
+        const ProcessResult activating = runCommand(
+            "systemctl list-units --type=service --state=activating "
+            "--no-pager --no-legend", false);
+
+        if (activating.ran) {
+            applyRestartingUnits(result, activating.text);
         }
     }
 

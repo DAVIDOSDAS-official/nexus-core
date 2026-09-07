@@ -140,3 +140,109 @@ TEST(ServicesTest, HandlesEmptyOutput) {
     EXPECT_TRUE(result.services.empty());
     EXPECT_EQ(result.enabled, 0u);
 }
+
+// A service belongs to a component: removing the component takes the
+// service with it, and a service whose component nobody asked for is
+// a service running for no stated reason.
+TEST(ServicesTest, LinksServicesToWhatInstalledThem) {
+    ServicesResult result = parseUnitFiles(kUnitFiles);
+
+    nexus::system::applyDpkgOwners(
+        result,
+        "cron: /usr/lib/systemd/system/cron.service\n"
+        "openssh-server: /usr/lib/systemd/system/ssh.service\n"
+        "dpkg-query: no path found matching pattern "
+        "/etc/systemd/system/cron.service\n");
+
+    for (const auto& service : result.services) {
+        if (service.name == "cron.service") {
+            EXPECT_EQ(service.owner, "cron");
+        }
+
+        if (service.name == "ssh.service") {
+            EXPECT_EQ(service.owner, "openssh-server");
+        }
+
+        if (service.name == "apt-daily.service") {
+            EXPECT_TRUE(service.owner.empty());
+        }
+    }
+}
+
+// dpkg prints what it knows and complains about the rest, both
+// together, so the shape of the line is what separates them.
+TEST(ServicesTest, ComplaintsAreNotOwners) {
+    ServicesResult result = parseUnitFiles(kUnitFiles);
+
+    nexus::system::applyDpkgOwners(
+        result,
+        "dpkg-query: no path found matching pattern "
+        "/lib/systemd/system/cron.service\n");
+
+    for (const auto& service : result.services) {
+        EXPECT_TRUE(service.owner.empty());
+    }
+}
+
+// A diversion lists several packages for one path; the first shipped
+// it.
+TEST(ServicesTest, TheFirstOwnerWins) {
+    ServicesResult result = parseUnitFiles(kUnitFiles);
+
+    nexus::system::applyDpkgOwners(
+        result,
+        "cron: /usr/lib/systemd/system/cron.service\n"
+        "other: /lib/systemd/system/cron.service\n");
+
+    for (const auto& service : result.services) {
+        if (service.name == "cron.service") {
+            EXPECT_EQ(service.owner, "cron");
+        }
+    }
+}
+
+TEST(ServicesTest, AnUnownedServiceStaysUnowned) {
+    ServicesResult result = parseUnitFiles(kUnitFiles);
+
+    nexus::system::applyDpkgOwners(result, "");
+
+    for (const auto& service : result.services) {
+        EXPECT_TRUE(service.owner.empty());
+    }
+}
+
+// A unit with Restart=always never reaches "failed": systemd retries
+// it forever, so it is permanently activating instead. Checking only
+// for failure never sees it, and a service respawning every five
+// seconds since boot is as broken as one that gave up.
+TEST(ServicesTest, AUnitStuckRestartingIsReported) {
+    ServicesResult result = parseUnitFiles(kUnitFiles);
+
+    nexus::system::applyRestartingUnits(
+        result,
+        "sentinel.service loaded activating auto-restart "
+        "Sentinel Cyber Defense\n");
+
+    EXPECT_EQ(result.restartingCount, 1u);
+    EXPECT_EQ(result.failedCount, 0u);
+    EXPECT_TRUE(has(result, "sentinel.service"));
+
+    for (const auto& service : result.services) {
+        if (service.name == "sentinel.service") {
+            EXPECT_TRUE(service.restarting);
+            EXPECT_FALSE(service.failed);
+        }
+    }
+}
+
+TEST(ServicesTest, RestartingAndFailedAreCountedSeparately) {
+    ServicesResult result = parseUnitFiles(kUnitFiles);
+
+    nexus::system::applyFailedUnits(
+        result, "ssh.service loaded failed failed Shell\n");
+    nexus::system::applyRestartingUnits(
+        result, "cron.service loaded activating auto-restart Cron\n");
+
+    EXPECT_EQ(result.failedCount, 1u);
+    EXPECT_EQ(result.restartingCount, 1u);
+}

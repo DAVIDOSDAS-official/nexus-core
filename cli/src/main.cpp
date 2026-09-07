@@ -1752,13 +1752,17 @@ int commandDoctor(
 // "Enabled" is the question people mean: not what is installed, and
 // not what happens to be running this minute, but what will start the
 // next time the machine boots.
-int commandServices(bool showAll) {
-    const auto result = nexus::system::readServices();
+int commandServices(bool showAll, bool useRpm) {
+    auto result = nexus::system::readServices();
 
     if (!result.error.empty()) {
         std::cerr << result.error << "\n";
         return 1;
     }
+
+    // Which component installed each one. This is the part that makes
+    // it a question about the system rather than about systemd.
+    nexus::system::attachOwners(result, useRpm);
 
     std::cout
         << "Services:    " << result.services.size() << " unit(s)\n"
@@ -1766,6 +1770,12 @@ int commandServices(bool showAll) {
 
     if (result.systemdRunning) {
         std::cout << "Failed:      " << result.failedCount << "\n";
+
+        if (result.restartingCount > 0) {
+            std::cout
+                << "Restarting:  " << result.restartingCount
+                << " (stuck starting, never reaches failed)\n";
+        }
     } else {
         // Unit files can be read without a running systemd; whether
         // anything is running now cannot.
@@ -1778,7 +1788,8 @@ int commandServices(bool showAll) {
     std::size_t shown = 0;
 
     for (const auto& service : result.services) {
-        if (!showAll && !service.startsAtBoot() && !service.failed) {
+        if (!showAll && !service.startsAtBoot() && !service.failed &&
+            !service.restarting) {
             continue;
         }
 
@@ -1786,6 +1797,8 @@ int commandServices(bool showAll) {
 
         if (service.failed) {
             std::cout << "[failed] ";
+        } else if (service.restarting) {
+            std::cout << "[loop]   ";
         } else if (service.startsAtBoot()) {
             std::cout << "[boot]   ";
         } else {
@@ -1794,8 +1807,13 @@ int commandServices(bool showAll) {
 
         std::cout << service.name;
 
-        if (!service.startsAtBoot() && !service.failed) {
+        if (!service.startsAtBoot() && !service.failed &&
+            !service.restarting) {
             std::cout << "  (" << toString(service.state) << ")";
+        }
+
+        if (!service.owner.empty()) {
+            std::cout << "  from " << service.owner;
         }
 
         std::cout << "\n";
@@ -3260,7 +3278,8 @@ int main(int argc, char** argv) {
         }
 
         if (command == "services") {
-            return commandServices(argument == "all" || showAll);
+            return commandServices(
+                argument == "all" || showAll, preferRpm);
         }
 
         if (command == "hardware") {
