@@ -161,6 +161,25 @@ else honestly.** Removing the running kernel leaves a system that does
 not boot, so that is refused outright. Removing a spare one is merely
 a choice, so it is described.
 
+## 14. Write down what you are about to do
+
+An interrupted process does not get to run its cleanup.
+
+Nexus used to write its record of a change after the package manager
+returned. Being killed while it ran -- a power cut, a closed lid, a
+Ctrl-C -- left the packages installed and nothing recorded. Not merely
+a missing entry: a log that positively implies the change never
+happened.
+
+So a record goes in first, saying what is about to be attempted, and
+is replaced when it is over. One left saying "started" is a machine
+that was interrupted, `nexus doctor` reports it, and `nexus history`
+shows it as interrupted rather than as nothing.
+
+The general form: **anything that must survive a crash has to be on
+disk before the crash could happen.** Recording afterwards records
+only the runs that finished, which are the ones that needed no record.
+
 ## 13. Read from the plumbing, act through the tool
 
 A tool built for interactive use is the wrong thing to read from.

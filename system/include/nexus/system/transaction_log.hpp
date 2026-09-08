@@ -28,6 +28,18 @@ struct TransactionRecord {
 
     std::string outcome;
     bool succeeded = false;
+
+    // Whether this record was written before the work started and
+    // never finished.
+    //
+    // The log used to be written after the package manager returned,
+    // so being killed while it ran left the packages installed and
+    // nothing recorded -- a log that does not merely lack an entry
+    // but implies the change never happened. Now a record goes in
+    // first saying what is about to be attempted, and is replaced
+    // when it is over. One left saying "started" is a machine that
+    // was interrupted.
+    bool unfinished = false;
     int exitCode = 0;
 };
 
@@ -44,6 +56,31 @@ struct TransactionRecord {
 bool recordTransaction(
     const std::string& path,
     const TransactionRecord& record
+);
+
+// Write a record saying what is about to happen. Returns a marker to
+// pass to finishTransaction when it is over.
+//
+// Deliberately separate calls rather than one that wraps the work: an
+// interrupted process does not get to run its cleanup, so the record
+// has to be durable on disk before the work begins.
+std::string beginTransaction(
+    const std::string& path,
+    const TransactionRecord& record
+);
+
+// Replace a started record with what actually happened. If the marker
+// is not found the record is appended anyway: losing the outcome is
+// worse than duplicating it.
+bool finishTransaction(
+    const std::string& path,
+    const std::string& marker,
+    const TransactionRecord& record
+);
+
+// Records that were started and never finished.
+std::vector<TransactionRecord> unfinishedTransactions(
+    const std::string& path
 );
 
 std::vector<TransactionRecord> readTransactions(

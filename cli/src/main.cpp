@@ -1053,6 +1053,22 @@ int commandInstall(
         }
     }
 
+    // Written before the work starts. An interrupted process does
+    // not get to run its cleanup, so a record that only exists
+    // afterwards is a record that a power cut erases -- along with
+    // any sign that the machine was changed.
+    nexus::system::TransactionRecord record;
+
+    record.when = nexus::system::currentTimestamp();
+    record.request = capability;
+    record.resolved = requested;
+    record.packages = expected;
+
+    const std::string log = nexus::system::defaultTransactionLog();
+
+    const std::string marker =
+        nexus::system::beginTransaction(log, record);
+
     std::cout << "\nHanding the plan to " << manager << ".\n\n";
 
     const auto applied = useRpm
@@ -1064,20 +1080,12 @@ int commandInstall(
     }
 
     // A tool that changes a system owes an account of what it did.
-    nexus::system::TransactionRecord record;
-
-    record.when = nexus::system::currentTimestamp();
-    record.request = capability;
-    record.resolved = requested;
-    record.packages = expected;
     record.outcome = toString(applied.outcome);
     record.exitCode = applied.exitCode;
     record.succeeded =
         applied.outcome == nexus::system::ApplyOutcome::Applied;
 
-    const std::string log = nexus::system::defaultTransactionLog();
-
-    if (!nexus::system::recordTransaction(log, record)) {
+    if (!nexus::system::finishTransaction(log, marker, record)) {
         std::cerr
             << "\nWarning: could not write the transaction record to "
             << log << ".\n";
@@ -1482,6 +1490,20 @@ int commandRemove(
         }
     }
 
+    nexus::system::TransactionRecord record;
+
+    record.kind = nexus::system::TransactionKind::Remove;
+    record.when = nexus::system::currentTimestamp();
+    record.request = "remove " + target;
+    record.resolved = plan.target;
+    record.packages = std::set<std::string>(
+        plan.removed.begin(), plan.removed.end());
+
+    const std::string log = nexus::system::defaultTransactionLog();
+
+    const std::string marker =
+        nexus::system::beginTransaction(log, record);
+
     std::cout
         << "\nHanding the plan to " << (useRpm ? "dnf" : "apt")
         << ".\n\n";
@@ -1494,22 +1516,12 @@ int commandRemove(
         std::cout << line << "\n";
     }
 
-    nexus::system::TransactionRecord record;
-
-    record.kind = nexus::system::TransactionKind::Remove;
-    record.when = nexus::system::currentTimestamp();
-    record.request = "remove " + target;
-    record.resolved = plan.target;
-    record.packages = std::set<std::string>(
-        plan.removed.begin(), plan.removed.end());
     record.outcome = toString(removed.outcome);
     record.exitCode = removed.exitCode;
     record.succeeded =
         removed.outcome == nexus::system::ApplyOutcome::Applied;
 
-    const std::string log = nexus::system::defaultTransactionLog();
-
-    if (!nexus::system::recordTransaction(log, record)) {
+    if (!nexus::system::finishTransaction(log, marker, record)) {
         std::cerr
             << "\nWarning: could not write the transaction record to "
             << log << ".\n";
@@ -1547,7 +1559,10 @@ int commandHistory(const std::string& path) {
             std::cout << " -> " << record.resolved;
         }
 
-        std::cout << "  [" << record.outcome << "]\n";
+        std::cout
+            << "  ["
+            << (record.unfinished ? "interrupted" : record.outcome)
+            << "]\n";
 
         if (!record.packages.empty()) {
             std::string verb = "attempted ";
@@ -1704,6 +1719,37 @@ int commandDoctor(
 
         for (const nexus::Finding& finding : detail.findings) {
             findings.push_back(finding);
+        }
+    }
+
+    // A change that started and never finished. The machine may have
+    // been left part-way through one, and nothing else will say so.
+    {
+        const auto unfinished = nexus::system::unfinishedTransactions(
+            nexus::system::defaultTransactionLog());
+
+        if (!unfinished.empty()) {
+            nexus::Finding interrupted;
+
+            interrupted.check = "Changes";
+            interrupted.health = nexus::Health::Warning;
+            interrupted.total = unfinished.size();
+            interrupted.detail =
+                std::to_string(unfinished.size()) +
+                " change(s) started and never finished.";
+
+            for (const auto& record : unfinished) {
+                if (interrupted.examples.size() >= 5) {
+                    break;
+                }
+
+                interrupted.examples.push_back(
+                    record.when + "  " + record.request);
+            }
+
+            interrupted.suggestion = "nexus history";
+
+            findings.push_back(std::move(interrupted));
         }
     }
 
