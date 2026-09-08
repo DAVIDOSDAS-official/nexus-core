@@ -22,6 +22,7 @@
 #include <nexus/system/container.hpp>
 #include <nexus/system/process.hpp>
 #include <nexus/system/services.hpp>
+#include <nexus/system/nix_source.hpp>
 #include <nexus/system/snap_source.hpp>
 #include <nexus/system/source_build.hpp>
 #include <nexus/system/alias_file.hpp>
@@ -90,6 +91,7 @@ void printUsage() {
         << "    --with-available  also read available packages\n"
         << "    --with-flatpak    also offer Flatpak applications\n"
         << "    --with-snap       also read installed snaps\n"
+        << "    --with-nix        also read the Nix profile\n"
         << "    --with-arch <db>  also offer Arch packages, via a container\n"
         << "    --from <source>   only options from base, flatpak, container or nix\n"
         << "    --rpm | --dpkg    force a package ecosystem\n"
@@ -2013,6 +2015,8 @@ INSTALLING AND REMOVING
   nexus remove firefox          what removing it would take with it
   sudo nexus remove firefox --apply
 
+  nexus source nmap             what building it from source costs
+
   --commands works on install, remove and setup. Nexus works out
   what to do and hands you the commands; nothing is hidden and
   nothing is run. The appeal of assembling a system by hand is
@@ -2051,6 +2055,19 @@ SETTING UP A MACHINE
   sudo nexus setup gaming --apply
 
   Several at once: nexus setup school,gaming
+
+BUILDING FROM SOURCE
+
+  nexus source <package>        the build dependencies, and what
+                                they would cost here
+
+  Nexus prints the commands and does not run them: a build is yours
+  to watch, and how long it takes depends on the package, the
+  machine and your flags.
+
+  On Debian and Ubuntu this needs source packages enabled, which
+  they are not by default. nexus source says so and gives the line
+  to fix it.
 
 SOFTWARE FROM ELSEWHERE
 
@@ -3127,6 +3144,7 @@ int main(int argc, char** argv) {
     bool withAvailable = false;
     bool withFlatpak = false;
     bool withSnap = false;
+    bool withNix = false;
     std::optional<nexus::Source> onlySource;
     std::vector<std::string> archDatabases;
     std::string fromDistribution = "arch";
@@ -3215,6 +3233,7 @@ int main(int argc, char** argv) {
                 onlySource = nexus::Source::Container;
             } else if (named == "nix") {
                 onlySource = nexus::Source::Nix;
+                withNix = true;
             } else {
                 std::cerr
                     << "Unknown source: " << named << "\n"
@@ -3237,6 +3256,11 @@ int main(int argc, char** argv) {
             index + 1 < arguments.size()) {
             archDatabases.push_back(arguments[index + 1]);
             index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--with-nix") {
+            withNix = true;
             continue;
         }
 
@@ -3544,6 +3568,36 @@ int main(int argc, char** argv) {
             std::cerr
                 << "Loaded " << arch.components.size()
                 << " Arch package(s) from " << database << ".\n";
+        }
+
+        if (withNix) {
+            const auto loadedNix = nexus::system::parseAliasFile(
+                aliasDir + "/nix.aliases");
+
+            for (const std::string& problem : loadedNix.problems) {
+                std::cerr << "Warning: " << problem << "\n";
+            }
+
+            aliases.merge(loadedNix.table);
+
+            const auto nix = nexus::system::readNixProfile();
+
+            if (!nix.error.empty()) {
+                std::cerr << "Warning: " << nix.error << "\n";
+            } else {
+                for (const Component& component : nix.components) {
+                    universe.push_back(component);
+                    availableOnly.push_back(component);
+                }
+
+                if (nix.installed > 0) {
+                    haveAvailable = true;
+                }
+
+                std::cerr
+                    << "Loaded " << nix.installed
+                    << " Nix package(s).\n";
+            }
         }
 
         if (withSnap) {

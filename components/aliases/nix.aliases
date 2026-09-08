@@ -1,0 +1,67 @@
+# What Nix calls the things profiles ask for.
+#
+# A sixth vocabulary, and the shortest: Nix package names are almost
+# always the upstream project name, so only the ones that differ are
+# worth writing down.
+#
+# Reading a source's packages without its aliases loads the
+# components and offers none of them, which looks exactly like the
+# source being empty. That has happened three times now, once per
+# source added.
+
+Capability: window-manager
+Resolves-To: hyprland | sway | i3 | river | bspwm | dwm
+
+Capability: terminal-emulator
+Resolves-To: foot | alacritty | kitty | wezterm | ghostty
+
+Capability: text-editor
+Resolves-To: neovim | vim | helix | nano
+
+Capability: code-editor
+Resolves-To: vscode | vscodium | zed-editor
+
+Capability: web-browser
+Resolves-To: firefox | chromium | brave
+
+Capability: status-bar
+Resolves-To: waybar | polybar | eww
+
+Capability: application-launcher
+Resolves-To: fuzzel | rofi | wofi | dmenu | anyrun
+
+Capability: notification-daemon
+Resolves-To: mako | dunst | swaynotificationcenter
+
+Capability: screen-locker
+Resolves-To: hyprlock | swaylock | i3lock
+
+Capability: wallpaper-setter
+Resolves-To: hyprpaper | swaybg | feh
+
+Capability: file-manager
+Resolves-To: nautilus | dolphin | thunar | yazi | ranger
+
+Capability: terminal-multiplexer
+Resolves-To: tmux | zellij
+
+Capability: fuzzy-finder
+Resolves-To: fzf | skim
+
+Capability: modern-shell
+Resolves-To: fish | zsh | nushell
+
+Capability: network-scanner
+Resolves-To: nmap
+
+Capability: packet-analyser
+Resolves-To: wireshark | tcpdump | termshark
+
+Capability: compiler-toolchain
+Resolves-To: gcc | clang
+
+Capability: video-player
+Resolves-To: mpv | vlc
+
+Capability: image-editor
+Resolves-To: gimp | krita | inkscape
