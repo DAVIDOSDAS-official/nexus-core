@@ -33,6 +33,7 @@ add_executable(component_test
     unit/snap_test.cpp
     unit/nix_test.cpp
     unit/vpn_test.cpp
+    unit/portage_test.cpp
     unit/protection_test.cpp
     unit/transaction_log_test.cpp
     unit/rpm_version_test.cpp

@@ -24,6 +24,7 @@
 #include <nexus/system/services.hpp>
 #include <nexus/system/nix_source.hpp>
 #include <nexus/system/snap_source.hpp>
+#include <nexus/system/portage_source.hpp>
 #include <nexus/system/vpn.hpp>
 #include <nexus/system/source_build.hpp>
 #include <nexus/system/alias_file.hpp>
@@ -94,6 +95,7 @@ void printUsage() {
         << "    --with-flatpak    also offer Flatpak applications\n"
         << "    --with-snap       also read installed snaps\n"
         << "    --with-nix        also read the Nix profile\n"
+        << "    --with-portage <dir>  also read a Gentoo md5-cache tree\n"
         << "    --with-arch <db>  also offer Arch packages, via a container\n"
         << "    --from <source>   only options from base, flatpak, container or nix\n"
         << "    --rpm | --dpkg    force a package ecosystem\n"
@@ -3275,6 +3277,7 @@ int main(int argc, char** argv) {
     bool withNix = false;
     std::optional<nexus::Source> onlySource;
     std::vector<std::string> archDatabases;
+    std::string portagePath;
     std::string fromDistribution = "arch";
     bool explain = false;
     bool apply = false;
@@ -3418,6 +3421,13 @@ int main(int argc, char** argv) {
         if (arguments[index] == "--from-distro" &&
             index + 1 < arguments.size()) {
             fromDistribution = arguments[index + 1];
+            index += 1;
+            continue;
+        }
+
+        if (arguments[index] == "--with-portage" &&
+            index + 1 < arguments.size()) {
+            portagePath = arguments[index + 1];
             index += 1;
             continue;
         }
@@ -3738,6 +3748,42 @@ int main(int argc, char** argv) {
             std::cerr
                 << "Loaded " << arch.components.size()
                 << " Arch package(s) from " << database << ".\n";
+        }
+
+        // Gentoo's tree, read wherever it is. On Gentoo that is
+        // /var/db/repos/gentoo/metadata/md5-cache; anywhere else it
+        // is a clone, which is how this was built and tested.
+        if (!portagePath.empty()) {
+            const auto portage =
+                nexus::system::readPortageTree(portagePath);
+
+            if (!portage.error.empty()) {
+                std::cerr << "Warning: " << portage.error << "\n";
+            } else {
+                for (const Component& component :
+                     portage.components) {
+
+                    universe.push_back(component);
+                    availableOnly.push_back(component);
+                }
+
+                haveAvailable = true;
+
+                std::cerr
+                    << "Loaded " << portage.components.size()
+                    << " portage package(s) from "
+                    << portage.packagesRead << " ebuild(s); "
+                    << portage.conditional
+                    << " condition(s) assumed from USE defaults";
+
+                if (portage.liveEbuilds > 0) {
+                    std::cerr
+                        << ", " << portage.liveEbuilds
+                        << " live ebuild(s) skipped";
+                }
+
+                std::cerr << ".\n";
+            }
         }
 
         if (withNix) {

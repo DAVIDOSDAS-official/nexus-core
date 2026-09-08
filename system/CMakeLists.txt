@@ -20,6 +20,7 @@ add_library(nexus_system
     src/source_build.cpp
     src/nix_source.cpp
     src/vpn.cpp
+    src/portage_source.cpp
     src/rpm_version.cpp
     src/xml.cpp
     src/rpm_source.cpp
