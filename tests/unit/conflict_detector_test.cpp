@@ -235,3 +235,55 @@ TEST(ConflictDetectorTest, DifferentPackagesStillConflict) {
         1u
     );
 }
+
+// A component may provide the same capability at several versions.
+// debhelper provides debhelper-compat at 9, 10, 11, 12 and 13, and
+// any of them can satisfy a constraint -- so checking only the first
+// answers about the wrong one four times out of five, and every
+// Debian source build asking for compat 13 was refused by the package
+// that provides it.
+TEST(ConflictDetectorTest, AnyProvidedVersionCanSatisfy) {
+    Component debhelper("debhelper", "debhelper", "13.14.1",
+                        ComponentType::Application);
+
+    for (const char* version : {"9", "10", "11", "12", "13"}) {
+        debhelper.addProvidedCapability(
+            nexus::Capability("debhelper-compat", version));
+    }
+
+    const auto exactly = [](const std::string& version) {
+        Constraint constraint("debhelper-compat");
+
+        constraint.version = nexus::VersionConstraint{
+            nexus::VersionRelation::Exactly, version};
+
+        return constraint;
+    };
+
+    // The first one still matches.
+    EXPECT_TRUE(debianDetector().matches(debhelper, exactly("9")));
+
+    // And so does the last, which is the one that was failing.
+    EXPECT_TRUE(debianDetector().matches(debhelper, exactly("13")));
+    EXPECT_TRUE(debianDetector().matches(debhelper, exactly("11")));
+
+    // One it does not provide still does not match.
+    EXPECT_FALSE(debianDetector().matches(debhelper, exactly("14")));
+}
+
+TEST(ConflictDetectorTest, RangesWorkAcrossSeveralProvides) {
+    Component debhelper("debhelper", "debhelper", "13.14.1",
+                        ComponentType::Application);
+
+    debhelper.addProvidedCapability(
+        nexus::Capability("debhelper-compat", "9"));
+    debhelper.addProvidedCapability(
+        nexus::Capability("debhelper-compat", "13"));
+
+    Constraint atLeast("debhelper-compat");
+
+    atLeast.version = nexus::VersionConstraint{
+        nexus::VersionRelation::LaterOrEqual, "12"};
+
+    EXPECT_TRUE(debianDetector().matches(debhelper, atLeast));
+}

@@ -1,5 +1,7 @@
 #include <nexus/conflict_detector.hpp>
 
+#include <vector>
+
 #include <utility>
 
 namespace nexus {
@@ -32,10 +34,20 @@ bool relationHolds(VersionRelation relation, int comparison) {
 //
 // Returns nullptr when the component does not provide the capability
 // at all.
-const std::string* providedVersion(
+// Every version at which a component provides a capability.
+//
+// A component may provide the same name several times at different
+// versions. debhelper provides debhelper-compat at 9, 10, 11, 12 and
+// 13, and any of them can satisfy a constraint -- so taking the first
+// answers about the wrong one four times out of five, and every
+// Debian source build asking for compat 13 was refused by a package
+// that provides it.
+std::vector<const std::string*> providedVersions(
     const Component& component,
     const std::string& name
 ) {
+    std::vector<const std::string*> versions;
+
     for (const Capability& capability :
          component.providedCapabilities()) {
 
@@ -44,19 +56,20 @@ const std::string* providedVersion(
         }
 
         if (capability.hasVersion()) {
-            return &capability.version();
+            versions.push_back(&capability.version());
+            continue;
         }
 
         // Provided, but with no version stated: fall back to the
         // component's own version.
-        return &component.version();
+        versions.push_back(&component.version());
     }
 
-    if (component.id() == name) {
-        return &component.version();
+    if (versions.empty() && component.id() == name) {
+        versions.push_back(&component.version());
     }
 
-    return nullptr;
+    return versions;
 }
 
 }
@@ -89,10 +102,10 @@ bool ConflictDetector::matches(
     const Constraint& constraint,
     const std::string& requesterArchitecture
 ) const {
-    const std::string* version =
-        providedVersion(component, constraint.capability);
+    const std::vector<const std::string*> versions =
+        providedVersions(component, constraint.capability);
 
-    if (version == nullptr) {
+    if (versions.empty()) {
         return false;
     }
 
@@ -118,10 +131,17 @@ bool ConflictDetector::matches(
         return true;
     }
 
-    const int comparison =
-        comparator(*version, constraint.version->version);
+    // Any of them satisfying it is enough.
+    for (const std::string* version : versions) {
+        const int comparison =
+            comparator(*version, constraint.version->version);
 
-    return relationHolds(constraint.version->relation, comparison);
+        if (relationHolds(constraint.version->relation, comparison)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 std::vector<Conflict> ConflictDetector::detect(
