@@ -25,7 +25,15 @@ enum class FirmwareMode {
 enum class SecureBootState {
     Unknown,
     Disabled,
-    Enabled
+    Enabled,
+
+    // The firmware is accepting new keys without a password, which is
+    // how a key gets enrolled in the first place.
+    SetupMode,
+
+    // A BIOS machine, or no EFI variables at all. Not a failure to
+    // read: there is genuinely nothing there.
+    NotSupported
 };
 
 // What was found, and what it means as capabilities.

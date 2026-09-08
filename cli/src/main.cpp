@@ -33,6 +33,7 @@
 #include <nexus/system/auto_installed.hpp>
 #include <nexus/solver.hpp>
 #include <nexus/hardware/encryption.hpp>
+#include <nexus/hardware/secure_boot.hpp>
 #include <nexus/hardware/hardware.hpp>
 #include <nexus/system/apt_source.hpp>
 #include <nexus/system/flatpak_source.hpp>
@@ -80,6 +81,7 @@ void printUsage() {
         << "    nexus vpn keys | vpn config --address A --peer-key K --endpoint H:P\n"
         << "    nexus services [--all]\n"
         << "    nexus hardware\n"
+        << "    nexus secureboot\n"
         << "    nexus setup [<profile>[,<profile>...]] [--apply]\n"
         << "    nexus profile list\n"
         << "    nexus profile show <name>\n"
@@ -2472,6 +2474,108 @@ int commandServices(bool showAll, bool useRpm) {
     return 0;
 }
 
+// What Secure Boot is doing, and what could be done about it.
+//
+// The usual advice for a custom distribution is to turn it off. That
+// is the wrong answer given to everybody because the right answer is
+// unfamiliar -- and it is given by projects whose own security
+// features it undermines.
+int commandSecureBoot(const std::string& root) {
+    const auto report =
+        nexus::hardware::SecureBootDetector(root).detect();
+
+    std::cout << "Secure Boot: " << toString(report.state) << "\n";
+
+    if (report.ownerKeysEnrolled) {
+        std::cout << "Owner keys:  enrolled\n";
+    }
+
+    for (const std::string& problem : report.unreadable) {
+        std::cout << "             (" << problem << ")\n";
+    }
+
+    std::cout << "\n";
+
+    switch (report.state) {
+        case nexus::hardware::SecureBootState::NotSupported:
+            std::cout
+                << "This machine does not use Secure Boot. Nothing "
+                << "to do.\n";
+            return 0;
+
+        case nexus::hardware::SecureBootState::Disabled:
+            std::cout
+                << "The firmware will boot anything, signed or not.\n"
+                << "\nThat is how most custom systems are run, and "
+                << "it means nothing\nchecks the kernel before it "
+                << "starts.\n";
+            break;
+
+        case nexus::hardware::SecureBootState::Enabled:
+            std::cout
+                << "The firmware will only boot a kernel signed by a "
+                << "key it trusts.\n";
+
+            if (!report.ownerKeysEnrolled) {
+                std::cout
+                    << "\nOnly the manufacturer's keys are enrolled, "
+                    << "so a kernel Nexus\nbuilt would not boot as "
+                    << "things stand.\n";
+            } else {
+                std::cout
+                    << "\nA key of your own is enrolled, so a kernel "
+                    << "signed with it\nwould boot.\n";
+            }
+
+            break;
+
+        case nexus::hardware::SecureBootState::SetupMode:
+            std::cout
+                << "The firmware is in setup mode and will accept new "
+                << "keys.\n";
+            break;
+
+        case nexus::hardware::SecureBootState::Unknown:
+            std::cout
+                << "The state could not be read.\n";
+            break;
+    }
+
+    std::cout << R"(
+There are three ways a custom system can boot with Secure Boot on,
+and only one of them is available to a project without a company
+behind it.
+
+  A shim signed by Microsoft
+      What every distribution you have heard of ships. Getting one
+      requires review by the shim review board: a real process,
+      months long, and they want a track record first.
+
+  Your own key, enrolled by you
+      You sign the kernel; the machine's owner enrols the key once,
+      through the firmware, and it is trusted from then on.
+
+      This is not exotic. It is what happens on Ubuntu when a
+      driver is built for your kernel -- millions of people have
+      done it without knowing what it was called.
+
+      It needs: sbsigntool to sign, mokutil to enrol, one reboot,
+      and a password typed into a blue screen the firmware shows.
+
+  Turning Secure Boot off
+      What most custom systems tell you to do. It works, and it
+      means nothing checks the kernel before it starts. Reasonable
+      on a machine you are experimenting with; a poor default for
+      anybody else.
+
+Nexus does not yet sign anything: its images ship an unsigned
+kernel, so today the honest answer for this machine is the second
+option done by hand, or the third.
+)";
+
+    return 0;
+}
+
 int commandHardware(const nexus::hardware::HardwareInfo& info) {
     std::cout << "Graphics:\n";
 
@@ -4255,6 +4359,10 @@ int main(int argc, char** argv) {
         if (command == "services") {
             return commandServices(
                 argument == "all" || showAll, preferRpm);
+        }
+
+        if (command == "secureboot" || command == "secure-boot") {
+            return commandSecureBoot(sysfsRoot);
         }
 
         if (command == "hardware") {

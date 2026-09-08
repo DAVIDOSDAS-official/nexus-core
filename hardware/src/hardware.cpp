@@ -368,6 +368,10 @@ std::string toString(FirmwareMode mode) {
 
 std::string toString(SecureBootState state) {
     switch (state) {
+        case SecureBootState::SetupMode:
+            return "setup-mode";
+        case SecureBootState::NotSupported:
+            return "not-supported";
         case SecureBootState::Enabled:
             return "enabled";
         case SecureBootState::Disabled:

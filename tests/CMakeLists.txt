@@ -16,6 +16,7 @@ add_executable(component_test
     unit/apt_source_test.cpp
     unit/hardware_test.cpp
     unit/encryption_test.cpp
+    unit/secure_boot_test.cpp
     unit/removal_test.cpp
     unit/transaction_test.cpp
     unit/options_test.cpp

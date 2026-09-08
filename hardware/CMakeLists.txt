@@ -1,6 +1,7 @@
 add_library(nexus_hardware
     src/hardware.cpp
     src/encryption.cpp
+    src/secure_boot.cpp
 )
 
 target_include_directories(nexus_hardware
