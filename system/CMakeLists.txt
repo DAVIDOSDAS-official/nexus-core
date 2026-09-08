@@ -19,6 +19,7 @@ add_library(nexus_system
     src/snap_source.cpp
     src/source_build.cpp
     src/nix_source.cpp
+    src/vpn.cpp
     src/rpm_version.cpp
     src/xml.cpp
     src/rpm_source.cpp
