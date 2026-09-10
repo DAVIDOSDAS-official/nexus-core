@@ -24,6 +24,28 @@ Four stages, built separately so a failure names the layer:
 | `gaming` | 32-bit stack, Steam, Gamescope, GameMode, MangoHud, controllers |
 | `final` | Labels, and `bootc container lint` |
 
+## Something you can install
+
+```
+./image/build-installer.sh                  # minimalism, an ISO
+PROFILE=minimal ./image/build-installer.sh  # a lighter one
+TYPE=qcow2 ./image/build-installer.sh       # a disk to boot in a VM
+```
+
+The installer is bootc-image-builder's, not one written here.
+Partitioning a disk is the single most destructive thing a program
+can do, it is already solved, and a second implementation would be a
+second set of ways to erase somebody's data.
+
+What this script adds is the things that go wrong around it: checking
+there is disk space before a fifteen-minute build rather than after,
+handing a rootless image to root's storage, and saying plainly that a
+failed build leaves output that must not be written to a disk.
+
+**The kernel is unsigned**, so booting the result needs Secure Boot
+turned off. `nexus secureboot` explains why and what the alternative
+is.
+
 ## One pipeline, several machines
 
 Which profile an image is built from is a build argument:

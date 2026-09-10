@@ -26,8 +26,20 @@ if [ ! -x "${NEXUS}" ]; then
     exit 0
 fi
 
+# Only when the question was actually put.
+#
+# The marker used to be written on any exit, so a run that failed for
+# want of a terminal disabled the picker permanently -- and the
+# machine never asked again. A setup that could not ask has not
+# finished.
+ASKED=0
+
 finish() {
     restore_printk
+    if [ "${ASKED}" != "1" ]; then
+        return
+    fi
+
     mkdir -p "$(dirname "${MARKER}")" 2>/dev/null
     date -u +%Y-%m-%dT%H:%M:%SZ > "${MARKER}" 2>/dev/null
 }
@@ -68,6 +80,47 @@ BANNER
 # --with-available matters: without the archive nothing is available,
 # every missing requirement reports that nothing provides it, and the
 # machine looks unimprovable rather than unconfigured.
+# Nothing can be installed without a repository to install from, and
+# offering twelve profiles that all fail is worse than saying so.
+online() {
+    if command -v nm-online > /dev/null 2>&1; then
+        nm-online -q -t 20 && return 0
+    fi
+
+    for host in 1.1.1.1 8.8.8.8; do
+        if ping -c1 -W3 "${host}" > /dev/null 2>&1; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+echo "  Checking for a network."
+echo
+
+if ! online; then
+    cat <<'OFFLINE'
+  This machine is not online, so there is nothing to install from.
+
+  Connect first:
+
+      a desktop      click the network icon and pick your wifi
+      a console      nmcli device wifi list
+                     sudo nmcli device wifi connect "NAME" password "..."
+
+  Then run:
+
+      nexus setup
+
+  Nothing has been changed, and this will ask again next time.
+
+OFFLINE
+    exit 0
+fi
+
+ASKED=1
+
 "${NEXUS}" setup --with-available || true
 
 echo

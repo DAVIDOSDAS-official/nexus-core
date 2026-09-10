@@ -170,3 +170,6 @@ Resolves-To: sleuthkit | binwalk | foremost | testdisk
 
 Capability: exploitation-framework
 Resolves-To: metasploit-framework
+
+Capability: network-manager
+Resolves-To: network-manager | connman | systemd-networkd

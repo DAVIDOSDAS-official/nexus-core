@@ -2568,9 +2568,17 @@ behind it.
       on a machine you are experimenting with; a poor default for
       anybody else.
 
-Nexus does not yet sign anything: its images ship an unsigned
-kernel, so today the honest answer for this machine is the second
-option done by hand, or the third.
+Nexus does not sign anything itself, and does not need to: its
+images are built on Fedora's, and the kernel in them is Fedora's,
+carrying Fedora's signature through the standard shim. Adding
+packages on top does not touch it.
+
+So an image built this way boots with Secure Boot on, unchanged.
+That was checked the only way it can be -- by installing one on a
+machine with Secure Boot enforcing and watching it start.
+
+The three options above matter again the moment a kernel is built
+rather than inherited.
 )";
 
     return 0;

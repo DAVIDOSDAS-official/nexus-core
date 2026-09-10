@@ -151,9 +151,10 @@ catches a wrong answer nobody thought to assert.
   isolated runtimes, which Nexus offers as sources.
 - **It cannot make a binary system source-based.** That is decided by
   the base, not by a tool above it.
-- **It does not sign anything yet**, so its images ship an unsigned
-  kernel. `nexus secureboot` explains the real options rather than
-  telling you to turn Secure Boot off.
+- **It does not sign anything**, and does not need to: its images
+  inherit Fedora's kernel and Fedora's signature, so they boot with
+  Secure Boot on. `nexus secureboot` explains what would change if a
+  kernel were ever built rather than inherited.
 - **No conditional dependencies.** RPM's `(a if b)` is recorded as an
   unrepresented gap; Gentoo's USE conditions are evaluated against
   flag defaults and the count of assumptions is reported.
@@ -171,8 +172,12 @@ already is what it was built to be, because the same profile produced
 both. `minimal` and `minimalism` build from the same Containerfile
 with one argument changed, at 2.88 GB and 3.91 GB.
 
-**Not yet a distribution anyone can install**: no partitioning, no
-signed kernel, nothing published.
+`./image/build-installer.sh` produces an installer ISO, which has
+been installed on real hardware and boots with Secure Boot enforcing.
+
+**Not yet a distribution anyone can install**: nothing is published,
+so a machine installed from that ISO can never receive an update --
+which is the line between a snapshot and a distribution.
 
 ---
 
