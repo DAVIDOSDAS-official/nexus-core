@@ -1,5 +1,7 @@
 #include <nexus/system/transaction_log.hpp>
 
+#include <algorithm>
+
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
@@ -39,6 +41,44 @@ std::string defaultTransactionLog() {
     }
 
     return "";
+}
+
+std::vector<std::string> transactionLogPaths() {
+    // Changes are made under sudo and read back without it, so the
+    // account of what happened was written to one file and looked
+    // for in another. "No changes recorded" was true of the file it
+    // read and false of the machine.
+    //
+    // A tool that changes a system owes an account of what it did,
+    // and an account only its author can see is not one.
+    std::vector<std::string> paths{"/var/lib/nexus/transactions.log"};
+
+    if (const char* home = std::getenv("HOME")) {
+        paths.push_back(std::string(home) +
+                        "/.local/state/nexus/transactions.log");
+    }
+
+    return paths;
+}
+
+std::vector<TransactionRecord> readAllTransactions() {
+    std::vector<TransactionRecord> all;
+
+    for (const std::string& path : transactionLogPaths()) {
+        for (const TransactionRecord& record :
+             readTransactions(path)) {
+            all.push_back(record);
+        }
+    }
+
+    // One machine's history rather than two files', oldest first.
+    std::sort(all.begin(), all.end(),
+              [](const TransactionRecord& left,
+                 const TransactionRecord& right) {
+                  return left.when < right.when;
+              });
+
+    return all;
 }
 
 bool recordTransaction(
