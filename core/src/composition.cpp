@@ -16,7 +16,22 @@ Composition compose(
 
     // A profile that describes the whole machine cannot be one
     // ingredient among several.
-    if (profiles.size() > 1) {
+    // base is the floor, not a peer.
+    //
+    // Two whole-machine profiles cannot be combined because they are
+    // rival answers to "what is this computer". base is not a rival:
+    // it is what every answer stands on. Counting it as one made
+    // base,minimal a refusal, and the image that came out had no
+    // init, no libc and nothing that could reach a network.
+    std::size_t peers = 0;
+
+    for (const Profile& profile : profiles) {
+        if (profile.name != "base") {
+            peers += 1;
+        }
+    }
+
+    if (peers > 1) {
         for (const Profile& profile : profiles) {
             if (!profile.exclusive) {
                 continue;
