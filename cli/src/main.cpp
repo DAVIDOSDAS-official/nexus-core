@@ -695,9 +695,22 @@ int commandImage(
     const auto loaded =
         nexus::system::parseProfileDirectory(directory);
 
+    // base is composed into every image.
+    //
+    // It is defined as what any usable system needs regardless of
+    // what it is for, so an image without it is not a machine. Asking
+    // each caller to remember it is the kind of thing that gets
+    // forgotten -- and was, for every image built until a profile
+    // asked for something the base image did not already provide.
+    const std::string requested =
+        (profileName == "base" ||
+         profileName.find("base") != std::string::npos)
+            ? profileName
+            : "base," + profileName;
+
     nexus::Composition composition;
 
-    if (!findComposition(loaded.profiles, profileName, composition)) {
+    if (!findComposition(loaded.profiles, requested, composition)) {
         return 1;
     }
 
