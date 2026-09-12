@@ -103,11 +103,22 @@ if ! online; then
     cat <<'OFFLINE'
   This machine is not online, so there is nothing to install from.
 
-  Connect first:
+  The quickest way, and the one that works even when wifi does not:
 
-      a desktop      click the network icon and pick your wifi
+      Plug your phone in with a USB cable and turn on USB tethering
+      in its settings. It appears here as a wired connection --
+      no driver, no password, nothing to configure.
+
+        Android   Settings -> Network -> Hotspot & tethering
+                  -> USB tethering
+        iPhone    Settings -> Personal Hotspot, then trust this
+                  computer when asked
+
+  Or, over wifi:
+
+      a desktop      click the network icon and pick your network
       a console      nmcli device wifi list
-                     sudo nmcli device wifi connect "NAME" password "..."
+                     sudo nmcli --ask device wifi connect "NAME"
 
   Then run:
 
