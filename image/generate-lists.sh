@@ -30,7 +30,7 @@ for profile in ${PROFILES}; do
         "${IMAGE}" bash -c \
         'dnf makecache -q > /dev/null 2>&1
          nexus image '"${profile}"' --with-available' \
-        > "${ROOT}/image/generated/${profile}.rpm.list"; then
+        > "${ROOT}/image/generated/${profile}.rpm.list.new"; then
 
         # An incomplete list still gets written, and building from one
         # produces an image missing whatever could not be resolved.
@@ -38,7 +38,22 @@ for profile in ${PROFILES}; do
         INCOMPLETE="${INCOMPLETE:-} ${profile}"
     fi
 
-    lines="$(grep -vc '^#' "${ROOT}/image/generated/${profile}.rpm.list" || true)"
+    # An empty list is not a smaller image, it is no image. Saying a
+    # result is incomplete and then writing it anyway keeps the
+    # destructive half of a safeguard and discards the useful half.
+    new="${ROOT}/image/generated/${profile}.rpm.list.new"
+    final="${ROOT}/image/generated/${profile}.rpm.list"
+
+    if [ ! -s "${new}" ] || [ "$(grep -vc '^#' "${new}" || true)" -eq 0 ]; then
+        echo "  nothing resolved; refusing to overwrite the previous list" >&2
+        rm -f "${new}"
+        INCOMPLETE="${INCOMPLETE} ${profile}"
+        continue
+    fi
+
+    mv "${new}" "${final}"
+
+    lines="$(grep -vc '^#' "${final}" || true)"
 
     echo "${lines} package(s)"
 done
