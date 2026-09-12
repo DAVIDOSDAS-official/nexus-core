@@ -175,9 +175,14 @@ with one argument changed, at 2.88 GB and 3.91 GB.
 `./image/build-installer.sh` produces an installer ISO, which has
 been installed on real hardware and boots with Secure Boot enforcing.
 
-**Not yet a distribution anyone can install**: nothing is published,
-so a machine installed from that ISO can never receive an update --
-which is the line between a snapshot and a distribution.
+`./image/publish.sh` pushes an image to a registry, which is what
+makes updates possible: a bootc system pulls a newer image from where
+it was installed from, so an image that was never published can never
+send a fix to the machines running it.
+
+**Nothing is published yet**, so today's ISOs produce machines that
+cannot update. `nexus doctor` says so on such a machine rather than
+letting it look healthy.
 
 ---
 

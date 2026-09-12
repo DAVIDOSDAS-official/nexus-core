@@ -65,6 +65,47 @@ RUN chmod 0755 /usr/bin/nexus-first-boot \
 COPY components/profiles /usr/share/nexus/profiles
 COPY components/aliases /usr/share/nexus/aliases
 
+# What this system says it is.
+#
+# Without this an installed machine introduces itself as Fedora --
+# in the installer, in /etc/os-release, and to every tool that reads
+# it. That is not a cosmetic gap: somebody debugging their own
+# machine needs to know what they are running.
+#
+# ID and VERSION_ID stay Fedora's deliberately.
+#
+# Both are read by tooling that has to know what the base is: package
+# managers branch on ID, and the image builder composes a distro name
+# from ID plus VERSION_ID. Setting VERSION_ID to the Nexus version
+# sent it looking for "fedora-0.1", which does not exist, and the ISO
+# build failed at manifest generation.
+#
+# Branding goes in the fields meant for it. NAME, PRETTY_NAME and
+# VARIANT are what a person reads; ID and VERSION_ID are what
+# programs read, and a system that lies to programs about its base
+# breaks things that were right to trust it.
+ARG NEXUS_VERSION=0.1
+ARG NEXUS_PROFILE=minimalism
+
+RUN set -eu; \
+    . /etc/os-release; \
+    { \
+        echo "NAME=\"Nexus-CORE\""; \
+        echo "PRETTY_NAME=\"Nexus-CORE ${NEXUS_VERSION} (${NEXUS_PROFILE})\""; \
+        echo "ID=fedora"; \
+        echo "ID_LIKE=fedora"; \
+        echo "VERSION=\"${VERSION_ID} (Nexus-CORE ${NEXUS_VERSION})\""; \
+        echo "VERSION_ID=${VERSION_ID}"; \
+        echo "NEXUS_VERSION=\"${NEXUS_VERSION}\""; \
+        echo "VARIANT=\"${NEXUS_PROFILE}\""; \
+        echo "VARIANT_ID=${NEXUS_PROFILE}"; \
+        echo "BUILD_ID=\"$(date -u +%Y%m%d)\""; \
+        echo "PLATFORM_ID=\"${PLATFORM_ID}\""; \
+        echo "ANSI_COLOR=\"0;38;2;249;115;22\""; \
+        echo "NEXUS_BASE=\"${PRETTY_NAME}\""; \
+    } > /usr/lib/os-release; \
+    ln -sf ../usr/lib/os-release /etc/os-release
+
 ENV NEXUS_PROFILES=/usr/share/nexus/profiles
 ENV NEXUS_ALIASES=/usr/share/nexus/aliases
 

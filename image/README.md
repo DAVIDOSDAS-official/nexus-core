@@ -24,6 +24,40 @@ Four stages, built separately so a failure names the layer:
 | `gaming` | 32-bit stack, Steam, Gamescope, GameMode, MangoHud, controllers |
 | `final` | Labels, and `bootc container lint` |
 
+## Publishing, and why it matters
+
+```
+REGISTRY=ghcr.io/yourname ./image/publish.sh
+```
+
+**This is the line between a snapshot and a distribution.**
+
+A bootc system updates by pulling a newer image from the place it was
+installed from. An image built locally and installed from a USB stick
+has nowhere to pull from: no fix can ever reach that machine, however
+urgent. Everything works, nothing reports a problem, and the machine
+is frozen at the day it was installed.
+
+So the ISO has to be built from a published name rather than from
+`localhost/`:
+
+```
+REGISTRY=ghcr.io/yourname ./image/publish.sh
+IMAGE=ghcr.io/yourname/nexus-core:minimalism \
+    ./image/build-installer.sh
+```
+
+Then, on an installed machine:
+
+```
+sudo bootc upgrade
+sudo reboot
+sudo bootc rollback     # if the new one is worse
+```
+
+`nexus doctor` reports whether a machine can update at all, because a
+machine that cannot is a fact about it worth knowing.
+
 ## Something you can install
 
 ```

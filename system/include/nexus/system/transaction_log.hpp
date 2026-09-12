@@ -92,6 +92,13 @@ std::vector<TransactionRecord> readTransactions(
 // leaves a trace they can read.
 std::string defaultTransactionLog();
 
+// Every place a record might be, because changes are made under sudo
+// and read back without it. Reading only the caller's own file
+// reports "no changes recorded" about a machine that was changed.
+std::vector<std::string> transactionLogPaths();
+
+std::vector<TransactionRecord> readAllTransactions();
+
 std::string currentTimestamp();
 
 }

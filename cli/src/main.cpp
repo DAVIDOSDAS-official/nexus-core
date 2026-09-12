@@ -1071,6 +1071,62 @@ int commandInstall(
     const std::string marker =
         nexus::system::beginTransaction(log, record);
 
+    // Whether a change made here will still be here after a reboot.
+    //
+    // An image-based system mounts /usr read-only and is updated by
+    // replacing the whole image. bootc usr-overlay makes it writable
+    // until the next boot, which is meant for debugging -- so an
+    // install can succeed, report success, and silently undo itself.
+    //
+    // That is worse than refusing. Everything else in this tool is
+    // built on saying what actually happened.
+    if (nexus::system::commandExists("bootc")) {
+        const auto mounts = nexus::system::runCommand(
+            "findmnt -no OPTIONS /usr 2>/dev/null", false);
+
+        const bool writable =
+            mounts.text.find("rw,") != std::string::npos ||
+            mounts.text.rfind("rw", 0) == 0;
+
+        if (!writable) {
+            std::cerr
+                << "\nThis is an image-based system and /usr is "
+                << "read-only.\n\n"
+                << "Packages are not installed on such a machine; "
+                << "the image is rebuilt\nand the machine reboots "
+                << "into it. Nothing has been changed.\n\n"
+                << "    nexus image <profile>    the list this "
+                << "resolves to\n"
+                << "    bootc upgrade            take a newer "
+                << "image\n";
+
+            return 1;
+        }
+
+        const auto overlay = nexus::system::runCommand(
+            "findmnt -no SOURCE /usr 2>/dev/null", false);
+
+        if (overlay.text.find("overlay") != std::string::npos) {
+            std::cout
+                << "\nWarning: /usr is writable only because "
+                << "development mode is on.\n"
+                << "Anything installed now disappears at the next "
+                << "reboot.\n";
+
+            if (!assumeYes) {
+                std::cout << "\nContinue anyway? [y/N] ";
+
+                std::string answer;
+                std::getline(std::cin, answer);
+
+                if (answer != "y" && answer != "Y") {
+                    std::cout << "\nNothing has been changed.\n";
+                    return 0;
+                }
+            }
+        }
+    }
+
     std::cout << "\nHanding the plan to " << manager << ".\n\n";
 
     const auto applied = useRpm
@@ -1544,7 +1600,10 @@ int commandRemove(
 }
 
 int commandHistory(const std::string& path) {
-    const auto records = nexus::system::readTransactions(path);
+    // Every log, not the one belonging to whoever asked. Changes
+    // are made under sudo and read back without it, so a machine's
+    // history lives in two files and belongs to neither.
+    const auto records = nexus::system::readAllTransactions();
 
     if (records.empty()) {
         std::cout
@@ -1722,6 +1781,50 @@ int commandDoctor(
         for (const nexus::Finding& finding : detail.findings) {
             findings.push_back(finding);
         }
+    }
+
+    // Whether this machine can receive updates at all.
+    //
+    // An image-based system updates by pulling a newer image from
+    // where it was installed from. Installed from a local build,
+    // there is nowhere to pull from and no fix can ever arrive --
+    // which nothing else reports, because everything works.
+    if (nexus::system::commandExists("bootc")) {
+        // --format=json is not understood by every version, and a
+        // check that gives up without saying why is a check that
+        // reports a healthy machine it never examined.
+        auto status = nexus::system::runCommand(
+            "bootc status --format=yaml 2>/dev/null", false);
+
+        if (!status.ok || status.text.empty()) {
+            status = nexus::system::runCommand(
+                "bootc status 2>/dev/null", false);
+        }
+
+        nexus::Finding updates;
+
+        updates.check = "Updates";
+
+        if (!status.ok || status.text.empty()) {
+            updates.health = nexus::Health::Unknown;
+            updates.detail =
+                "bootc is present but did not report a status.";
+        } else if (status.text.find("localhost/") !=
+                   std::string::npos) {
+            updates.health = nexus::Health::Warning;
+            updates.detail =
+                "Installed from a local image, so there is nowhere "
+                "to update from.";
+            updates.examples.push_back(
+                "no fix can reach this machine, however urgent");
+            updates.total = 1;
+        } else {
+            updates.health = nexus::Health::Ok;
+            updates.detail =
+                "Image-based; bootc upgrade will pull a newer one.";
+        }
+
+        findings.push_back(std::move(updates));
     }
 
     // A change that started and never finished. The machine may have
@@ -2211,9 +2314,20 @@ UPDATING
 
     if (useRpm) {
         std::cout << R"(
-      sudo dnf upgrade                 update everything
-      sudo bootc upgrade               if this is an image-based
-                                       system, then reboot
+      sudo bootc upgrade               pull a newer image
+      sudo reboot                      and boot into it
+
+  An image-based system updates by replacing the whole image rather
+  than by changing packages one at a time, so the change arrives at
+  a reboot and the previous one stays bootable if it does not work.
+
+      sudo bootc rollback              go back to the previous one
+
+  If bootc reports nothing to pull, this machine was installed from
+  an image that was never published, and cannot update. That is a
+  property of how it was built, not a fault.
+
+      sudo dnf upgrade                 packages layered on top
 )";
     } else {
         std::cout << R"(

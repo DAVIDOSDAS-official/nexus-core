@@ -206,3 +206,9 @@ Resolves-To: metasploit
 
 Capability: network-manager
 Resolves-To: networkmanager | connman | systemd
+
+Capability: network-manager-wifi
+Resolves-To: networkmanager
+
+Capability: wifi-supplicant
+Resolves-To: wpa_supplicant | iwd

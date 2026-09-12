@@ -173,3 +173,9 @@ Resolves-To: metasploit-framework
 
 Capability: network-manager
 Resolves-To: network-manager | connman | systemd-networkd
+
+Capability: network-manager-wifi
+Resolves-To: network-manager
+
+Capability: wifi-supplicant
+Resolves-To: wpasupplicant | iwd

@@ -17,6 +17,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 PROFILE="${PROFILE:-minimalism}"
 TYPE="${TYPE:-anaconda-iso}"
+# A locally-built image cannot be updated from: bootc records where
+# it was pulled, and localhost is nowhere a machine can reach. Pass
+# IMAGE=ghcr.io/you/nexus-core:profile to build an ISO whose installs
+# can receive updates.
 IMAGE="${IMAGE:-localhost/nexus-os:${PROFILE}}"
 OUTPUT="${OUTPUT:-${ROOT}/output}"
 
@@ -85,6 +89,20 @@ echo
 echo "Done:"
 find "${OUTPUT}" -type f \( -name '*.iso' -o -name '*.qcow2' \) \
     -exec ls -lh {} \;
+
+if [ "${IMAGE#localhost/}" != "${IMAGE}" ]; then
+    cat <<'LOCAL'
+
+Note: this was built from a local image, so machines installed from
+it have nowhere to update from. bootc pulls from where it was
+installed; localhost is not reachable.
+
+To make updates possible, publish the image and build from that name:
+
+    REGISTRY=ghcr.io/yourname ./image/publish.sh
+    IMAGE=ghcr.io/yourname/nexus-core:PROFILE ./image/build-installer.sh
+LOCAL
+fi
 
 cat <<'NEXT'
 

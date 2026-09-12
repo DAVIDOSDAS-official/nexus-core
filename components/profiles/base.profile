@@ -8,6 +8,8 @@ Description: What any usable system needs regardless of what it is for
 # online cannot be set up, whatever else it has.
 Requires: init,
  network-manager,
+ network-manager-wifi,
+ wifi-supplicant,
  c-library,
  core-utilities,
  package-manager,
