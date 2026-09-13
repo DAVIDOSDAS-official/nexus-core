@@ -1093,6 +1093,8 @@ int commandInstall(
     //
     // That is worse than refusing. Everything else in this tool is
     // built on saying what actually happened.
+    bool useRpmOstree = false;
+
     if (nexus::system::commandExists("bootc")) {
         const auto mounts = nexus::system::runCommand(
             "findmnt -no OPTIONS /usr 2>/dev/null", false);
@@ -1103,17 +1105,14 @@ int commandInstall(
 
         if (!writable) {
             std::cerr
-                << "\nThis is an image-based system and /usr is "
-                << "read-only.\n\n"
-                << "Packages are not installed on such a machine; "
-                << "the image is rebuilt\nand the machine reboots "
-                << "into it. Nothing has been changed.\n\n"
-                << "    nexus image <profile>    the list this "
-                << "resolves to\n"
-                << "    bootc upgrade            take a newer "
-                << "image\n";
+                << "\nThis is an image-based system, so this will "
+                << "be layered into a new\ndeployment rather than "
+                << "installed into the running one.\n\n"
+                << "Nothing changes until the machine reboots. The "
+                << "current deployment\nstays bootable, so if the "
+                << "new one is worse you can go back to it.\n";
 
-            return 1;
+            useRpmOstree = true;
         }
 
         const auto overlay = nexus::system::runCommand(
@@ -1142,9 +1141,16 @@ int commandInstall(
 
     std::cout << "\nHanding the plan to " << manager << ".\n\n";
 
-    const auto applied = useRpm
-        ? nexus::system::applyWithDnf(requested)
-        : nexus::system::applyWithApt(requested);
+    // Three appliers, one shape: verify, hand over, record what
+    // happened. An image-based system layers into a new deployment
+    // rather than changing the running one, so what it records is
+    // "staged" -- true until the machine reboots, and false to call
+    // it anything else.
+    const auto applied =
+        useRpmOstree
+            ? nexus::system::layerWithRpmOstree(requested)
+            : useRpm ? nexus::system::applyWithDnf(requested)
+                     : nexus::system::applyWithApt(requested);
 
     for (const std::string& line : applied.output) {
         std::cout << line << "\n";
@@ -1165,6 +1171,20 @@ int commandInstall(
     switch (applied.outcome) {
         case nexus::system::ApplyOutcome::Applied:
             std::cout << "\nDone.\n";
+            return 0;
+
+        case nexus::system::ApplyOutcome::Staged:
+            // Not done. Written, and waiting for a reboot -- saying
+            // "done" here would be false for as long as the machine
+            // stays up, which on a laptop is most of the time.
+            std::cout
+                << "\nStaged. None of it is in effect yet.\n\n"
+                << "    systemctl reboot         boot into it\n"
+                << "    rpm-ostree status        what is waiting\n"
+                << "    rpm-ostree rollback      after rebooting, if "
+                << "it is worse\n\n"
+                << "The deployment you are running now stays "
+                << "bootable.\n";
             return 0;
 
         case nexus::system::ApplyOutcome::NeedsRoot:

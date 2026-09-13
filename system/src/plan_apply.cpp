@@ -15,6 +15,12 @@ std::string toString(ApplyOutcome outcome) {
     switch (outcome) {
         case ApplyOutcome::Applied:
             return "applied";
+        case ApplyOutcome::Staged:
+            // Not "applied". The deployment exists and the running
+            // system is unchanged until it reboots into it, and a
+            // record saying otherwise would be false for as long as
+            // the machine stays up.
+            return "staged";
         case ApplyOutcome::NeedsRoot:
             return "needs-root";
         case ApplyOutcome::Refused:
@@ -154,6 +160,55 @@ ApplyResult applyWithApt(const std::string& requested) {
     // yes without reading.
     return runApt(
         "install -y --no-install-recommends '" + requested + "'");
+}
+
+}
+
+namespace nexus::system {
+
+bool isImageBased() {
+    if (!commandExists("rpm-ostree")) {
+        return false;
+    }
+
+    // rpm-ostree being present is not enough: a machine can have the
+    // tool and a writable /usr, and there layering would be the wrong
+    // answer.
+    const ProcessResult mounted =
+        runCommand("findmnt -no OPTIONS /usr 2>/dev/null", false);
+
+    return mounted.text.rfind("ro", 0) == 0 ||
+           mounted.text.find(",ro,") != std::string::npos ||
+           mounted.text.find("ro,") == 0;
+}
+
+ApplyResult layerWithRpmOstree(const std::string& requested) {
+    ApplyResult result;
+
+    // --idempotent: asking for something already layered is not a
+    // failure, and treating it as one turns a repeated setup into an
+    // error the user cannot act on.
+    const std::string command =
+        "rpm-ostree install --idempotent --allow-inactive " +
+        requested;
+
+    const ProcessResult ran = runCommand(command, true);
+
+    result.exitCode = ran.exitCode;
+    result.output.push_back(ran.text);
+
+    if (!ran.ran) {
+        result.outcome = ApplyOutcome::Unavailable;
+        return result;
+    }
+
+    // Staged, not applied. The deployment exists; the running system
+    // is unchanged until it reboots into it.
+    result.outcome = ran.exitCode == 0
+        ? ApplyOutcome::Staged
+        : ApplyOutcome::Failed;
+
+    return result;
 }
 
 }

@@ -7,6 +7,9 @@
 namespace nexus::system {
 
 enum class ApplyOutcome {
+    // Written to a new deployment, and not yet in effect. The
+    // machine has to reboot before any of it is true.
+    Staged,
     Applied,
     NeedsRoot,
     Refused,
@@ -51,6 +54,18 @@ ApplyResult removeWithApt(
 );
 
 ApplyResult applyWithDnf(const std::string& requested);
+
+// Layer packages on an image-based system.
+//
+// rpm-ostree writes a new deployment rather than changing the running
+// one, so nothing takes effect until a reboot. The result says so:
+// Staged rather than Applied, because a change that has not happened
+// yet must not be reported as one that has.
+ApplyResult layerWithRpmOstree(const std::string& requested);
+
+// Whether this machine is image-based: /usr read-only and rpm-ostree
+// present to layer onto it.
+bool isImageBased();
 
 ApplyResult removeWithDnf(
     const std::vector<std::string>& packages
