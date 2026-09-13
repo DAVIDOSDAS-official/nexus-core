@@ -33,6 +33,18 @@ RUN cmake -S /src -B /build \
     && cmake --build /build --parallel
 
 # ---------------------------------------------------------------- base
+# Rebuild the SELinux policy store.
+#
+# dnf writes into the store during a container build and what comes
+# out is inconsistent: a module listed with its files missing. Nothing
+# notices until a deployment is finalized on a real machine, where the
+# policy is refreshed, fails, and takes the deployment with it.
+#
+# At the end of every stage a build can stop at, not once at the
+# start: --target desktop never reaches the later stages, and a store
+# rebuilt before six more installs is a store rebuilt too early.
+RUN semodule -B
+
 FROM quay.io/fedora/fedora-bootc:42 AS base
 
 # Nexus reads repository metadata, which arrives compressed in
@@ -110,6 +122,18 @@ ENV NEXUS_PROFILES=/usr/share/nexus/profiles
 ENV NEXUS_ALIASES=/usr/share/nexus/aliases
 
 # ------------------------------------------------------------- desktop
+# Rebuild the SELinux policy store.
+#
+# dnf writes into the store during a container build and what comes
+# out is inconsistent: a module listed with its files missing. Nothing
+# notices until a deployment is finalized on a real machine, where the
+# policy is refreshed, fails, and takes the deployment with it.
+#
+# At the end of every stage a build can stop at, not once at the
+# start: --target desktop never reaches the later stages, and a store
+# rebuilt before six more installs is a store rebuilt too early.
+RUN semodule -B
+
 FROM base AS desktop
 
 # KDE on Wayland. Chosen over GNOME because gaming benefits from
@@ -192,6 +216,18 @@ RUN set -eu; \
     fi
 
 # -------------------------------------------------------------- gaming
+# Rebuild the SELinux policy store.
+#
+# dnf writes into the store during a container build and what comes
+# out is inconsistent: a module listed with its files missing. Nothing
+# notices until a deployment is finalized on a real machine, where the
+# policy is refreshed, fails, and takes the deployment with it.
+#
+# At the end of every stage a build can stop at, not once at the
+# start: --target desktop never reaches the later stages, and a store
+# rebuilt before six more installs is a store rebuilt too early.
+RUN semodule -B
+
 FROM desktop AS gaming
 
 # Fedora bootc ships no 32-bit multilib. Steam needs it, so it is added
@@ -247,6 +283,18 @@ RUN dnf install -y \
     && dnf clean all
 
 # --------------------------------------------------------------- nexus
+# Rebuild the SELinux policy store.
+#
+# dnf writes into the store during a container build and what comes
+# out is inconsistent: a module listed with its files missing. Nothing
+# notices until a deployment is finalized on a real machine, where the
+# policy is refreshed, fails, and takes the deployment with it.
+#
+# At the end of every stage a build can stop at, not once at the
+# start: --target desktop never reaches the later stages, and a store
+# rebuilt before six more installs is a store rebuilt too early.
+RUN semodule -B
+
 FROM gaming AS final
 
 LABEL org.opencontainers.image.title="Nexus OS"
@@ -258,3 +306,29 @@ LABEL containers.bootc="1"
 
 # bootc requires this to succeed for the image to be considered valid.
 RUN bootc container lint
+
+
+# Rebuild the SELinux policy store.
+#
+# dnf writes into the store during a container build and what comes
+# out is inconsistent: a module listed with its files missing. Nothing
+# notices until a deployment is finalized on a real machine, where the
+# policy is refreshed, fails, and takes the deployment with it.
+#
+# At the end of every stage a build can stop at, not once at the
+# start: --target desktop never reaches the later stages, and a store
+# rebuilt before six more installs is a store rebuilt too early.
+RUN semodule -B
+
+
+# Rebuild the SELinux policy store.
+#
+# dnf writes into the store during a container build and what comes
+# out is inconsistent: a module listed with its files missing. Nothing
+# notices until a deployment is finalized on a real machine, where the
+# policy is refreshed, fails, and takes the deployment with it.
+#
+# At the end of every stage a build can stop at, not once at the
+# start: --target desktop never reaches the later stages, and a store
+# rebuilt before six more installs is a store rebuilt too early.
+RUN semodule -B
