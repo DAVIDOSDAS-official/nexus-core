@@ -43,7 +43,8 @@ RUN cmake -S /src -B /build \
 # At the end of every stage a build can stop at, not once at the
 # start: --target desktop never reaches the later stages, and a store
 # rebuilt before six more installs is a store rebuilt too early.
-RUN semodule -B
+# (not in the builder stage: it is discarded, and
+#  there is no policy store here to rebuild.)
 
 FROM quay.io/fedora/fedora-bootc:42 AS base
 
@@ -132,7 +133,33 @@ ENV NEXUS_ALIASES=/usr/share/nexus/aliases
 # At the end of every stage a build can stop at, not once at the
 # start: --target desktop never reaches the later stages, and a store
 # rebuilt before six more installs is a store rebuilt too early.
-RUN semodule -B
+# Remove a policy module that has no files.
+#
+# A container build leaves extra_varrun registered in the store as an
+# empty directory. semodule cannot read past it -- not to rebuild the
+# policy, not even to list modules -- so finalizing a deployment on a
+# real machine fails and the deployment is discarded. That is what
+# stopped rpm-ostree from layering a package, and it looked like
+# every other kind of problem first.
+#
+# A module with no files provides no policy, so removing it loses
+# nothing. With it gone, semodule reads 429 modules and layering
+# works: packages survive a reboot and the machine stays atomic.
+RUN rm -rf /etc/selinux/targeted/active/modules/*/extra_varrun
+
+# Restore the SELinux policy files dnf left incomplete.
+#
+# A container build can leave a policy module listed with its files
+# missing -- extra_varrun, in this case. Nothing notices until a
+# deployment is finalized on a real machine, where refreshing the
+# policy fails and takes the deployment with it, which is what
+# stopped rpm-ostree from layering a package.
+#
+# Reinstalling puts the files back. Rebuilding the store with
+# semodule -B would be the direct fix and cannot work here: it swaps
+# directories by renaming them, and overlayfs cannot rename across
+# layers.
+RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
 
 FROM base AS desktop
 
@@ -226,7 +253,33 @@ RUN set -eu; \
 # At the end of every stage a build can stop at, not once at the
 # start: --target desktop never reaches the later stages, and a store
 # rebuilt before six more installs is a store rebuilt too early.
-RUN semodule -B
+# Remove a policy module that has no files.
+#
+# A container build leaves extra_varrun registered in the store as an
+# empty directory. semodule cannot read past it -- not to rebuild the
+# policy, not even to list modules -- so finalizing a deployment on a
+# real machine fails and the deployment is discarded. That is what
+# stopped rpm-ostree from layering a package, and it looked like
+# every other kind of problem first.
+#
+# A module with no files provides no policy, so removing it loses
+# nothing. With it gone, semodule reads 429 modules and layering
+# works: packages survive a reboot and the machine stays atomic.
+RUN rm -rf /etc/selinux/targeted/active/modules/*/extra_varrun
+
+# Restore the SELinux policy files dnf left incomplete.
+#
+# A container build can leave a policy module listed with its files
+# missing -- extra_varrun, in this case. Nothing notices until a
+# deployment is finalized on a real machine, where refreshing the
+# policy fails and takes the deployment with it, which is what
+# stopped rpm-ostree from layering a package.
+#
+# Reinstalling puts the files back. Rebuilding the store with
+# semodule -B would be the direct fix and cannot work here: it swaps
+# directories by renaming them, and overlayfs cannot rename across
+# layers.
+RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
 
 FROM desktop AS gaming
 
@@ -293,7 +346,33 @@ RUN dnf install -y \
 # At the end of every stage a build can stop at, not once at the
 # start: --target desktop never reaches the later stages, and a store
 # rebuilt before six more installs is a store rebuilt too early.
-RUN semodule -B
+# Remove a policy module that has no files.
+#
+# A container build leaves extra_varrun registered in the store as an
+# empty directory. semodule cannot read past it -- not to rebuild the
+# policy, not even to list modules -- so finalizing a deployment on a
+# real machine fails and the deployment is discarded. That is what
+# stopped rpm-ostree from layering a package, and it looked like
+# every other kind of problem first.
+#
+# A module with no files provides no policy, so removing it loses
+# nothing. With it gone, semodule reads 429 modules and layering
+# works: packages survive a reboot and the machine stays atomic.
+RUN rm -rf /etc/selinux/targeted/active/modules/*/extra_varrun
+
+# Restore the SELinux policy files dnf left incomplete.
+#
+# A container build can leave a policy module listed with its files
+# missing -- extra_varrun, in this case. Nothing notices until a
+# deployment is finalized on a real machine, where refreshing the
+# policy fails and takes the deployment with it, which is what
+# stopped rpm-ostree from layering a package.
+#
+# Reinstalling puts the files back. Rebuilding the store with
+# semodule -B would be the direct fix and cannot work here: it swaps
+# directories by renaming them, and overlayfs cannot rename across
+# layers.
+RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
 
 FROM gaming AS final
 
@@ -318,7 +397,33 @@ RUN bootc container lint
 # At the end of every stage a build can stop at, not once at the
 # start: --target desktop never reaches the later stages, and a store
 # rebuilt before six more installs is a store rebuilt too early.
-RUN semodule -B
+# Remove a policy module that has no files.
+#
+# A container build leaves extra_varrun registered in the store as an
+# empty directory. semodule cannot read past it -- not to rebuild the
+# policy, not even to list modules -- so finalizing a deployment on a
+# real machine fails and the deployment is discarded. That is what
+# stopped rpm-ostree from layering a package, and it looked like
+# every other kind of problem first.
+#
+# A module with no files provides no policy, so removing it loses
+# nothing. With it gone, semodule reads 429 modules and layering
+# works: packages survive a reboot and the machine stays atomic.
+RUN rm -rf /etc/selinux/targeted/active/modules/*/extra_varrun
+
+# Restore the SELinux policy files dnf left incomplete.
+#
+# A container build can leave a policy module listed with its files
+# missing -- extra_varrun, in this case. Nothing notices until a
+# deployment is finalized on a real machine, where refreshing the
+# policy fails and takes the deployment with it, which is what
+# stopped rpm-ostree from layering a package.
+#
+# Reinstalling puts the files back. Rebuilding the store with
+# semodule -B would be the direct fix and cannot work here: it swaps
+# directories by renaming them, and overlayfs cannot rename across
+# layers.
+RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
 
 
 # Rebuild the SELinux policy store.
@@ -331,4 +436,30 @@ RUN semodule -B
 # At the end of every stage a build can stop at, not once at the
 # start: --target desktop never reaches the later stages, and a store
 # rebuilt before six more installs is a store rebuilt too early.
-RUN semodule -B
+# Remove a policy module that has no files.
+#
+# A container build leaves extra_varrun registered in the store as an
+# empty directory. semodule cannot read past it -- not to rebuild the
+# policy, not even to list modules -- so finalizing a deployment on a
+# real machine fails and the deployment is discarded. That is what
+# stopped rpm-ostree from layering a package, and it looked like
+# every other kind of problem first.
+#
+# A module with no files provides no policy, so removing it loses
+# nothing. With it gone, semodule reads 429 modules and layering
+# works: packages survive a reboot and the machine stays atomic.
+RUN rm -rf /etc/selinux/targeted/active/modules/*/extra_varrun
+
+# Restore the SELinux policy files dnf left incomplete.
+#
+# A container build can leave a policy module listed with its files
+# missing -- extra_varrun, in this case. Nothing notices until a
+# deployment is finalized on a real machine, where refreshing the
+# policy fails and takes the deployment with it, which is what
+# stopped rpm-ostree from layering a package.
+#
+# Reinstalling puts the files back. Rebuilding the store with
+# semodule -B would be the direct fix and cannot work here: it swaps
+# directories by renaming them, and overlayfs cannot rename across
+# layers.
+RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
