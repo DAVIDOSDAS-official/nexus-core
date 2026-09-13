@@ -26,6 +26,14 @@ OUTPUT="${OUTPUT:-${ROOT}/output}"
 
 BUILDER="quay.io/centos-bootc/bootc-image-builder:latest"
 
+# An ISO anybody can download must not carry a known account; a disk
+# image booted in a VM has nobody to ask.
+if [ "${TYPE}" = "anaconda-iso" ]; then
+    CONFIG="config-installer.toml"
+else
+    CONFIG="config.toml"
+fi
+
 echo "Profile: ${PROFILE}"
 echo "Image:   ${IMAGE}"
 echo "Type:    ${TYPE}"
@@ -67,7 +75,7 @@ echo
 sudo podman run --rm -it --privileged \
     --security-opt label=type:unconfined_t \
     -v "${OUTPUT}":/output \
-    -v "${ROOT}/image/config.toml":/config.toml:ro \
+    -v "${ROOT}/image/${CONFIG}":/config.toml:ro \
     -v /var/lib/containers/storage:/var/lib/containers/storage \
     "${BUILDER}" \
     --type "${TYPE}" \

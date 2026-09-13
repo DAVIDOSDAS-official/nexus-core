@@ -1,3 +1,9 @@
+# Not used for the installer ISO -- see config-installer.toml.
+#
+# This account exists so a qcow2 booted in a VM can be logged into.
+# An ISO that anybody downloads must not carry a known login, so the
+# installer is given a configuration without one and Anaconda asks.
+#
 # Users belong to the disk image, not the container image.
 #
 # useradd in a Containerfile puts an account in /etc/passwd with a home

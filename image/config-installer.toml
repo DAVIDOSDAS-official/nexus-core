@@ -1,0 +1,15 @@
+# The installer's configuration: no user.
+#
+# Anaconda asks for a name and a password, the way every installer
+# does. It never asked before because image/config.toml answered on
+# the user's behalf -- which would have put the same known login on
+# every machine that installed this.
+#
+# image/config.toml keeps its account: a disk image booted in a VM to
+# check something has nobody to ask.
+[customizations.installer.modules]
+enable = [
+    "org.fedoraproject.Anaconda.Modules.Users",
+    "org.fedoraproject.Anaconda.Modules.Storage",
+    "org.fedoraproject.Anaconda.Modules.Network",
+]
