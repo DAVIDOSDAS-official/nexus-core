@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <unordered_map>
 #include <set>
 #include <sstream>
 #include <utility>
@@ -355,7 +356,18 @@ std::vector<Component> mergeAvailable(
 ) {
     std::vector<Component> merged = installed;
 
-    std::map<std::string, std::size_t> present;
+    // Reserved up front. Growing a vector of 128,000 components
+    // reallocates repeatedly, and each reallocation holds the old
+    // and the new at once -- which on a 3.6 GB machine is the
+    // difference between working and being killed.
+    merged.reserve(installed.size() + available.size());
+
+    // unordered_map, not map: this holds one heap-allocated string
+    // per component in a node per entry, and at this size the
+    // overhead is tens of megabytes on its own.
+    std::unordered_map<std::string, std::size_t> present;
+
+    present.reserve(installed.size() * 2);
 
     const auto keyOf = [](const Component& component) {
         return toString(component.source()) + "/" +
