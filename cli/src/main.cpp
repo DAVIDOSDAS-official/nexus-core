@@ -4190,12 +4190,18 @@ int main(int argc, char** argv) {
                 // repository -- the largest thing the process holds,
                 // and it was held twice for no reason. The merge is
                 // done with it by this point.
+                // Counted before the move below, which leaves the
+                // vector empty. Reading its size afterwards reported
+                // zero packages for a load that had in fact worked.
+                const std::size_t loadedCount =
+                    available.components.size();
+
                 availableOnly = std::move(available.components);
 
                 haveAvailable = true;
 
                 std::cerr
-                    << "Loaded " << available.components.size()
+                    << "Loaded " << loadedCount
                     << " available packages from "
                     << available.repositoriesRead.size()
                     << " repository(ies).\n";
@@ -4219,12 +4225,18 @@ int main(int argc, char** argv) {
                 // repository -- the largest thing the process holds,
                 // and it was held twice for no reason. The merge is
                 // done with it by this point.
+                // Counted before the move below, which leaves the
+                // vector empty. Reading its size afterwards reported
+                // zero packages for a load that had in fact worked.
+                const std::size_t loadedCount =
+                    available.components.size();
+
                 availableOnly = std::move(available.components);
 
                 haveAvailable = true;
 
                 std::cerr
-                    << "Loaded " << available.components.size()
+                    << "Loaded " << loadedCount
                     << " available packages from "
                     << available.filesRead.size() << " index file(s).\n";
             } else {

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <optional>
 #include <regex>
 #include <sstream>
 #include <sys/utsname.h>
@@ -61,24 +63,50 @@ std::vector<std::string> blockEntries(
     return entries;
 }
 
+// Compiling a POSIX regex is expensive, and these same patterns are
+// otherwise recompiled for every package: ten patterns across three
+// thousand packages is thirty thousand compilations of ten
+// expressions. Compiled once here and kept.
+//
+// A pattern that will not compile is remembered as a failure rather
+// than retried, so the cost is paid once either way.
+//
+// Returns nullptr when the pattern cannot be compiled.
+const std::regex* compiledPattern(const std::string& pattern) {
+    static std::map<std::string, std::optional<std::regex>> cache;
+
+    const auto entry = cache.find(pattern);
+
+    if (entry != cache.end()) {
+        return entry->second ? &*entry->second : nullptr;
+    }
+
+    try {
+        // apt writes POSIX extended regular expressions.
+        const auto inserted = cache.emplace(
+            pattern, std::regex(pattern, std::regex::extended));
+
+        return &*inserted.first->second;
+    } catch (const std::regex_error&) {
+        // A pattern this implementation cannot compile is skipped
+        // rather than aborting the whole rule set. One unreadable
+        // line should not disable every protection.
+        cache.emplace(pattern, std::nullopt);
+
+        return nullptr;
+    }
+}
+
 bool matchesAny(
     const std::string& name,
     const std::vector<std::string>& patterns
 ) {
     for (const std::string& pattern : patterns) {
-        try {
-            // apt writes POSIX extended regular expressions.
-            const std::regex expression(
-                pattern, std::regex::extended);
+        const std::regex* expression = compiledPattern(pattern);
 
-            if (std::regex_search(name, expression)) {
-                return true;
-            }
-        } catch (const std::regex_error&) {
-            // A pattern this implementation cannot compile is
-            // skipped rather than aborting the whole rule set. One
-            // unreadable line should not disable every protection.
-            continue;
+        if (expression != nullptr &&
+            std::regex_search(name, *expression)) {
+            return true;
         }
     }
 

@@ -109,7 +109,7 @@ std::vector<ControlStanza> parseControlStream(
         flushField();
 
         if (!current.empty()) {
-            stanzas.push_back(current);
+            stanzas.push_back(std::move(current));
         }
 
         current = ControlStanza{};
