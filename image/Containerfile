@@ -145,7 +145,9 @@ ENV NEXUS_ALIASES=/usr/share/nexus/aliases
 # A module with no files provides no policy, so removing it loses
 # nothing. With it gone, semodule reads 429 modules and layering
 # works: packages survive a reboot and the machine stays atomic.
-RUN rm -rf /etc/selinux/targeted/active/modules/*/extra_varrun
+# (removed at first boot instead -- see first-boot/nexus-first-boot:
+#  overlayfs refuses to delete it during a build, and it deletes
+#  cleanly on a real filesystem.)
 
 # Restore the SELinux policy files dnf left incomplete.
 #
@@ -265,7 +267,9 @@ RUN set -eu; \
 # A module with no files provides no policy, so removing it loses
 # nothing. With it gone, semodule reads 429 modules and layering
 # works: packages survive a reboot and the machine stays atomic.
-RUN rm -rf /etc/selinux/targeted/active/modules/*/extra_varrun
+# (removed at first boot instead -- see first-boot/nexus-first-boot:
+#  overlayfs refuses to delete it during a build, and it deletes
+#  cleanly on a real filesystem.)
 
 # Restore the SELinux policy files dnf left incomplete.
 #
@@ -358,7 +362,9 @@ RUN dnf install -y \
 # A module with no files provides no policy, so removing it loses
 # nothing. With it gone, semodule reads 429 modules and layering
 # works: packages survive a reboot and the machine stays atomic.
-RUN rm -rf /etc/selinux/targeted/active/modules/*/extra_varrun
+# (removed at first boot instead -- see first-boot/nexus-first-boot:
+#  overlayfs refuses to delete it during a build, and it deletes
+#  cleanly on a real filesystem.)
 
 # Restore the SELinux policy files dnf left incomplete.
 #
@@ -409,7 +415,9 @@ RUN bootc container lint
 # A module with no files provides no policy, so removing it loses
 # nothing. With it gone, semodule reads 429 modules and layering
 # works: packages survive a reboot and the machine stays atomic.
-RUN rm -rf /etc/selinux/targeted/active/modules/*/extra_varrun
+# (removed at first boot instead -- see first-boot/nexus-first-boot:
+#  overlayfs refuses to delete it during a build, and it deletes
+#  cleanly on a real filesystem.)
 
 # Restore the SELinux policy files dnf left incomplete.
 #
@@ -448,7 +456,9 @@ RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
 # A module with no files provides no policy, so removing it loses
 # nothing. With it gone, semodule reads 429 modules and layering
 # works: packages survive a reboot and the machine stays atomic.
-RUN rm -rf /etc/selinux/targeted/active/modules/*/extra_varrun
+# (removed at first boot instead -- see first-boot/nexus-first-boot:
+#  overlayfs refuses to delete it during a build, and it deletes
+#  cleanly on a real filesystem.)
 
 # Restore the SELinux policy files dnf left incomplete.
 #

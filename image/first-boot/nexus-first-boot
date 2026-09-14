@@ -96,6 +96,23 @@ online() {
     return 1
 }
 
+# A policy module with no files, left by the container build.
+#
+# semodule cannot read past it -- not to rebuild the policy, not even
+# to list modules -- so finalizing any new deployment fails and the
+# deployment is discarded. rpm-ostree cannot layer a package until it
+# is gone.
+#
+# Here rather than in the Containerfile because overlayfs refuses to
+# delete it during a build ("Input/output error") and a real
+# filesystem does not.
+if [ -d /etc/selinux/targeted/active/modules/400/extra_varrun ] && \
+   [ -z "$(ls -A /etc/selinux/targeted/active/modules/400/extra_varrun \
+        2>/dev/null)" ]; then
+    rm -rf /etc/selinux/targeted/active/modules/400/extra_varrun \
+        2>/dev/null || true
+fi
+
 echo "  Checking for a network."
 echo
 
