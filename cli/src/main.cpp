@@ -4173,7 +4173,7 @@ int main(int argc, char** argv) {
 
         if (withAvailable && preferRpm) {
             const nexus::system::RpmRepository repositories(rpmCache);
-            const auto available = repositories.load();
+            auto available = repositories.load();
 
             for (const auto& skipped : available.skipped) {
                 std::cerr
@@ -4182,11 +4182,15 @@ int main(int argc, char** argv) {
             }
 
             if (!available.components.empty()) {
-                availableOnly = available.components;
-
                 universe = nexus::system::mergeAvailable(
                     universe, available.components,
                     versionComparator());
+
+                // Moved, not copied. This is every package in every
+                // repository -- the largest thing the process holds,
+                // and it was held twice for no reason. The merge is
+                // done with it by this point.
+                availableOnly = std::move(available.components);
 
                 haveAvailable = true;
 
@@ -4198,7 +4202,7 @@ int main(int argc, char** argv) {
             }
         } else if (withAvailable) {
             const nexus::system::AptSource apt(listsDir);
-            const auto available = apt.load();
+            auto available = apt.load();
 
             for (const auto& skipped : available.filesSkipped) {
                 std::cerr
@@ -4207,11 +4211,15 @@ int main(int argc, char** argv) {
             }
 
             if (!available.components.empty()) {
-                availableOnly = available.components;
-
                 universe = nexus::system::mergeAvailable(
                     universe, available.components,
                     versionComparator());
+
+                // Moved, not copied. This is every package in every
+                // repository -- the largest thing the process holds,
+                // and it was held twice for no reason. The merge is
+                // done with it by this point.
+                availableOnly = std::move(available.components);
 
                 haveAvailable = true;
 

@@ -13,3 +13,18 @@ enable = [
     "org.fedoraproject.Anaconda.Modules.Storage",
     "org.fedoraproject.Anaconda.Modules.Network",
 ]
+
+# A user, until Anaconda can be made to ask for one.
+#
+# Removing this was supposed to make the installer prompt. It does
+# not: the Users module is enabled and the screen never appears, so
+# the machine installs with no account and cannot be logged into.
+#
+# So the account is back, and the default credential it creates is a
+# release blocker rather than a detail -- a published ISO must not
+# carry a known login. The machine is told to demand a new password
+# at first login, which is not a fix, only a smaller hole.
+[[customizations.user]]
+name = "nexus"
+password = "nexus"
+groups = ["wheel"]
