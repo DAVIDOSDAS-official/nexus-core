@@ -23,6 +23,7 @@ add_custom_target(nexus_version_header ALL
         "-DSRC=${CMAKE_SOURCE_DIR}"
         "-DOUT=${NEXUS_VERSION_HEADER}"
         "-DNEXUS_VERSION=${PROJECT_VERSION}"
+        "-DOVERRIDE=${NEXUS_COMMIT_OVERRIDE}"
         -P "${CMAKE_SOURCE_DIR}/cmake/version.cmake"
     COMMENT "Reading build version from git"
     VERBATIM

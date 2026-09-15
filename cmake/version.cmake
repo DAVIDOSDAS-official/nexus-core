@@ -14,7 +14,12 @@ find_package(Git QUIET)
 set(NEXUS_COMMIT "unknown")
 set(NEXUS_DIRTY "")
 
-if(GIT_FOUND AND EXISTS "${SRC}/.git")
+# An override wins over the lookup. A container build has no .git to
+# read -- the commit is known on the host and handed in, rather than
+# guessed at or left blank.
+if(NOT "${OVERRIDE}" STREQUAL "" AND NOT "${OVERRIDE}" STREQUAL "unknown")
+    set(NEXUS_COMMIT "${OVERRIDE}")
+elseif(GIT_FOUND AND EXISTS "${SRC}/.git")
     execute_process(
         COMMAND "${GIT_EXECUTABLE}" rev-parse --short HEAD
         WORKING_DIRECTORY "${SRC}"

@@ -26,10 +26,18 @@ RUN dnf install -y \
 
 COPY . /src
 
+# The commit, passed in rather than read here: .containerignore keeps
+# .git out of the build context, so the tree inside this stage has no
+# repository to ask. Left unset, the binary reports an unknown commit
+# and `nexus doctor` says so -- which is honest, but useless on an
+# installed machine trying to identify itself.
+ARG NEXUS_COMMIT=unknown
+
 # NEXUS_BUILD_TESTS=OFF: the image needs the tool, not the test suite.
 RUN cmake -S /src -B /build \
         -DCMAKE_BUILD_TYPE=Release \
         -DNEXUS_BUILD_TESTS=OFF \
+        -DNEXUS_COMMIT_OVERRIDE="${NEXUS_COMMIT}" \
     && cmake --build /build --parallel
 
 # ---------------------------------------------------------------- base
