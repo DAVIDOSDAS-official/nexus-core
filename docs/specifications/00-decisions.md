@@ -255,3 +255,35 @@ noticing it was implausible, never by a failing test:
   preference was being compared before alternative order.
 
 Summaries are not decoration. They are a check on the data underneath.
+
+
+## 15. Encryption is on unless the user turns it off
+
+The disk is encrypted by default. Nobody has to ask for it, and nobody
+is prevented from declining it.
+
+This follows from the rule the rest of the system already works by:
+Nexus informs and warns, it does not refuse. A person who wants an
+unencrypted disk has a reason, and it is their machine. What they must
+not do is end up with one by accident, or by clicking through a screen
+they did not understand.
+
+So the installer offers encryption already selected, states in plain
+words what declining means, and `nexus doctor` keeps saying so
+afterwards: the root filesystem is not encrypted; anyone with the disk
+can read it. A choice made once at install is not a choice the machine
+should stop mentioning.
+
+The second password is the reason people turn encryption off, so it is
+avoided where the hardware allows. With a TPM the disk unlocks itself
+when the machine has not been tampered with, and the only password
+typed is the login one. Without a TPM there are two, and that is said
+plainly rather than discovered.
+
+What this protects is a machine that is off: a laptop left somewhere,
+or taken. It does nothing for a machine that is running and unlocked,
+and claiming otherwise would be worse than not encrypting at all.
+
+Swap counts. Anything that was in memory can be written there,
+including the contents of an unlocked home, so an encrypted disk with
+plaintext swap is not an encrypted disk.
