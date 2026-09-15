@@ -106,7 +106,7 @@ void printUsage() {
         << "    --explain         reason for every component, not just choices\n"
         << "    --lists <dir>     apt lists directory\n"
         << "    --sysfs <dir>     root for hardware detection\n"
-        << "                      (default: /var/lib/dpkg/status)\n"
+        << "    --version, -V     print version and build commit\n"
         << "\n"
         << "This command never modifies the system.\n";
 }
@@ -1705,8 +1705,43 @@ int commandDoctor(
 ) {
     std::vector<nexus::Finding> findings;
 
-    // Whether the system can be examined at all comes first: every
-    // finding below is worthless if this one failed.
+    // What is running comes before what it reports. Every finding
+    // below describes a machine as seen by this binary, and knowing
+    // which binary that is has to come first -- a report from an
+    // unknown build cannot be checked against anything.
+#ifndef NEXUS_VERSION
+#define NEXUS_VERSION "unknown"
+#endif
+#ifndef NEXUS_COMMIT
+#define NEXUS_COMMIT "unknown"
+#endif
+
+    nexus::Finding build;
+
+    build.check = "Nexus build";
+    build.detail =
+        std::string("nexus ") + NEXUS_VERSION +
+        " (" + NEXUS_COMMIT + ").";
+
+    // A build that does not know its own commit cannot be matched to
+    // the source it came from, which is exactly the question worth
+    // asking when something here looks wrong.
+    if (std::string(NEXUS_COMMIT).find("unknown") != std::string::npos) {
+        build.health = nexus::Health::Warning;
+        build.detail += " This build carries no commit, so it cannot"
+                        " be matched to a source tree.";
+    } else if (std::string(NEXUS_COMMIT).find("-dirty") !=
+               std::string::npos) {
+        build.health = nexus::Health::Warning;
+        build.detail += " Built from a modified tree.";
+    } else {
+        build.health = nexus::Health::Ok;
+    }
+
+    findings.push_back(std::move(build));
+
+    // Whether the system can be examined at all: every finding
+    // below this one is worthless if it failed.
     nexus::Finding source_;
 
     source_.check = "Package database";
