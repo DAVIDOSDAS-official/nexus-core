@@ -1,0 +1,5 @@
+#pragma once
+
+// Generated at build time. Do not edit; see cmake/version.cmake.
+#define NEXUS_VERSION "@NEXUS_VERSION@"
+#define NEXUS_COMMIT "@NEXUS_COMMIT@"

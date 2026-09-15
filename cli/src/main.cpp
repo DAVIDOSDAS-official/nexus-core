@@ -1,3 +1,5 @@
+#include <nexus_version.h>
+
 #include <algorithm>
 #include <exception>
 #include <iostream>
@@ -1709,13 +1711,6 @@ int commandDoctor(
     // below describes a machine as seen by this binary, and knowing
     // which binary that is has to come first -- a report from an
     // unknown build cannot be checked against anything.
-#ifndef NEXUS_VERSION
-#define NEXUS_VERSION "unknown"
-#endif
-#ifndef NEXUS_COMMIT
-#define NEXUS_COMMIT "unknown"
-#endif
-
     nexus::Finding build;
 
     build.check = "Nexus build";
@@ -3790,13 +3785,6 @@ int main(int argc, char** argv) {
             // Defined by the build. A binary built without them says
             // so rather than printing an empty string and looking
             // like a version that exists.
-#ifndef NEXUS_VERSION
-#define NEXUS_VERSION "unknown"
-#endif
-#ifndef NEXUS_COMMIT
-#define NEXUS_COMMIT "unknown"
-#endif
-
             std::cout
                 << "nexus " << NEXUS_VERSION
                 << " (" << NEXUS_COMMIT << ")\n";
