@@ -3749,6 +3749,26 @@ int main(int argc, char** argv) {
             continue;
         }
 
+        if (arguments[index] == "--version" ||
+            arguments[index] == "-V") {
+
+            // Defined by the build. A binary built without them says
+            // so rather than printing an empty string and looking
+            // like a version that exists.
+#ifndef NEXUS_VERSION
+#define NEXUS_VERSION "unknown"
+#endif
+#ifndef NEXUS_COMMIT
+#define NEXUS_COMMIT "unknown"
+#endif
+
+            std::cout
+                << "nexus " << NEXUS_VERSION
+                << " (" << NEXUS_COMMIT << ")\n";
+
+            return 0;
+        }
+
         if (arguments[index] == "--with-snap") {
             withSnap = true;
             continue;

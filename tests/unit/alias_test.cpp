@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <sstream>
 
 #include <nexus/alias.hpp>
