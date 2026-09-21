@@ -174,7 +174,9 @@ RpmRepositoryResult RpmRepository::load() const {
             continue;
         }
 
-        RpmSourceResult parsed = parseRepodataPrimary(primary);
+        // primary is not read again; the parser keeps it.
+        RpmSourceResult parsed =
+            parseRepodataPrimary(std::move(primary));
 
         if (!parsed.error.empty()) {
             result.skipped.push_back(SkippedRepository{

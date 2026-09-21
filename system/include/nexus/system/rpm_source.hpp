@@ -39,7 +39,13 @@ struct RpmSourceResult {
 // (64bit)" -- satisfied by whichever package provides that exact
 // string. The capability model handles both, because a capability was
 // never required to be a package name.
-RpmSourceResult parseRepodataPrimary(const std::string& document);
+//
+// The document is taken by value and moved onward into the reader,
+// which keeps it. A const reference would be copied there instead,
+// and this document is an entire repository decompressed -- hundreds
+// of megabytes held twice for no reason. Callers that still need
+// their copy can pass one; callers that do not should std::move.
+RpmSourceResult parseRepodataPrimary(std::string document);
 
 // x86_64 -> amd64 and friends.
 //

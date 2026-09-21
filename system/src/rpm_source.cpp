@@ -123,10 +123,12 @@ std::string toString(RpmGapKind kind) {
     return "unknown";
 }
 
-RpmSourceResult parseRepodataPrimary(const std::string& document) {
+RpmSourceResult parseRepodataPrimary(std::string document) {
     RpmSourceResult result;
 
-    XmlReader reader(document);
+    // Moved, not copied: XmlReader keeps the document, and this one is
+    // a whole repository.
+    XmlReader reader(std::move(document));
 
     // Where in the document we are. Only the depth that matters is
     // tracked; the metadata has a fixed shape.
