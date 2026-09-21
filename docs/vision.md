@@ -695,3 +695,114 @@ You aren't really building a distro.
 You're building a **control/decision layer on top of Linux** that can potentially sit on top of Debian, Fedora, Ubuntu, Arch, etc., while presenting the user with one coherent operating system.
 
 That also lines up very nicely with the direction you've already been taking Nexus Core: hardware profiles, architecture awareness, package solving, inspection, and impact analysis.
+## Attack protection: the capability model as a behavioural baseline
+
+Not built. Recorded here because the reasoning is the valuable part
+and it will not be recoverable from an empty file later.
+
+### What the feature is
+
+Ask once, at setup: *do you want this machine watched?* If yes, Nexus
+observes what components actually do, compares it against what they
+said they were for, and tells the person when those disagree.
+
+### Why Nexus can do this better than an antivirus
+
+Every behavioural detector has the same weakness. It sees a program
+read the screen and has to guess whether that is a screenshot tool or
+a thief, because it has no idea what the program is supposed to be.
+So it either asks about everything, which trains people to click yes,
+or it guesses, and guesses wrong.
+
+Nexus already knows. That is the whole capability model. A component
+that provides `screenshot-tool` reading the screen is doing its job. A
+component that declares `pdf-reader` and calls the screencopy protocol
+is doing something it never said it would, and that difference is
+computable rather than guessed.
+
+**The baseline is not "what does normal software do". It is "what did
+this component declare".** Nothing else on the machine has that, and
+it falls out of the architecture rather than being bolted on.
+
+### The second signal: things that never vary
+
+People are irregular. Automation is not.
+
+A process that performs exactly the same sequence, at exactly the same
+interval, without once deviating over weeks, is not somebody working.
+Network security already uses this -- command-and-control traffic is
+caught by having too little jitter, not by doing anything unusual.
+
+On its own this is a weak signal, and it is worth being clear why.
+The most invariant things on a machine are legitimate: systemd timers,
+log rotation, update checks, backup agents, sync clients. They are
+more regular than malware, because anyone who knows about jitter
+analysis adds randomness on purpose.
+
+Combined with the capability baseline it becomes narrow enough to act
+on: *does something it never declared, does it mechanically, and keeps
+doing it.* Either half alone is noise.
+
+### What already exists and must not be rebuilt
+
+- **Wayland with portals.** On X11 any program could read the whole
+  screen silently. On Wayland it must go through the portal, and the
+  portal asks. Choosing KDE on Wayland was already a security
+  decision; `xdg-desktop-portal-kde` is doing this work today.
+- **fapolicyd** -- Fedora's own execution allowlisting.
+- **auditd**, and eBPF tooling (Falco, Tetragon) for watching syscalls
+  without patching anything.
+- **SELinux**, already enforcing.
+
+The gap none of them fill is the comparison against what a component
+declared. That is the part to build.
+
+### Where the line on acting automatically is
+
+This is the one place the rule that Nexus informs and does not refuse
+comes under pressure, so it is written down rather than decided in the
+moment.
+
+Killing a process is not informing. It is deciding, on somebody's
+machine, about something they may have installed deliberately.
+"The user agreed once at setup" is exactly how software ends up doing
+things people did not expect.
+
+So: **Nexus says what it saw, in terms the person can act on.** Not
+"suspicious activity is going on" -- that produces fear and no action,
+which is worse than silence for somebody who is not technical. It
+names the component, what it did, how long it has been doing it, and
+that it never declared it:
+
+> `libupdate-helper` has read your clipboard every 30 seconds for
+> three weeks. It never said it would do that.
+>
+>     nexus why libupdate-helper
+>     nexus remove libupdate-helper
+
+Acting without asking is reserved for the case where the evidence is
+not a judgement call: the component is doing something it declared it
+would not, the behaviour is mechanical, and it has continued long
+enough that a mistake is implausible. Even then it is reversible and
+it is reported afterwards, loudly.
+
+### What is unresolved
+
+- **Time to confidence.** A month of observation is a month of
+  compromise; if something is stealing, the data left in week one.
+  Certainty and usefulness pull in opposite directions here and the
+  trade-off has not been made.
+- **Cost.** Keeping behavioural traces costs disk, and analysing them
+  costs memory on machines that are the reason this project exists.
+  A local model is not affordable on 3.6 GB. Rules over a declared
+  baseline probably are.
+- **Question budget.** Vista's UAC proved that asking often enough
+  trains people to click yes without reading. The design constraint is
+  not "how much can this detect" but "how rarely can it speak and
+  still be worth listening to."
+
+### When
+
+After the capability model is complete and trusted, because it is the
+baseline everything here rests on. Not before 0.1, and probably not
+before 0.2.
