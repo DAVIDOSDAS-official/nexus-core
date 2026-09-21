@@ -163,9 +163,15 @@ fi
 "${NEXUS}" setup --with-available || true
 
 echo
-echo "  Type one or more names separated by commas, or press Enter to"
-echo "  skip. You can run 'nexus setup' again at any time."
+echo "  Type one or more names separated by commas, or press Enter"
+echo "  twice to skip. You can run 'nexus setup' again at any time."
 echo
+# Keys pressed during boot wait in the console's buffer and are read
+# as though they were typed here. Somebody who pressed Enter at the
+# passphrase prompt had already "answered" before seeing the question,
+# and the picker skipped itself. Anything waiting is discarded.
+while read -r -s -t 0.05 -n 1 _ 2>/dev/null; do :; done
+
 printf "  > "
 
 # A failed read is not somebody pressing Enter.
@@ -184,6 +190,30 @@ fi
 ASKED=1
 
 CHOICE="$(echo "${CHOICE}" | tr -d '[:space:]')"
+
+# One empty line is not a decision.
+#
+# It is what a stray keypress looks like, and a skip cannot be undone
+# from here. So it is asked again, and a second empty answer is taken
+# at its word: the machine is theirs, and so is the choice not to set
+# it up.
+if [ -z "${CHOICE}" ]; then
+    echo
+    echo "  Nothing was typed. Press Enter again to skip setup, or type"
+    echo "  the names now."
+    echo
+    printf "  > "
+
+    if ! read -r CHOICE; then
+        ASKED=0
+        echo >&2
+        echo "The console went away before this was answered." >&2
+        echo "Nothing has been changed. Run 'nexus setup' to choose." >&2
+        exit 1
+    fi
+
+    CHOICE="$(echo "${CHOICE}" | tr -d '[:space:]')"
+fi
 
 if [ -z "${CHOICE}" ]; then
     echo
