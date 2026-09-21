@@ -64,6 +64,19 @@ restore_printk() {
     fi
 }
 
+# Nothing to ask into.
+#
+# systemd is told to give this a terminal, and it does -- but the
+# display manager takes the same console, and a prompt printed into a
+# console somebody else owns is a prompt nobody sees. Finding that out
+# here costs nothing; finding it out after the scan costs a quarter of
+# a gigabyte and a marker that says this machine was asked.
+if [ ! -t 0 ]; then
+    echo "nexus-first-boot has no terminal to ask on; not asking." >&2
+    echo "The machine is usable. Run 'nexus setup' to choose." >&2
+    exit 1
+fi
+
 clear 2>/dev/null
 
 cat <<'BANNER'
@@ -147,8 +160,6 @@ OFFLINE
     exit 0
 fi
 
-ASKED=1
-
 "${NEXUS}" setup --with-available || true
 
 echo
@@ -157,7 +168,20 @@ echo "  skip. You can run 'nexus setup' again at any time."
 echo
 printf "  > "
 
-read -r CHOICE || CHOICE=""
+# A failed read is not somebody pressing Enter.
+#
+# These are the same empty string and mean opposite things: one is a
+# person declining, the other is a console that went away underneath.
+# Treated alike, the second wrote the marker and the picker never ran
+# again on that machine.
+if ! read -r CHOICE; then
+    echo >&2
+    echo "The console went away before this was answered." >&2
+    echo "Nothing has been changed. Run 'nexus setup' to choose." >&2
+    exit 1
+fi
+
+ASKED=1
 
 CHOICE="$(echo "${CHOICE}" | tr -d '[:space:]')"
 
