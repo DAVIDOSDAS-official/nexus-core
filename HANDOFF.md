@@ -1,21 +1,23 @@
 # Nexus-CORE — where things stand
 
-Paste this at the start of a new session. It is written for someone
-picking the project up cold.
+Paste this at the start of a new session. Written for someone picking
+the project up cold.
 
 **Repo:** `~/Documents/nexus-core` on the Pop!_OS laptop (Acer).
 **Test machine:** an Asus laptop, 3.6 GB RAM, QCA9377 wifi, Secure Boot
-enforcing, TPM present (`tpm0`). Nexus-CORE is installed on it.
+enforcing, TPM present (`tpm0`), not encrypted. Reinstalled 15 Sept.
+**Test VM:** qemu on the Acer, 4 GB, installed from the current ISO.
+Disk passphrase `testtest123`.
 
-Last session: 15 September 2026. Head was `e9019c2`.
+Last session: 21 September 2026, head `3714d47`.
 
 ---
 
 ## What it is
 
-A capability-based decision layer for Linux package management.
-You ask for a *web browser*, not for `firefox`; Nexus shows every way
-to get one with what each costs, verifies the plan against the real
+A capability-based decision layer for Linux package management. You
+ask for a *web browser*, not for `firefox`; Nexus shows every way to
+get one with what each costs, verifies the plan against the real
 package manager, then hands the work over. **Nexus decides and
 explains; apt, dnf and rpm-ostree do the work.**
 
@@ -23,188 +25,188 @@ There is also a distribution built from it: a Fedora bootc image whose
 package list is generated from a profile.
 
 **493 tests.** Six sources (apt, dnf, Flatpak, Snap, Nix, Portage),
-five metadata formats. `core/` has barely changed in weeks — the model
-has held.
+five metadata formats.
 
 ---
 
-## The three things blocking a 0.1 release
+## The two 0.1 blockers are closed
 
-They are one piece of work. All three live in Anaconda and first boot.
+### 1. The default login — fixed
 
-### 1. Every install ships the same login
+`image/config-installer.toml` now supplies an explicit kickstart with
+**no `user` line and no `rootpw`**, so Anaconda has to ask. Verified
+end to end in a VM: the installer shows User Creation, refuses to
+proceed until an account exists, and the installed machine has only
+the account that was created.
 
-`image/config-installer.toml` creates `nexus`/`nexus`. Removing it was
-supposed to make Anaconda prompt for a user — **it does not.** The
-Users module is enabled and the screen never appears, so the machine
-installs with no account at all and cannot be logged into. Verified by
-installing it.
+The old diagnosis — "Anaconda skips its user screen under
+bootc-image-builder" — was wrong. Enabling the Users module was never
+enough on its own; the spoke appears once the kickstart says
+explicitly what the installation is.
 
-So the account is back, and a published ISO would carry a default
-credential documented in a public repo. The Asus shell prompt reads
-`[nexus@fedora nexus]$` — the blocker is visible in every screenshot.
+`autopart --encrypted --luks-version=luks2` with no passphrase makes
+Anaconda ask for one — **Decision 15**, encryption on by default,
+never forced. Verified: the installed machine asks for the LUKS
+passphrase at boot.
 
-Needs: working out why Anaconda skips its user screen under
-bootc-image-builder (kickstart handling, probably). **This has to be
-understood rather than routed around, because encryption is configured
-in the same place.**
+### 2. The rpm memory problem — fixed
 
-A first-boot alternative exists and is not built: `nexus-first-boot`
-already runs as root before anyone logs in and already asks what the
-machine should be. It could ask *who you are* at the same time. One
-screen: what is this machine for, and whose is it.
+`nexus scan --with-available` and `nexus install nmap` both complete
+in **2.3 GB**, which is what the Asus has.
 
-### 2. Nothing is encrypted
+| | peak RSS |
+|---|---|
+| before | 3.2 GB |
+| removed a per-line copy and a `std::move` that copied | 3.0 GB |
+| removed a duplicated document | **2.2 GB** |
 
-`lsblk -f` on the Asus shows `ext4` on every partition. No
-`crypto_LUKS` anywhere. Root, `/var` (which holds `/home` on bootc),
-and `/boot` are all plaintext. A stolen laptop gives up everything.
+**None of the earlier theories were right.** Not streaming, not the
+capability model, not `mergeAvailable`, not "17 KB per capability" —
+that last figure was arithmetic across two different machines and
+meant nothing. It was one function holding the same bytes three times:
 
-`nexus doctor` reports this correctly and in plain words: *the root
-filesystem is not encrypted; anyone with the disk can read it.* It is
-classified `[warn]`, the same severity as an unused package, which is
-probably too quiet for what it means.
+- `runCommand` built `result.text` **and** `result.lines` — a second
+  copy of every byte, in a string object with its own allocation per
+  line. `readPossiblyCompressed` never read `lines`. Now optional
+  (`splitLines`, default true, so the fifteen other callers are
+  untouched).
+- `contents = std::move(output)` where `output` was a `const
+  std::string&`. `std::move` on a const reference yields a const
+  rvalue, which cannot bind to move assignment, so it silently copied.
+- `parseRepodataPrimary` took the document by const reference and
+  handed it to `XmlReader`, whose constructor takes `std::string` **by
+  value** — a full copy of a decompressed repository. Now moved the
+  whole way down.
 
-**Decision 15** (`docs/specifications/00-decisions.md`) settles the
-policy: encryption on by default, never forced, TPM-bound unlock where
-the hardware allows so there is only one password. The Asus has a TPM,
-so this is testable on real hardware.
-
-Retrofitting encryption onto installed machines is not possible. This
-has to land before anyone installs 0.1.
-
-### 3. The hostname is still `fedora`
-
-`NAME`, `PRETTY_NAME` and `VARIANT` say Nexus-CORE, but the machine
-introduces itself as `fedora`. Small, and another place the system
-cannot say what it is.
+**What is left, if more is wanted:** `runCommand` still accumulates
+the whole decompressed document (1.3 GB of the 2.8 GB peak heap) via
+`result.text += buffer`. Removing that means teaching `XmlReader` to
+consume a stream rather than a string, which is a real refactor —
+`xml.cpp` indexes into `document_` throughout. Not needed for 0.1.
 
 ---
 
-## The rpm memory problem — measured, and smaller than it looked
+## What is now blocking a *good* 0.1
 
-**This is a bug, not a blocker.** The previous version of this document
-said the rpm reader was the problem and that the fix was streaming.
-That was inferred from an OOM kill and is wrong. Everything below was
-measured.
+None of these stop a release. The first two are bad experiences a real
+user will hit.
 
-| | components | peak RSS | per component |
-|---|---|---|---|
-| `scan` (installed only, Asus) | 1,088 | not measured | — |
-| `scan --with-available` apt (Acer) | 128,080 | 388 MB | ~3.0 KB |
-| `scan --with-available` rpm (container) | 82,166 | 725–738 MB | ~8.8 KB |
-| `scan --with-available` rpm (**Asus**) | 82,210 | **2,970 MB** | — |
-| `install nmap` rpm (container) | 82,166 | 843 MB | — |
+### A mistyped disk passphrase is handled badly
 
-So rpm costs **~2.9× dpkg per component, not 8×**. The Asus has 2.26 GB
-available, needs 2.97 GB, and was killed. With a 4 GB swapfile it
-completes.
+Observed in the VM. Two wrong attempts → about five minutes of
+scrolling dracut warnings → `Could not boot` → emergency shell.
+Pressing Ctrl-D there — which is what the screen tells you to do —
+leads to a job that waits **forever** (`no limit`) for a device that
+cannot appear.
 
-**Ruled out by measurement, do not re-investigate without new evidence:**
+No "wrong passphrase, try again", no retry prompt, no way forward. For
+a distro shipping encryption on by default this is the most likely
+failure a real user will meet. Start with `rd.luks.options` and
+dracut's retry count.
 
-- *Streaming / whole-document parsing.* The heaptrack Sizes histogram
-  has nothing above 1 KB. Nothing is slurped. 37.7M allocations,
-  largest bucket 17–32 bytes.
-- *The rpm reader being pathological.* It reads 82,166 packages in
-  5 seconds; apt takes 20 seconds for 128,080.
-- *The solver.* Adds 118 MB (725 → 843).
-- *Installed-set size.* 211 → 634 → 242 packages installed changed
-  `--with-available` peak by under 12 MB.
-- *Capability count.* 242 packages with 76,731 capabilities cost the
-  same as 634 packages with 64,383.
+### A fresh install has no package metadata
 
-**What is left:** the Asus differs from every container run by holding
-206,774 capabilities (160,104 of them file paths, 77%) where the
-container held 50–77k. 2,970 MB against 737 MB is ~17 KB per extra
-capability, which is absurd for what is fundamentally a string like
-`/usr/lib64/libssl.so.3`. The next step is heaptrack in a container
-with a large installed set, pointed at the rpm path, to name that
-17 KB. Interning the file-path strings — they share prefixes heavily —
-is the obvious first cut and would help apt too.
+`/var/cache/libdnf5/` is empty on a new machine, so the first-boot
+picker offers twelve profiles and reports every requirement as
+"nothing available provides this". After `dnf makecache` the same
+machine sees 82,210 packages.
 
-Worth deciding separately: whether every file needs to be a capability
-up front. dnf keeps filelists in a separate index because most
-resolutions never need them.
+First boot should populate the cache before asking, or say plainly
+that it cannot see any packages yet.
+
+### The rpm branch says nothing when it reads nothing
+
+In `cli/src/main.cpp` the apt branch has an `else` that prints "No
+package indexes read from …; continuing with installed packages
+only." The rpm branch has no such else — if `available.components` is
+empty it prints **nothing at all** and carries on. Every downstream
+"nothing available provides this" is then confidently wrong about the
+machine, with no hint why. Same family as everything else below.
 
 ---
 
 ## What is done and should not be re-litigated
 
-- **Secure Boot works.** The kernel is Fedora's and carries Fedora's
-  signature; images boot with Secure Boot enforcing. Verified on
-  hardware.
-- **Wifi works from the image.** It needs *three* things, not one:
-  `network-manager`, `network-manager-wifi`, `wifi-supplicant`. On
-  Fedora the plugin is a virtual provide of `NetworkManager`; only rpm
-  splits it out.
-- **`base` is composed into every image.** It was not, for weeks. This
-  was the root cause of the entire wifi saga.
-- **`base` is the floor, not a peer.** Exclusivity (`minimal` cannot
-  combine) ignores `base`.
-- **rpm-ostree layering works.** `--apply` reports **`staged`**, not
-  `applied`, because nothing is in effect until a reboot.
-- **An empty SELinux module (`extra_varrun`) broke all of that.** It is
-  removed at first boot, not during the build: overlayfs refuses to
-  delete it in a container and a real filesystem does not.
+- **Secure Boot works.** Fedora's kernel, Fedora's signature. Verified
+  on hardware.
+- **Wifi works from the image.** It needs three things:
+  `network-manager`, `network-manager-wifi`, `wifi-supplicant`.
+- **`base` is composed into every image**, and is the floor, not a peer.
+- **rpm-ostree layering works.** `--apply` reports `staged`; nothing is
+  in effect until a reboot.
+- **An empty SELinux module (`extra_varrun`) broke that**, and is
+  removed at first boot rather than during the build — overlayfs
+  refuses to delete it in a container, a real filesystem does not.
 - **Branding:** `NAME`, `PRETTY_NAME`, `VARIANT` say Nexus-CORE. `ID`,
-  `VERSION_ID`, `PLATFORM_ID` stay Fedora's — tooling reads them, and
-  bootc-image-builder composes a distro name from `ID`+`VERSION_ID`.
-- **Transaction records are written before the work.**
+  `VERSION_ID`, `PLATFORM_ID` stay Fedora's — tooling reads them.
 - **Kernel protection works.** `nexus remove` on the running kernel
-  refuses and says why. Verified.
-- **The binary reports its own version.** `nexus 0.1.0 (e9019c2)`, and
-  `-dirty` when built from a modified tree. Read at **build** time, not
-  configure time — a configure-time lookup went stale the moment a
-  source file changed, which is the same failure this string exists to
-  catch. `.containerignore` keeps `.git` out of the build context, so
-  the Containerfile takes the commit as `--build-arg NEXUS_COMMIT`.
-  Unset, it reports `unknown` and doctor warns.
+  refuses and says why.
+- **The binary reports its own version:** `nexus 0.1.0 (3714d47)`, with
+  `-dirty` when built from a modified tree. Read at **build** time — a
+  configure-time lookup went stale the moment a source file changed,
+  which is the very failure the string exists to catch.
+  `.containerignore` keeps `.git` out of the build context, so the
+  Containerfile takes `--build-arg NEXUS_COMMIT`. **Pass it.** Unset,
+  the image reports `unknown` and doctor warns.
+- **The first-boot picker works.** Banner, hardware summary, twelve
+  profiles with what each costs, accepts `gaming, security`. Test it
+  without reinstalling:
+  `sudo NEXUS_SETUP_MARKER=/tmp/t /usr/bin/nexus-first-boot`
+- **systemd ordering was never the problem.**
+  `Before=display-manager.service` holds: first-boot finished at
+  13:53:34.041, sddm started at 13:53:34.045. Three theories — getty
+  race, SDDM race, Plymouth — were all wrong.
 
 ---
 
-## Fixed on 15 September
+## Fixed on 21 September
 
-- **`Loaded 0 available packages` was a use-after-move.**
-  `cli/src/main.cpp` counted `available.components.size()` *after*
-  moving the vector into `availableOnly`. Both the apt and rpm branches
-  did it. The merge was always correct; only the number was wrong. A
-  128,080-package load had been reporting zero.
-- **Protection patterns were recompiled per package.** Ten patterns ×
-  3,057 components = 30,552 `std::regex` constructions. Now cached.
-  Worth ~2 seconds of 22.
-- **`tests/unit/alias_test.cpp` was missing `<algorithm>`.** It built on
-  Pop by luck and never on Fedora. `std::count` needs it.
-- **Stanzas were copied into the parse result**, not moved.
+- **First boot skipped itself because of a keypress from before it
+  started.** Keys pressed at the LUKS passphrase prompt wait in the
+  console buffer and are read by the next thing that reads the
+  console — which was the picker, before anyone had seen it. It now
+  discards anything already waiting, and an empty answer is asked
+  again before it counts as skipping.
+- **A run with no terminal used to write the completion marker**,
+  disabling the picker permanently. `ASKED` was set before the
+  question rather than after the answer, and a failed `read` became an
+  empty answer.
+- The three memory fixes above.
+
+Earlier that week: the `Loaded 0 available packages` use-after-move,
+per-package regex recompilation in `protection.cpp`, and a missing
+`<algorithm>` in `alias_test.cpp` that built on Pop by luck and never
+on Fedora.
 
 ---
 
 ## The recurring failure, worth knowing
 
-Nearly every bug has the same shape: **something reported success about
-its own narrow view while the wider claim was false.**
+Nearly every bug has the same shape: **something reported success
+about its own narrow view while the wider claim was false.**
 
-- `history` said "no changes recorded" — true of the file it read,
-  false of the machine
-- `--apply` reported success into a `usr-overlay` that vanishes at
-  reboot
+- `history` said "no changes recorded" — true of the file it read
+- `--apply` reported success into a `usr-overlay` that vanishes at reboot
 - `generate-lists.sh` said a list was incomplete and wrote it anyway
-- the Containerfile checked for a *missing* list and never a *stale* one
 - patch scripts reported "already done" by checking for a line that
   existed in the unchanged text
-- **`scan --with-available` reported `Loaded 0` and exited 0** after
+- `scan --with-available` reported `Loaded 0` and exited 0 after
   successfully reading 48 index files
-- **the version string reported a stale commit** because it was read at
-  configure time and the binary was rebuilt without reconfiguring
+- the version string reported a stale commit, read at configure time
+  and never reconfigured
+- **first boot reported `status=0/SUCCESS` after asking nobody**
+- **the rpm branch reports nothing at all when it reads nothing**
 
 Almost none were found by a failing test. They were found by computing
-a number, finding it implausible, and comparing against a native
-tool — or by putting it on hardware.
+a number, finding it implausible, and comparing against a native tool
+— or by putting it on hardware.
 
-**Added to the list on 15 September:** a measurement that fails is not
-evidence about the code. `scan --with-available` was killed on the Asus
-and that was read as proof the rpm reader was heavy. It was proof the
-machine was small. Get the number on a machine that completes before
-concluding anything.
+**Two additions from this week.** A measurement that fails is not
+evidence about the code: `scan` being killed on the Asus was read as
+proof the rpm reader was heavy, when it was proof the machine was
+small. And inference is not measurement — four separate theories about
+where the memory went were all wrong, and the profiler answered it in
+a single run.
 
 ---
 
@@ -214,30 +216,59 @@ concluding anything.
 cd ~/Documents/nexus-core
 cmake --build build && ctest --test-dir build
 ./build/cli/nexus --version
-
-./image/generate-lists.sh          # needs localhost/nexus-os:base rebuilt first
-podman build --target desktop --build-arg NEXUS_PROFILE=minimalism \
-    -t localhost/nexus-os:minimalism -f image/Containerfile .
-PROFILE=minimalism ./image/build-installer.sh   # wants ~20 GB free
 ```
 
-**Measuring the rpm path** (the Asus cannot complete without swap; a
-container can):
+**Build an image and an ISO.** Pass the commit, or the binary cannot
+identify itself:
 
 ```bash
-podman run --rm -v ~/Documents/nexus-core:/src:ro -v /tmp/m.sh:/run.sh:ro \
-    --memory=12g fedora:42 bash /run.sh
+podman build --target desktop \
+    --build-arg NEXUS_PROFILE=minimalism \
+    --build-arg NEXUS_COMMIT="$(git rev-parse --short HEAD)" \
+    -t localhost/nexus-os:minimalism -f image/Containerfile .
+
+PROFILE=minimalism ./image/build-installer.sh   # wants 20 GB free
 ```
 
-where `/run.sh` installs `gcc-c++ cmake make rpm-devel time zchunk`,
-builds `--target nexus`, runs `dnf makecache`, then
-`/usr/bin/time -v ./build/cli/nexus scan --with-available`.
-**`zchunk` is required** — Fedora ships `.zck` repodata and without
-`unzck` the reader skips both real repos and silently reads almost
-nothing (it does warn).
+**Test in a VM**, not on hardware — a minute to boot, nothing to lose:
 
-**Writing the ISO** (plug the stick in *first*, check `lsblk`, and
-`/dev/sdX` is a placeholder — writing to it literally creates a file):
+```bash
+rm -f /tmp/nexus-test.qcow2 && qemu-img create -f qcow2 /tmp/nexus-test.qcow2 30G
+qemu-system-x86_64 -m 4096 -smp 4 -enable-kvm -bios /usr/share/ovmf/OVMF.fd \
+    -drive file=/tmp/nexus-test.qcow2,format=qcow2 \
+    -cdrom output/bootiso/install.iso -boot d
+```
+
+Drop `-cdrom` and `-boot d` to boot the installed disk afterwards.
+
+**Profile the rpm path.** The image *is* a container, so nothing needs
+building, and a freshly built binary can be mounted straight in:
+
+```bash
+mkdir -p /tmp/ht
+podman run --rm -it --memory=12g \
+    -v ~/Documents/nexus-core:/src:ro -v /tmp/ht:/out \
+    localhost/nexus-os:minimalism bash
+# inside:
+dnf install -y heaptrack && dnf makecache
+cd /out && heaptrack /src/build/cli/nexus scan --with-available
+# then on the Acer:
+heaptrack_gui /tmp/ht/heaptrack.nexus.NN.zst
+```
+
+In the GUI: Bottom-Up, click the **Peak** column to sort, expand the
+top row to see its callers. That is what finally located the copies.
+
+**Check it fits a small machine** without touching the Asus:
+
+```bash
+podman run --rm -it --memory=2300m \
+    -v ~/Documents/nexus-core:/src:ro localhost/nexus-os:minimalism bash
+# inside: dnf makecache && /src/build/cli/nexus scan --with-available
+```
+
+**Writing the ISO to a USB stick** — plug it in first, check `lsblk`,
+and `/dev/sdX` is a placeholder:
 
 ```bash
 sudo umount /dev/sda1
@@ -246,35 +277,43 @@ sudo dd if=output/bootiso/install.iso of=/dev/sda bs=4M \
 sync
 ```
 
-Four minutes at ~12 MB/s. Anything faster means it went somewhere
-wrong. **Pull the stick before rebooting the build machine.**
-
 ---
 
 ## Also true
 
+- **Each build iteration costs 8–11 GB of disk and nothing cleans up.**
+  A new image in rootless storage (~4 GB), a second copy in root's
+  storage from `podman save | sudo podman load` (~4 GB), the ISO
+  (2.7 GB), and the previous image left dangling in both stores. Run
+  `podman image prune -f`, `sudo podman rmi` old tags, and delete
+  `output/` between builds. Worth fixing in `build-installer.sh`.
+- **bootc-image-builder was archived on 18 June 2026**, merged into the
+  unified `image-builder` CLI (`--bootc-ref`). `build-installer.sh`
+  pins `quay.io/centos-bootc/bootc-image-builder:latest` — an unpinned
+  tag on an unmaintained project. Backward compatible for the life of
+  RHEL 10, dropped in RHEL 11. Pin a digest; plan the migration.
 - Nothing is published, so any installed machine can never update.
-  `nexus doctor` reports this. `image/publish.sh` has never been run.
+  `image/publish.sh` has never been run.
 - The repo is not public.
-- The website exists as a single `index.html` on the Pop laptop. Not
-  hosted. Needs the logo (a white node-graph N), a real screenshot,
-  and a repo link.
+- The website exists as a single `index.html` on the Acer, unhosted.
 - `showcase.profile` has one requirement that cannot be resolved.
-- The Asus was **reinstalled on 15 September**. It now has a 4 GB
-  swapfile at `/var/swapfile`, in fstab, surviving reboot — and that
-  swapfile is **plaintext on an unencrypted disk**, which is a hole in
-  exactly the property Decision 15 is about.
-- `nexus-first-boot.service` has `Before=display-manager.service` but
-  nothing about getty, and both it and `getty@tty1.service` are pulled
-  in by `multi-user.target`. They race for `/dev/tty1`. Needs
-  `Conflicts=getty@tty1.service` before account creation goes anywhere
-  near first boot.
+- The Asus has a 4 GB swapfile at `/var/swapfile`, in fstab — and it is
+  **plaintext on an unencrypted disk**, which is a hole in exactly the
+  property Decision 15 is about.
 - `image/Containerfile` line 100 has `ARG NEXUS_VERSION=0.1` while
-  CMake says `0.1.0`. Two places, two formats, drifting.
+  CMake says `0.1.0`.
+- The installer still shows the Fedora logo (artwork comes from the
+  `anaconda-*` branding packages), and the installed hostname is
+  `fedora`.
+- The installer will happily create a user called `nexus`, which
+  collides with the command. Warn, don't refuse.
+- Long pastes into a terminal get mangled. Write patches to a file and
+  run them with `python3 ~/Downloads/whatever.py`.
 
 ## Key documents
 
-`README.md`, `docs/overview.md`, `docs/vision.md`,
-`docs/specifications/00-decisions.md` (15 numbered decisions — the
-reasoning not recoverable from the code), `image/README.md`,
-`image/first-boot/README.md`.
+`README.md`, `docs/overview.md`, `docs/vision.md` (now ends with the
+attack-protection design note — the capability model as a behavioural
+baseline), `docs/specifications/00-decisions.md` (15 numbered
+decisions, the reasoning not recoverable from the code),
+`image/README.md`, `image/first-boot/README.md`.
