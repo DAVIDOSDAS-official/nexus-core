@@ -26,9 +26,16 @@ struct ProcessResult {
 //
 // Every reader here shares this so the mistake cannot be made once
 // per call site.
+//
+// splitLines is for readers that want the whole output as one string.
+// The lines hold a second copy of every byte already in text, plus a
+// string object and an allocation for each line. On a decompressed
+// package index that is hundreds of megabytes of content and hundreds
+// more of overhead, built for a vector the caller never reads.
 ProcessResult runCommand(
     const std::string& command,
-    bool captureErrors = true
+    bool captureErrors = true,
+    bool splitLines = true
 );
 
 // Whether a command exists at all.

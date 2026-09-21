@@ -14,7 +14,8 @@ bool commandExists(const std::string& name) {
 
 ProcessResult runCommand(
     const std::string& command,
-    bool captureErrors
+    bool captureErrors,
+    bool splitLines
 ) {
     ProcessResult result;
 
@@ -60,6 +61,16 @@ ProcessResult runCommand(
     result.ok = result.exitCode == 0;
 
     // Split once, at the end, rather than line by line while reading.
+    //
+    // Not always, though. Every byte is already in text; the lines are
+    // a second copy of all of it, in a string object per line, each
+    // with its own allocation. A caller reading one whole document
+    // pays for a vector it never looks at, and on a package index that
+    // is the difference between running and being killed.
+    if (!splitLines) {
+        return result;
+    }
+
     std::string current;
 
     for (char character : result.text) {

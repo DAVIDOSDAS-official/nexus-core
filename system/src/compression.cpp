@@ -111,18 +111,17 @@ bool readPossiblyCompressed(
     const std::string errors =
         "/tmp/nexus-decompress-" + std::to_string(::getpid());
 
-    const ProcessResult ran = runCommand(
-        command + " '" + path + "' 2>" + errors, false);
+    // Not split into lines: this is one document, and the caller
+    // wants it whole. Splitting it held every byte twice.
+    ProcessResult ran = runCommand(
+        command + " '" + path + "' 2>" + errors, false, false);
 
     if (!ran.ran) {
         reason = "could not run " + tool;
         return false;
     }
 
-    const std::string& output = ran.text;
-    const int status = ran.exitCode;
-
-    if (status != 0 || output.empty()) {
+    if (ran.exitCode != 0 || ran.text.empty()) {
         reason = tool + " failed";
 
         std::ifstream why(errors);
@@ -138,7 +137,11 @@ bool readPossiblyCompressed(
         return false;
     }
 
-    contents = std::move(output);
+    // Moved, and this time it is a move. std::move on a const
+    // reference yields a const rvalue, which cannot bind to move
+    // assignment and quietly binds to the copy instead -- so the line
+    // that said "move" was holding a third copy of the document.
+    contents = std::move(ran.text);
 
     return true;
 }
