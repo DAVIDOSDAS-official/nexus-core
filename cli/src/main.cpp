@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+#include <unistd.h>
+
 #include <nexus/component.hpp>
 #include <nexus/conflict_detector.hpp>
 #include <nexus/profile_check.hpp>
@@ -1790,6 +1792,16 @@ int commandDoctor(
         locked.detail = "Could not be determined.";
         locked.examples = encryption.unreadable;
         locked.total = encryption.unreadable.size();
+    } else if (encryption.root == nexus::hardware::Encrypted::Unknown) {
+        // Not known is not "no". This used to fall into the branch
+        // below, so a root the detector could not see through was
+        // announced as readable by anyone with the disk -- a warning
+        // stated as fact, on a machine that had asked for its disk
+        // passphrase on the same boot.
+        locked.health = nexus::Health::Unknown;
+        locked.detail =
+            "Could not tell what the root filesystem is stored on.";
+        locked.suggestion = "lsblk -o NAME,TYPE,FSTYPE,MOUNTPOINTS";
     } else if (encryption.root != nexus::hardware::Encrypted::Yes) {
         locked.health = nexus::Health::Warning;
         locked.detail =
@@ -1864,6 +1876,20 @@ int commandDoctor(
                 "bootc status 2>/dev/null", false);
         }
 
+        // bootc status needs root. Run as a normal user -- which is
+        // how anybody runs doctor -- it printed nothing, and this
+        // check reported "did not report a status" on every machine,
+        // including the one it exists for: installed from localhost
+        // and unable ever to update. Found in the VM on 22 September.
+        //
+        // rpm-ostree reads the same deployment and answers without
+        // root, and its output names the image the machine came from,
+        // which is all the localhost test below looks for.
+        if (!status.ok || status.text.empty()) {
+            status = nexus::system::runCommand(
+                "rpm-ostree status 2>/dev/null", false);
+        }
+
         nexus::Finding updates;
 
         updates.check = "Updates";
@@ -1872,6 +1898,10 @@ int commandDoctor(
             updates.health = nexus::Health::Unknown;
             updates.detail =
                 "bootc is present but did not report a status.";
+
+            if (::geteuid() != 0) {
+                updates.suggestion = "sudo nexus doctor";
+            }
         } else if (status.text.find("localhost/") !=
                    std::string::npos) {
             updates.health = nexus::Health::Warning;

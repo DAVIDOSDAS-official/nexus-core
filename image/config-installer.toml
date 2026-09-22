@@ -43,9 +43,17 @@ enable = [
 # network, and in every log anybody sends asking for help. It is the
 # same class of mistake as the branding in os-release, in the one
 # place a person actually reads it.
+#
+# The keyboard is named explicitly for both the console and the
+# desktop. The one-word form `keyboard us` left the kernel command
+# line with an empty `vconsole.keymap=` on a VM installed on 22
+# September. The console keymap is what the disk passphrase prompt
+# uses, so it matters more than it looks: a passphrase typed on a
+# layout other than the one it was set on is a "wrong passphrase"
+# that is not wrong.
 contents = """
 lang en_US.UTF-8
-keyboard us
+keyboard --vckeymap=us --xlayouts=us
 timezone UTC --utc
 
 network --hostname=nexus

@@ -322,3 +322,123 @@ TEST(EncryptionTest, ZramOnlyMeansNoDiskSwap) {
     EXPECT_TRUE(report.hasZramSwap);
     EXPECT_FALSE(report.swapLeaksMemory());
 }
+
+// Image-based systems.
+//
+// On bootc and ostree, '/' is not a block device at all. It is a
+// composefs overlay built from the deployment, and the disk it lives
+// on is mounted at /sysroot. Found on 22 September 2026 in a VM
+// installed from the Nexus ISO with LVM on LUKS: the passphrase was
+// asked for four times at boot, and doctor then said the root
+// filesystem was not encrypted and anyone with the disk could read
+// it. 'composefs' is not /dev/mapper or /dev/dm-, so it was taken
+// for a plain partition -- stated as a fact on the one property the
+// installer makes a point of turning on.
+
+TEST(EncryptionTest, AComposefsRootIsJudgedByTheSysroot) {
+    FakeSystem system;
+
+    system.mapper("dm-0", "luks-1ff2faa7", "CRYPT-LUKS2-1ff2faa7-luks");
+    system.mapper("dm-1", "nexus--core_nexus-root", "LVM-yyyy", {"dm-0"});
+
+    system.mounts(
+        "composefs / overlay ro,relatime 0 0\n"
+        "/dev/mapper/nexus--core_nexus-root /sysroot ext4 ro 0 0\n"
+        "/dev/mapper/nexus--core_nexus-root /etc ext4 rw 0 0\n"
+        "/dev/mapper/nexus--core_nexus-root /var ext4 rw 0 0\n");
+    system.swaps(kSwapHeader);
+
+    const EncryptionReport report =
+        EncryptionDetector(system.path()).detect();
+
+    EXPECT_EQ(report.root, Encrypted::Yes);
+    EXPECT_EQ(report.method, "luks");
+}
+
+// The same order can come either way round; the sysroot is found by
+// name, not by position.
+TEST(EncryptionTest, TheSysrootIsFoundWhicheverLineComesFirst) {
+    FakeSystem system;
+
+    system.mapper("dm-0", "luks-abc", "CRYPT-LUKS2-abc-luks");
+    system.mapper("dm-1", "vg-root", "LVM-zzzz", {"dm-0"});
+
+    system.mounts(
+        "/dev/mapper/vg-root /sysroot ext4 ro 0 0\n"
+        "composefs / overlay ro,relatime 0 0\n");
+    system.swaps(kSwapHeader);
+
+    const EncryptionReport report =
+        EncryptionDetector(system.path()).detect();
+
+    EXPECT_EQ(report.root, Encrypted::Yes);
+}
+
+// An image-based system on a plain disk is still unencrypted, and
+// says so: the fix must not turn every overlay into a yes.
+TEST(EncryptionTest, AComposefsRootOnAPlainDiskIsNot) {
+    FakeSystem system;
+
+    system.mounts(
+        "composefs / overlay ro,relatime 0 0\n"
+        "/dev/sda3 /sysroot ext4 ro 0 0\n");
+    system.swaps(kSwapHeader);
+
+    const EncryptionReport report =
+        EncryptionDetector(system.path()).detect();
+
+    EXPECT_EQ(report.root, Encrypted::No);
+}
+
+// A root that is not a device, with nothing underneath to follow, is
+// not known. Calling it unencrypted would be a claim about a disk
+// that was never looked at.
+TEST(EncryptionTest, ARootThatIsNotADeviceIsUnknownNotUnencrypted) {
+    FakeSystem system;
+
+    system.mounts("overlay / overlay rw,relatime 0 0\n");
+    system.swaps(kSwapHeader);
+
+    const EncryptionReport report =
+        EncryptionDetector(system.path()).detect();
+
+    EXPECT_EQ(report.root, Encrypted::Unknown);
+}
+
+// A swap file is as encrypted as the filesystem it is written to.
+TEST(EncryptionTest, ASwapFileInsideAnEncryptedRootDoesNotLeak) {
+    FakeSystem system;
+
+    system.mapper("dm-0", "luks-abc", "CRYPT-LUKS2-abc-luks");
+    system.mapper("dm-1", "vg-root", "LVM-zzzz", {"dm-0"});
+
+    system.mounts(
+        "composefs / overlay ro,relatime 0 0\n"
+        "/dev/mapper/vg-root /sysroot ext4 ro 0 0\n");
+    system.swaps(std::string(kSwapHeader) +
+        "/var/swapfile\tfile\t4194300\t0\t-2\n");
+
+    const EncryptionReport report =
+        EncryptionDetector(system.path()).detect();
+
+    EXPECT_EQ(report.root, Encrypted::Yes);
+    EXPECT_EQ(report.swap, Encrypted::Yes);
+    EXPECT_FALSE(report.swapLeaksMemory());
+}
+
+// The Asus: a swap file on an unencrypted disk. Still reported, and
+// still not encrypted -- the fix above must not excuse it.
+TEST(EncryptionTest, ASwapFileOnAPlainDiskIsPlain) {
+    FakeSystem system;
+
+    system.mounts("/dev/sda3 / ext4 rw 0 0\n");
+    system.swaps(std::string(kSwapHeader) +
+        "/var/swapfile\tfile\t4194300\t0\t-2\n");
+
+    const EncryptionReport report =
+        EncryptionDetector(system.path()).detect();
+
+    EXPECT_EQ(report.root, Encrypted::No);
+    EXPECT_TRUE(report.hasSwap);
+    EXPECT_EQ(report.swap, Encrypted::No);
+}

@@ -151,6 +151,14 @@ EncryptionReport EncryptionDetector::detect() const {
 
     const auto deviceIsEncrypted =
         [&](const std::string& device) -> Encrypted {
+            // Not a device at all: composefs, overlay, tmpfs. What it
+            // is built on is somewhere else, and this cannot see it
+            // from here. That is "unknown", not "unencrypted" -- the
+            // second is a claim about a disk nobody looked at.
+            if (device.rfind("/dev/", 0) != 0) {
+                return Encrypted::Unknown;
+            }
+
             // /dev/mapper/<name> and /dev/dm-N both occur.
             std::string node;
 
@@ -191,6 +199,19 @@ EncryptionReport EncryptionDetector::detect() const {
 
     std::string line;
 
+    // Where '/' comes from, and where the physical root is mounted if
+    // this is an image-based system.
+    //
+    // On bootc and ostree, '/' is a composefs overlay assembled from
+    // the deployment; the disk it lives on is mounted at /sysroot.
+    // Judging '/' alone read "composefs", found it was not a mapper
+    // device, and reported a LUKS-encrypted machine as unencrypted --
+    // on the same boot that had just asked for its passphrase.
+    //
+    // The last '/' wins: later lines are mounted over earlier ones.
+    std::string rootDevice;
+    std::string sysrootDevice;
+
     while (std::getline(mounts, line)) {
         std::istringstream fields(line);
 
@@ -203,11 +224,11 @@ EncryptionReport EncryptionDetector::detect() const {
         }
 
         if (point == "/") {
-            report.root = deviceIsEncrypted(device);
+            rootDevice = device;
+        }
 
-            if (report.root == Encrypted::Yes) {
-                report.method = "luks";
-            }
+        if (point == "/sysroot") {
+            sysrootDevice = device;
         }
 
         if (point == "/home") {
@@ -222,6 +243,20 @@ EncryptionReport EncryptionDetector::detect() const {
             } else {
                 report.home = deviceIsEncrypted(device);
             }
+        }
+    }
+
+    // Decided after reading every line, because the answer for '/'
+    // can depend on a line that comes after it.
+    if (!rootDevice.empty()) {
+        report.root = deviceIsEncrypted(rootDevice);
+
+        if (report.root == Encrypted::Unknown && !sysrootDevice.empty()) {
+            report.root = deviceIsEncrypted(sysrootDevice);
+        }
+
+        if (report.root == Encrypted::Yes) {
+            report.method = "luks";
         }
     }
 
@@ -266,7 +301,19 @@ EncryptionReport EncryptionDetector::detect() const {
 
         report.hasSwap = true;
 
-        const Encrypted state = deviceIsEncrypted(device);
+        // A swap file is written through the filesystem it lives on,
+        // so it is exactly as encrypted as that filesystem. Its path
+        // is not a device, and treating it as one called every swap
+        // file unencrypted -- including one inside an encrypted root.
+        //
+        // Assumed to live on root, which is true of the usual places
+        // (/swapfile, /var/swapfile on an image-based system, where
+        // /var is the same disk). A swap file on a separate data disk
+        // would be judged by the wrong device; none of the layouts
+        // this project installs does that.
+        const Encrypted state = type == "file"
+            ? report.root
+            : deviceIsEncrypted(device);
 
         // Several swap areas: the weakest one is what matters.
         if (report.swap == Encrypted::Unknown ||
