@@ -19,6 +19,49 @@ IMAGE="${IMAGE:-localhost/nexus-os:base}"
 # system with no way to log in.
 PROFILES="${PROFILES:-minimal minimalism showcase}"
 
+# Which image, and is it the one the Containerfile describes?
+#
+# The lists are only as current as the image they are read from, and
+# nothing here used to check. On 22 September the base build failed
+# half way through the move to Fedora 44 -- and this script, run
+# straight after it, read the previous image instead, loaded the same
+# 82,210 Fedora 42 packages as before, and produced a clean diff. A
+# regeneration that could not have noticed a new release reported
+# that nothing had changed in it.
+#
+# So: the image has to exist, and its Fedora has to be the one the
+# Containerfile names. Anything else is a list for a different system.
+if ! podman image exists "${IMAGE}"; then
+    echo "No image ${IMAGE}. Build the base stage first:" >&2
+    echo "    podman build --target base -t ${IMAGE} -f image/Containerfile ." >&2
+    exit 1
+fi
+
+WANT="$(sed -n 's/^ARG FEDORA_VERSION=\([0-9][0-9]*\).*/\1/p' \
+    "${ROOT}/image/Containerfile" | head -1)"
+HAVE="$(podman run --rm "${IMAGE}" \
+    sh -c '. /etc/os-release && echo "${VERSION_ID}"' 2>/dev/null)"
+BUILT="$(podman image inspect --format '{{.Created}}' "${IMAGE}" \
+    2>/dev/null | cut -d. -f1)"
+
+echo "Image:   ${IMAGE}"
+echo "Built:   ${BUILT:-unknown}"
+echo "Fedora:  ${HAVE:-unknown} (Containerfile wants ${WANT:-unknown})"
+echo
+
+if [ -z "${WANT}" ] || [ -z "${HAVE}" ]; then
+    echo "Could not tell which Fedora this is; refusing to guess." >&2
+    exit 1
+fi
+
+if [ "${WANT}" != "${HAVE}" ]; then
+    echo "The image is Fedora ${HAVE}; the Containerfile says ${WANT}." >&2
+    echo "Lists generated from it would describe the wrong release." >&2
+    echo "Rebuild the base stage, and check that the build finished:" >&2
+    echo "    podman build --target base -t ${IMAGE} -f image/Containerfile ." >&2
+    exit 1
+fi
+
 mkdir -p "${ROOT}/image/generated"
 
 for profile in ${PROFILES}; do

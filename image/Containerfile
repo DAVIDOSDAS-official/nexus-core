@@ -8,6 +8,29 @@
 # boot on its own, so a failure tells you which layer broke rather than
 # just that something did.
 
+# Which Fedora this is built on.
+#
+# Declared once, before the first FROM, so the two stages that start
+# from a Fedora image cannot drift apart. A base version named in two
+# places is two places that have to agree, and they eventually do not.
+#
+# 42 was used until September 2026 and reached end of life on 27 May
+# 2026. That is not a detail: an image-mode system's whole security
+# story is that updates replace it, and there is nothing left to
+# update from. It also cannot be made a Fedora Remix, because the
+# generic-logos package below is not built for 42.
+#
+# The rule this encodes: a release ships on a Fedora that is still
+# supported on the day it ships, and moving to the next one is
+# ordinary maintenance rather than an emergency. Fedora supports a
+# release until four weeks after the one two ahead of it, so there is
+# always a supported version to move to and roughly a year to do it.
+#
+# Overridable, for trying the next one before committing to it:
+#
+#     podman build --build-arg FEDORA_VERSION=45 ...
+ARG FEDORA_VERSION=44
+
 # ------------------------------------------------------------- builder
 # Compiling happens here and stays here. The shipped image gets the
 # binary and nothing else: no compiler, no source, no build tree.
@@ -16,7 +39,7 @@
 # inside a RUN fails with an I/O error under rootless podman's overlay
 # filesystem -- so the answer is not to delete it, but never to put it
 # in the shipped layer.
-FROM quay.io/fedora/fedora-bootc:42 AS builder
+FROM quay.io/fedora/fedora-bootc:${FEDORA_VERSION} AS builder
 
 RUN dnf install -y \
         cmake \
@@ -54,7 +77,7 @@ RUN cmake -S /src -B /build \
 # (not in the builder stage: it is discarded, and
 #  there is no policy store here to rebuild.)
 
-FROM quay.io/fedora/fedora-bootc:42 AS base
+FROM quay.io/fedora/fedora-bootc:${FEDORA_VERSION} AS base
 
 # Nexus reads repository metadata, which arrives compressed in
 # whichever format the tool that wrote it preferred. Fedora uses zstd
@@ -67,6 +90,42 @@ RUN dnf install -y \
         zchunk \
         zstd \
     && dnf clean all
+
+# Fedora's artwork out, generic artwork in.
+#
+# Fedora's trademark guidelines let anyone build on Fedora and say so,
+# but not ship Fedora's marks. fedora-logos is where those marks live
+# on a running system: the boot splash, the login screen, the icon
+# every desktop shows for "about this computer". Keeping it while
+# calling the result Nexus-CORE is using somebody else's trademark to
+# label a different product -- which matters more, not less, once a
+# release is sold.
+#
+# generic-logos is the package Fedora provides for exactly this. Both
+# provide system-logos, so the swap is one package for another rather
+# than a hole where the artwork was.
+#
+# Not available for Fedora 42, which is one of the reasons the base
+# above moved.
+#
+# The rpm -q is the point of the whole block. dnf can report success
+# on a transaction that resolved differently than intended, and an
+# image that quietly kept Fedora's logos would look exactly like one
+# that did not. This asks the machine what it actually has, and fails
+# the build if the answer is wrong.
+RUN set -eu; \
+    if rpm -q fedora-logos > /dev/null 2>&1; then \
+        dnf swap -y fedora-logos generic-logos; \
+    else \
+        echo "fedora-logos was not installed; installing generic-logos"; \
+        dnf install -y generic-logos; \
+    fi; \
+    if rpm -q fedora-logos > /dev/null 2>&1; then \
+        echo "fedora-logos is still installed; refusing to ship it." >&2; \
+        exit 1; \
+    fi; \
+    rpm -q generic-logos; \
+    dnf clean all
 
 COPY --from=builder /build/cli/nexus /usr/bin/nexus
 # The first thing a new machine does. See image/first-boot/README.md.
@@ -105,7 +164,13 @@ COPY components/aliases /usr/share/nexus/aliases
 # VARIANT are what a person reads; ID and VERSION_ID are what
 # programs read, and a system that lies to programs about its base
 # breaks things that were right to trust it.
-ARG NEXUS_VERSION=0.1
+#
+# PLATFORM_ID is copied only when the base has one. Fedora 43 removed
+# it from os-release, so on 44 the variable does not exist, and under
+# `set -u` referring to it killed the build. Copying a field the base
+# no longer carries would also be the image claiming something about
+# its base that the base does not say.
+ARG NEXUS_VERSION=0.1.0
 ARG NEXUS_PROFILE=minimalism
 
 RUN set -eu; \
@@ -121,11 +186,42 @@ RUN set -eu; \
         echo "VARIANT=\"${NEXUS_PROFILE}\""; \
         echo "VARIANT_ID=${NEXUS_PROFILE}"; \
         echo "BUILD_ID=\"$(date -u +%Y%m%d)\""; \
-        echo "PLATFORM_ID=\"${PLATFORM_ID}\""; \
+        if [ -n "${PLATFORM_ID:-}" ]; then \
+            echo "PLATFORM_ID=\"${PLATFORM_ID}\""; \
+        fi; \
         echo "ANSI_COLOR=\"0;38;2;249;115;22\""; \
         echo "NEXUS_BASE=\"${PRETTY_NAME}\""; \
     } > /usr/lib/os-release; \
     ln -sf ../usr/lib/os-release /etc/os-release
+
+# Let somebody mistype the disk passphrase.
+#
+# systemd-cryptsetup gives up after three attempts. On a machine
+# encrypted by default that is the most likely thing a real user gets
+# wrong, and giving up does not look like giving up: the boot carries
+# on for about five minutes emitting dracut warnings about a device
+# that is never going to appear, ends in "Could not boot", and drops
+# to an emergency shell whose own advice -- press Ctrl-D -- starts a
+# job that waits forever for the same device.
+#
+# tries=0 means keep asking. There is nothing to protect by refusing:
+# the disk is the thing guarding itself, and an attacker with the
+# machine can reboot as many times as they like. The limit only ever
+# punishes the owner.
+#
+# In kargs.d rather than passed to the installer, so it is a property
+# of the image: it arrives on machines installed from this ISO and on
+# machines that upgrade into it, without anyone having to remember.
+#
+# Whether it takes effect has to be checked on a real boot, not
+# inferred here -- see docs. `cat /proc/cmdline` on the installed
+# machine is the evidence.
+RUN mkdir -p /usr/lib/bootc/kargs.d \
+    && printf '%s\n' \
+        '# Keep asking for the disk passphrase instead of giving up' \
+        '# after three attempts. See image/Containerfile.' \
+        'kargs = ["rd.luks.options=tries=0"]' \
+        > /usr/lib/bootc/kargs.d/10-nexus-luks.toml
 
 ENV NEXUS_PROFILES=/usr/share/nexus/profiles
 ENV NEXUS_ALIASES=/usr/share/nexus/aliases
@@ -250,6 +346,26 @@ RUN set -eu; \
     else \
         echo "No display manager installed; booting to a console."; \
         systemctl set-default multi-user.target; \
+    fi
+
+# Fedora's artwork must still be gone.
+#
+# The base stage swapped it out, but that proves nothing about this
+# one: a desktop is hundreds of packages, and any of them may require
+# fedora-logos by name rather than the system-logos both packages
+# provide. dnf would install it without comment, and the image would
+# ship Fedora's marks again with the base stage's check still reading
+# as passed -- a check that looked at the base and said nothing about
+# the machine.
+#
+# Asked here because --target desktop is what gets built and shipped.
+# If this fails, the message names the package that wanted it, which
+# is the thing to fix.
+RUN if rpm -q fedora-logos > /dev/null 2>&1; then \
+        echo "fedora-logos came back in the desktop stage." >&2; \
+        echo "Required by:" >&2; \
+        rpm -q --whatrequires fedora-logos >&2 || true; \
+        exit 1; \
     fi
 
 # -------------------------------------------------------------- gaming
@@ -390,94 +506,32 @@ RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
 
 FROM gaming AS final
 
-LABEL org.opencontainers.image.title="Nexus OS"
+LABEL org.opencontainers.image.title="Nexus-CORE"
 LABEL org.opencontainers.image.description="A Linux system that explains its own decisions"
 LABEL containers.bootc="1"
 
-# Where the CLI looks for profiles on an installed system.
+# Nothing is installed in this stage, so there is no policy store to
+# repair here: the gaming stage above ends with the reinstall, and
+# this stage adds only labels. Three more reinstalls used to sit
+# below, each rebuilding a store that nothing had touched and each
+# adding a layer worth a couple of hundred megabytes.
+#
+# They arrived by the same route as the duplicated comment blocks
+# above them -- a patch script that checked whether its work was done
+# by looking for a line that was already there, decided it was not,
+# and appended a second copy. Three times.
 
+# And once more at the very end, for the stages after desktop: the
+# gaming stage adds RPM Fusion, a second set of packages that knows
+# nothing about this decision.
+RUN if rpm -q fedora-logos > /dev/null 2>&1; then \
+        echo "fedora-logos came back after the desktop stage." >&2; \
+        rpm -q --whatrequires fedora-logos >&2 || true; \
+        exit 1; \
+    fi
 
-# bootc requires this to succeed for the image to be considered valid.
+# Last, so that it lints the image that ships.
+#
+# bootc requires this to succeed for the image to be considered
+# valid, and an instruction after it is an instruction it never saw.
 RUN bootc container lint
-
-
-# Rebuild the SELinux policy store.
-#
-# dnf writes into the store during a container build and what comes
-# out is inconsistent: a module listed with its files missing. Nothing
-# notices until a deployment is finalized on a real machine, where the
-# policy is refreshed, fails, and takes the deployment with it.
-#
-# At the end of every stage a build can stop at, not once at the
-# start: --target desktop never reaches the later stages, and a store
-# rebuilt before six more installs is a store rebuilt too early.
-# Remove a policy module that has no files.
-#
-# A container build leaves extra_varrun registered in the store as an
-# empty directory. semodule cannot read past it -- not to rebuild the
-# policy, not even to list modules -- so finalizing a deployment on a
-# real machine fails and the deployment is discarded. That is what
-# stopped rpm-ostree from layering a package, and it looked like
-# every other kind of problem first.
-#
-# A module with no files provides no policy, so removing it loses
-# nothing. With it gone, semodule reads 429 modules and layering
-# works: packages survive a reboot and the machine stays atomic.
-# (removed at first boot instead -- see first-boot/nexus-first-boot:
-#  overlayfs refuses to delete it during a build, and it deletes
-#  cleanly on a real filesystem.)
-
-# Restore the SELinux policy files dnf left incomplete.
-#
-# A container build can leave a policy module listed with its files
-# missing -- extra_varrun, in this case. Nothing notices until a
-# deployment is finalized on a real machine, where refreshing the
-# policy fails and takes the deployment with it, which is what
-# stopped rpm-ostree from layering a package.
-#
-# Reinstalling puts the files back. Rebuilding the store with
-# semodule -B would be the direct fix and cannot work here: it swaps
-# directories by renaming them, and overlayfs cannot rename across
-# layers.
-RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
-
-
-# Rebuild the SELinux policy store.
-#
-# dnf writes into the store during a container build and what comes
-# out is inconsistent: a module listed with its files missing. Nothing
-# notices until a deployment is finalized on a real machine, where the
-# policy is refreshed, fails, and takes the deployment with it.
-#
-# At the end of every stage a build can stop at, not once at the
-# start: --target desktop never reaches the later stages, and a store
-# rebuilt before six more installs is a store rebuilt too early.
-# Remove a policy module that has no files.
-#
-# A container build leaves extra_varrun registered in the store as an
-# empty directory. semodule cannot read past it -- not to rebuild the
-# policy, not even to list modules -- so finalizing a deployment on a
-# real machine fails and the deployment is discarded. That is what
-# stopped rpm-ostree from layering a package, and it looked like
-# every other kind of problem first.
-#
-# A module with no files provides no policy, so removing it loses
-# nothing. With it gone, semodule reads 429 modules and layering
-# works: packages survive a reboot and the machine stays atomic.
-# (removed at first boot instead -- see first-boot/nexus-first-boot:
-#  overlayfs refuses to delete it during a build, and it deletes
-#  cleanly on a real filesystem.)
-
-# Restore the SELinux policy files dnf left incomplete.
-#
-# A container build can leave a policy module listed with its files
-# missing -- extra_varrun, in this case. Nothing notices until a
-# deployment is finalized on a real machine, where refreshing the
-# policy fails and takes the deployment with it, which is what
-# stopped rpm-ostree from layering a package.
-#
-# Reinstalling puts the files back. Rebuilding the store with
-# semodule -B would be the direct fix and cannot work here: it swaps
-# directories by renaming them, and overlayfs cannot rename across
-# layers.
-RUN dnf reinstall -y selinux-policy-targeted && dnf clean all

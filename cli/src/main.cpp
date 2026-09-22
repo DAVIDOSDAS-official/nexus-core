@@ -4248,6 +4248,20 @@ int main(int argc, char** argv) {
                     << " available packages from "
                     << available.repositoriesRead.size()
                     << " repository(ies).\n";
+            } else {
+                // Say so, the way the apt branch does.
+                //
+                // Reading nothing and reporting nothing is the failure
+                // this project keeps meeting: every later "nothing
+                // available provides this" is then confidently wrong
+                // about the machine, with no hint why. On a fresh
+                // install the cache really is empty, and the honest
+                // answer is that Nexus cannot see any packages yet --
+                // not that none exist.
+                std::cerr
+                    << "No package metadata read from " << rpmCache
+                    << "; continuing with installed packages only.\n"
+                    << "Run 'sudo dnf makecache' to fetch it.\n";
             }
         } else if (withAvailable) {
             const nexus::system::AptSource apt(listsDir);

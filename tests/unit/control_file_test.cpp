@@ -86,3 +86,62 @@ TEST(ControlFileTest, IgnoresTrailingBlankLines) {
 
     EXPECT_EQ(stanzas.size(), 1u);
 }
+
+// Comments.
+//
+// The profiles and alias tables are written in this format by hand and
+// are full of them. A colonless comment was always harmless: it is
+// dropped as malformed without ending the field above it. A comment
+// with a colon is read as a field, and that is the case that loses
+// data.
+
+TEST(ControlFileTest, ACommentWithAColonDoesNotSwallowContinuations) {
+    std::istringstream input(
+        "Profile: showcase\n"
+        "Requires: init,\n"
+        " c-library,\n"
+        "# one more, because: a machine needs somewhere to type\n"
+        " terminal-emulator\n"
+    );
+
+    const auto stanzas = parseControlStream(input);
+
+    ASSERT_EQ(stanzas.size(), 1u);
+    EXPECT_EQ(
+        stanzas[0].value("Requires"),
+        "init,\nc-library,\nterminal-emulator"
+    );
+}
+
+TEST(ControlFileTest, ACommentContainingAColonIsNotAField) {
+    std::istringstream input(
+        "Profile: minimal\n"
+        "# Stated for the same reason minimalism states its own: a\n"
+        "# profile with no preference picks whatever is cheapest.\n"
+        "Prefers: text-editor=nano\n"
+    );
+
+    const auto stanzas = parseControlStream(input);
+
+    ASSERT_EQ(stanzas.size(), 1u);
+    EXPECT_EQ(stanzas[0].value("Prefers"), "text-editor=nano");
+    EXPECT_EQ(stanzas[0].fields().size(), 2u);
+}
+
+// Guards the fix rather than the bug: skipping comments must not
+// start skipping values that happen to contain a hash.
+TEST(ControlFileTest, AHashInsideAValueIsPartOfTheValue) {
+    std::istringstream input(
+        "Package: apt\n"
+        "Description: counts things\n"
+        " see #1234 for why\n"
+    );
+
+    const auto stanzas = parseControlStream(input);
+
+    ASSERT_EQ(stanzas.size(), 1u);
+    EXPECT_EQ(
+        stanzas[0].value("Description"),
+        "counts things\nsee #1234 for why"
+    );
+}

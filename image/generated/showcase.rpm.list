@@ -28,4 +28,3 @@ kate                            # text-editor
 firefox                         # web-browser
 gwenview                        # image-viewer
 pipewire                        # audio-server
-# UNRESOLVED: gpu-vendor-amd | gpu-vendor-intel | gpu-vendor-nvidia

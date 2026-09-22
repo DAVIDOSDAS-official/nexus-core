@@ -160,6 +160,74 @@ OFFLINE
     exit 0
 fi
 
+# Fetch the package lists before asking.
+#
+# /var/cache/libdnf5 is empty on a machine that has just been
+# installed -- the image ships the tool, not a copy of Fedora's
+# index. Without it nexus reads nothing, every requirement in every
+# profile reports that nothing provides it, and the picker offers
+# twelve choices that all look impossible. The machine looks broken
+# when it is merely unconfigured.
+#
+# Checked rather than always run: a second boot that reaches this
+# point already has the cache, and refetching it costs a minute for
+# nothing.
+#
+# The shape of the check is the same one nexus uses -- a repository
+# directory with a repodata/repomd.xml inside it. Asking the same
+# question a different way is how two places come to disagree.
+have_metadata() {
+    local repomd
+
+    for repomd in /var/cache/libdnf5/*/repodata/repomd.xml; do
+        [ -f "${repomd}" ] && return 0
+    done
+
+    return 1
+}
+
+if ! have_metadata; then
+    echo "  Fetching the package lists. This takes a moment."
+    echo
+
+    # No pipe into tail here on purpose. `set -o pipefail` is on, so a
+    # pipeline would report dnf's failure correctly -- but somebody
+    # reading this later should not have to know that to believe it,
+    # and five minutes of nothing on screen looks like a hang.
+    if ! timeout 300 dnf makecache; then
+        echo
+        echo "  The package lists could not be fetched, so Nexus cannot"
+        echo "  see what is available yet. This is a network or mirror"
+        echo "  problem, not a broken machine."
+        echo
+        echo "  When the network is working:"
+        echo
+        echo "      sudo dnf makecache"
+        echo "      nexus setup"
+        echo
+        echo "  Nothing has been changed, and this will ask again next"
+        echo "  time."
+        echo
+        exit 0
+    fi
+
+    # Fetching can report success and still leave nothing readable.
+    # The claim being made here is that nexus can see packages, so
+    # that is the thing to check, rather than dnf's exit status.
+    if ! have_metadata; then
+        echo
+        echo "  dnf reported success but left no readable metadata in"
+        echo "  /var/cache/libdnf5. Nexus cannot see what is available,"
+        echo "  so it will not pretend to offer it."
+        echo
+        echo "  Run 'nexus setup' once 'sudo dnf makecache' works."
+        echo
+        exit 0
+    fi
+
+    echo
+fi
+
 "${NEXUS}" setup --with-available || true
 
 echo

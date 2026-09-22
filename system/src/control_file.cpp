@@ -46,6 +46,40 @@ bool isContinuation(const std::string& line) {
     return !line.empty() && (line[0] == ' ' || line[0] == '\t');
 }
 
+// A comment, and nothing else.
+//
+// Debian's control format has no comments and this parser never had
+// any -- but the profiles and alias tables are written in the same
+// format by hand and are full of them. They survive by accident: a
+// line with no colon is dropped as malformed, and dropping it does
+// not end the field being read, so a colonless comment is harmless
+// anywhere.
+//
+// A comment with a colon in it is not. It is parsed as a field, which
+// ends the field above it:
+//
+//     Requires: init,        The comment is read as a field named
+//      c-library,            "# and one more thing", so Requires
+//     # and one more thing:  ends at c-library and terminal-emulator
+//      terminal-emulator     joins the comment instead.
+//
+// The profile then reports itself complete while asking for one
+// package fewer than it says, and the generated image is missing it.
+// Nothing warns, because from the parser's side nothing went wrong.
+//
+// No table triggers this today. Nine comments across the profiles and
+// alias tables already contain a colon and are already parsed as
+// fields; none of them happens to sit above a continuation line. That
+// is a property of where the prose broke across lines, not of
+// anything anybody decided, and it stops being true the first time
+// somebody adds a note in the middle of a list.
+//
+// Only at column zero. A '#' inside a value, or on a continuation
+// line, is part of the value.
+bool isComment(const std::string& line) {
+    return !line.empty() && line[0] == '#';
+}
+
 }
 
 void ControlStanza::set(const std::string& field, std::string value) {
@@ -120,6 +154,12 @@ std::vector<ControlStanza> parseControlStream(
     while (std::getline(input, line)) {
         if (!line.empty() && line.back() == '\r') {
             line.pop_back();
+        }
+
+        // Before everything else, so a comment neither ends a stanza
+        // nor interrupts the field it was written inside.
+        if (isComment(line)) {
+            continue;
         }
 
         if (trim(line).empty() && !isContinuation(line)) {

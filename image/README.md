@@ -27,7 +27,7 @@ Four stages, built separately so a failure names the layer:
 ## Publishing, and why it matters
 
 ```
-REGISTRY=ghcr.io/yourname ./image/publish.sh
+./image/publish.sh
 ```
 
 **This is the line between a snapshot and a distribution.**
@@ -42,10 +42,35 @@ So the ISO has to be built from a published name rather than from
 `localhost/`:
 
 ```
-REGISTRY=ghcr.io/yourname ./image/publish.sh
-IMAGE=ghcr.io/yourname/nexus-core:minimalism \
+./image/publish.sh
+IMAGE=ghcr.io/davidosdas-official/nexus-core:minimalism \
     ./image/build-installer.sh
 ```
+
+The reference is lowercase even though the account is not. GitHub
+does not care; the image format does, and `publish.sh` lowercases it
+rather than letting podman refuse after the build.
+
+**A pushed package is private until it is made public.** A machine
+running `bootc upgrade` has no GitHub account, so an update against a
+private package fails on authentication and says nothing about why.
+Change it under the package's settings, then prove it from a shell
+that has logged out:
+
+```
+podman logout ghcr.io
+podman pull ghcr.io/davidosdas-official/nexus-core:minimalism
+```
+
+**Check what the installed machine thinks it came from**, rather than
+assuming the ISO carried the right name:
+
+```
+sudo bootc status | grep -i image
+```
+
+If that says `localhost`, the machine can never update, and nothing
+else on it will ever mention that.
 
 Then, on an installed machine:
 
@@ -98,6 +123,61 @@ would have left it untested.
 Not every profile can produce an image. `server` and `security` add
 things to a machine rather than describing one, so generating an image
 from either alone gives a system with no way to log in.
+
+## Moving to a new Fedora
+
+The base is named once, as `FEDORA_VERSION` at the top of the
+Containerfile. Changing it is a small edit with a wide blast radius,
+so it has an order:
+
+```
+# 1. the base stage, which is what generate-lists.sh reads from
+podman build --target base \
+    --build-arg NEXUS_COMMIT="$(git rev-parse --short HEAD)" \
+    -t localhost/nexus-os:base -f image/Containerfile .
+
+# 2. regenerate the lists against the new release's repositories
+./image/generate-lists.sh
+
+# 3. read what it says before going on
+git diff image/generated/
+```
+
+Step 3 is the point. Package names move between Fedora releases, and
+the generated lists are the only place that shows it. A capability
+whose package was renamed comes back as `# UNRESOLVED`, and
+`generate-lists.sh` says which profiles are incomplete. Building from
+an incomplete list produces an image missing whatever could not be
+resolved -- and the image boots, so nothing announces it.
+
+Only then the desktop stage and the ISO.
+
+**A release ships on a Fedora that is still supported the day it
+ships.** Fedora supports a release until four weeks after the release
+two ahead of it, so there is always somewhere to move to and about a
+year to do it. Fedora 42 was the base until September 2026 and went
+end of life on 27 May 2026, which meant no security updates could
+reach an installed machine however well the update path worked.
+
+## Fedora's artwork is not shipped
+
+The base stage swaps `fedora-logos` for `generic-logos`. Fedora's
+trademark guidelines allow building on Fedora and saying so; they do
+not allow shipping Fedora's marks on something called Nexus-CORE.
+Both packages provide `system-logos`, so this is one package for
+another rather than a gap.
+
+The swap ends with `rpm -q`, which fails the build if Fedora's logos
+survived it. `dnf` can report success on a transaction that resolved
+differently than intended, and an image that quietly kept them would
+look exactly like one that did not.
+
+**Still unresolved:** the installer's own artwork comes from
+`anaconda-*` branding inside bootc-image-builder, not from this
+image, so the ISO still shows a Fedora logo while installing. And
+`ID=fedora` stays in os-release because tooling reads it. Whether
+those are acceptable for a paid release is a question for whoever
+answers legal questions, not one the Containerfile can settle.
 
 ## The package list is generated
 

@@ -37,10 +37,18 @@ enable = [
 # it is the one part of the installation a custom kickstart cannot
 # configure.
 [customizations.installer.kickstart]
+#
+# The hostname is set here because otherwise every machine installed
+# from this ISO calls itself "fedora" -- on its own prompt, on the
+# network, and in every log anybody sends asking for help. It is the
+# same class of mistake as the branding in os-release, in the one
+# place a person actually reads it.
 contents = """
 lang en_US.UTF-8
 keyboard us
 timezone UTC --utc
+
+network --hostname=nexus
 
 zerombr
 clearpart --all --initlabel

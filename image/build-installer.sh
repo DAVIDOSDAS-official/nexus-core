@@ -61,6 +61,19 @@ if ! podman image exists "${IMAGE}"; then
     exit 1
 fi
 
+# A previous ISO in the way.
+#
+# The builder writes into output/ without clearing it, so a failed
+# build leaves the last good ISO sitting next to a broken one with no
+# way to tell them apart by looking. Moved rather than deleted: it is
+# several gigabytes somebody may have spent fifteen minutes on.
+if [ -e "${OUTPUT}/bootiso" ] || [ -e "${OUTPUT}/qcow2" ]; then
+    previous="${OUTPUT}.previous"
+    echo "Moving the last build to ${previous}."
+    sudo rm -rf "${previous}"
+    sudo mv "${OUTPUT}" "${previous}"
+fi
+
 mkdir -p "${OUTPUT}"
 
 # The builder runs as root and reads the image from root's storage,
@@ -98,6 +111,67 @@ echo "Done:"
 find "${OUTPUT}" -type f \( -name '*.iso' -o -name '*.qcow2' \) \
     -exec ls -lh {} \;
 
+# What this ISO actually is.
+#
+# An ISO is an opaque few gigabytes. Two of them from the same week
+# look identical and can differ in the base Fedora, the Nexus commit,
+# and the version of an archived tool that assembled them -- and once
+# one is downloaded by somebody else, none of that is recoverable by
+# looking at it.
+#
+# Digests rather than tags, because a tag is a name and names move.
+# 'bootc-image-builder:latest' in particular is an unpinned tag on a
+# project archived in June 2026: whatever it means today, it is not a
+# promise. Recording what it meant for this build is what makes the
+# ISO reproducible later, and is the first half of pinning it.
+MANIFEST="${OUTPUT}/nexus-build.txt"
+
+{
+    echo "built:          $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "profile:        ${PROFILE}"
+    echo "type:           ${TYPE}"
+    echo "image:          ${IMAGE}"
+    echo "image digest:   $(podman image inspect --format '{{.Digest}}' \
+        "${IMAGE}" 2>/dev/null || echo unknown)"
+    echo "nexus version:  $(podman run --rm "${IMAGE}" \
+        nexus --version 2>/dev/null || echo unknown)"
+    echo "builder:        ${BUILDER}"
+    echo "builder digest: $(sudo podman image inspect \
+        --format '{{.Digest}}' "${BUILDER}" 2>/dev/null || echo unknown)"
+} > "${MANIFEST}"
+
+echo
+echo "What went into it (${MANIFEST}):"
+sed 's/^/    /' "${MANIFEST}"
+
+# Reclaim what this build cost.
+#
+# Every iteration leaves four things behind: the new image in rootless
+# storage, a second copy in root's storage from the save/load above,
+# the previous image dangling in both, and the previous output/. That
+# is 8-11 GB per build, and nothing removed any of it -- which is how
+# a laptop runs out of disk half way through the build after the one
+# that worked.
+#
+# The copy in root's storage is the one to take: it exists only so the
+# builder could read it, the build is over, and the rootless copy is
+# the one the next build reads. Dangling images go too; tagged ones
+# never do.
+#
+# CLEAN=no to keep everything, when comparing two builds.
+if [ "${CLEAN:-yes}" = "yes" ]; then
+    echo
+    echo "Clearing the build's leftovers. CLEAN=no keeps them."
+
+    sudo podman rmi "${IMAGE}" > /dev/null 2>&1 || true
+    sudo podman image prune -f > /dev/null 2>&1 || true
+    podman image prune -f > /dev/null 2>&1 || true
+    sudo rm -rf "${OUTPUT}.previous"
+
+    echo "Free now: $(df -h --output=avail "${OUTPUT}" \
+        | tail -1 | tr -d ' ')"
+fi
+
 if [ "${IMAGE#localhost/}" != "${IMAGE}" ]; then
     cat <<'LOCAL'
 
@@ -107,8 +181,9 @@ installed; localhost is not reachable.
 
 To make updates possible, publish the image and build from that name:
 
-    REGISTRY=ghcr.io/yourname ./image/publish.sh
-    IMAGE=ghcr.io/yourname/nexus-core:PROFILE ./image/build-installer.sh
+    ./image/publish.sh
+    IMAGE=ghcr.io/davidosdas-official/nexus-core:PROFILE \
+        ./image/build-installer.sh
 LOCAL
 fi
 

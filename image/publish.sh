@@ -8,8 +8,9 @@
 # it can never update anything. Not a fix, not a security patch,
 # nothing.
 #
-#     REGISTRY=ghcr.io/yourname ./image/publish.sh
-#     REGISTRY=ghcr.io/yourname PROFILE=minimal ./image/publish.sh
+#     ./image/publish.sh
+#     PROFILE=minimal ./image/publish.sh
+#     REGISTRY=ghcr.io/somewhere-else ./image/publish.sh
 #
 # The tag is the profile, so one repository holds every variant and a
 # machine pulls the one it was installed with.
@@ -19,9 +20,14 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 PROFILE="${PROFILE:-minimalism}"
-REGISTRY="${REGISTRY:-}"
+
+# Defaulted rather than demanded.
+#
+# Forgetting it is the failure this script exists to prevent, and an
+# argument somebody has to remember is one they eventually do not.
+REGISTRY="${REGISTRY:-ghcr.io/davidosdas-official}"
 NAME="${NAME:-nexus-core}"
-VERSION="${VERSION:-0.1}"
+VERSION="${VERSION:-0.1.0}"
 
 if [ -z "${REGISTRY}" ]; then
     cat >&2 <<'USAGE'
@@ -31,12 +37,28 @@ No registry given. Where should this be published?
 
 GitHub Container Registry is free for public images. Log in once:
 
-    echo "$GITHUB_TOKEN" | podman login ghcr.io -u yourname \
+    echo "$GITHUB_TOKEN" | podman login ghcr.io -u DAVIDOSDAS-official \
         --password-stdin
 
 The token needs write:packages.
 USAGE
     exit 2
+fi
+
+# Image references are lowercase; GitHub account names are not.
+#
+# The account is DAVIDOSDAS-official, and typing it that way produces
+# "repository name must be lowercase" from podman -- after the build,
+# which is the expensive place to learn it. GitHub itself does not
+# care about the case of the account, so lowercasing here is safe and
+# means the name can be written the way it is written everywhere else.
+LOWERED="$(printf '%s' "${REGISTRY}" | tr '[:upper:]' '[:lower:]')"
+
+if [ "${LOWERED}" != "${REGISTRY}" ]; then
+    echo "Registry lowercased for the image reference:"
+    echo "    ${REGISTRY}  ->  ${LOWERED}"
+    echo
+    REGISTRY="${LOWERED}"
 fi
 
 REMOTE="${REGISTRY}/${NAME}:${PROFILE}"
@@ -77,14 +99,32 @@ cat <<NEXT
 
 Pushed ${REMOTE}
 
-For an installed machine to update from it, the ISO has to be built
-from this name rather than from localhost:
+The package is private until you say otherwise. A machine running
+'bootc upgrade' has no GitHub account, so until it is public every
+update fails with an authentication error that says nothing about
+the cause:
 
-    podman build --target desktop \\
-        --build-arg NEXUS_PROFILE=${PROFILE} \\
-        -t ${REMOTE} -f image/Containerfile .
+    https://github.com/users/DAVIDOSDAS-official/packages/container/${NAME}/settings
+    -> Danger Zone -> Change visibility -> Public
+
+Check it from a machine that has never logged in:
+
+    podman logout ghcr.io
+    podman pull ${REMOTE}
+
+Now build the ISO from this name rather than from localhost. No
+rebuild is needed -- the tag above already points at the image that
+was just pushed, and bootc records the name it was installed from:
 
     IMAGE=${REMOTE} PROFILE=${PROFILE} ./image/build-installer.sh
+
+After installing from that ISO, the machine should agree:
+
+    sudo bootc status | grep -i image
+
+If that says localhost, the ISO was built from the wrong name and
+the machine can never update. That is the whole point of this
+script, and it is worth checking rather than assuming.
 
 Then, on an installed machine:
 
