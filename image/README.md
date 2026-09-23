@@ -75,10 +75,17 @@ else on it will ever mention that.
 Then, on an installed machine:
 
 ```
-sudo bootc upgrade
+sudo rpm-ostree upgrade
 sudo reboot
-sudo bootc rollback     # if the new one is worse
+sudo rpm-ostree rollback     # if the new one is worse
 ```
+
+`rpm-ostree`, not `bootc upgrade`, on any machine that has been set up.
+bootc refuses a deployment with packages layered on top ("contains
+local rpm-ostree modifications"), and layering is what first-boot
+setup and `nexus install` do. rpm-ostree pulls the same image and puts
+the layered packages back on it. `bootc upgrade` works only on a
+machine nobody has added anything to.
 
 `nexus doctor` reports whether a machine can update at all, because a
 machine that cannot is a fact about it worth knowing.

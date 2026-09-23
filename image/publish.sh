@@ -27,7 +27,8 @@ PROFILE="${PROFILE:-minimalism}"
 # argument somebody has to remember is one they eventually do not.
 REGISTRY="${REGISTRY:-ghcr.io/davidosdas-official}"
 NAME="${NAME:-nexus-core}"
-VERSION="${VERSION:-0.1.0}"
+# Not defaulted: read from the image below. See the version check.
+ASKED_VERSION="${VERSION:-}"
 
 if [ -z "${REGISTRY}" ]; then
     cat >&2 <<'USAGE'
@@ -75,6 +76,34 @@ if ! podman image exists "${LOCAL}"; then
     echo "        -t ${LOCAL} -f image/Containerfile ." >&2
     exit 1
 fi
+
+# The version is the image's own, read from the binary inside it.
+#
+# It used to default to a number written here, so a tag could name a
+# version the image did not contain -- the same disagreement that left
+# os-release saying 0.1.1 while `nexus --version` said 0.1.0. The only
+# place the version is written down is CMakeLists.txt; everything else
+# asks.
+VERSION="$(podman run --rm "${LOCAL}" nexus --version 2>/dev/null \
+    | awk 'NR == 1 {print $2}')"
+
+case "${VERSION}" in
+    [0-9]*.[0-9]*.[0-9]*) ;;
+    *)
+        echo "Could not read a version from ${LOCAL} (got '${VERSION}');" >&2
+        echo "refusing to tag it." >&2
+        exit 1
+        ;;
+esac
+
+if [ -n "${ASKED_VERSION}" ] && [ "${ASKED_VERSION}" != "${VERSION}" ]; then
+    echo "Asked to publish ${ASKED_VERSION}, but ${LOCAL} is ${VERSION}." >&2
+    echo "Build it again after changing CMakeLists.txt, or drop VERSION=." >&2
+    exit 1
+fi
+
+echo "Version: ${VERSION}"
+echo
 
 # An image built as localhost/ cannot be updated from: bootc records
 # where it was pulled from, and localhost is not somewhere a machine
@@ -128,8 +157,12 @@ script, and it is worth checking rather than assuming.
 
 Then, on an installed machine:
 
-    sudo bootc upgrade
+    sudo rpm-ostree upgrade
     sudo reboot
+
+Not bootc upgrade on a machine that has been set up: bootc refuses a
+deployment with packages layered on top, and first-boot setup layers
+them. rpm-ostree upgrade pulls the same image and keeps them.
 
 The version tag ${PROFILE}-${VERSION} is pushed as well, so a machine
 can be pinned to a known build rather than always taking the newest.

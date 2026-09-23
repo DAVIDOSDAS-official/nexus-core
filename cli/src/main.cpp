@@ -1940,9 +1940,41 @@ int commandDoctor(
                 "no fix can reach this machine, however urgent");
             updates.total = 1;
         } else {
+            // Which command updates this machine depends on what has
+            // been added to it.
+            //
+            // bootc upgrade refuses a deployment with packages layered
+            // on top ("contains local rpm-ostree modifications"), and
+            // layering is exactly what `nexus install` and first-boot
+            // setup do on an image-based system. So the advice used to
+            // be right for a machine nobody had set up and wrong for
+            // every machine that had been -- found on a laptop on 23
+            // September with six packages layered at first boot.
+            // rpm-ostree upgrade pulls the new image and puts the
+            // layered packages back on top of it.
+            const auto ostree = nexus::system::runCommand(
+                "rpm-ostree status 2>/dev/null", false);
+            const bool layered =
+                ostree.ok &&
+                (ostree.text.find("LayeredPackages:") !=
+                     std::string::npos ||
+                 ostree.text.find("LocalPackages:") !=
+                     std::string::npos);
+
             updates.health = nexus::Health::Ok;
-            updates.detail =
-                "Image-based; bootc upgrade will pull a newer one.";
+
+            if (layered) {
+                updates.detail =
+                    "Image-based, with packages layered on top: "
+                    "rpm-ostree upgrade pulls a newer image and keeps "
+                    "them. (bootc upgrade refuses a machine with "
+                    "layered packages.)";
+                updates.suggestion = "sudo rpm-ostree upgrade";
+            } else {
+                updates.detail =
+                    "Image-based; bootc upgrade will pull a newer one.";
+                updates.suggestion = "sudo bootc upgrade";
+            }
         }
 
         findings.push_back(std::move(updates));
@@ -2392,6 +2424,12 @@ int commandSource(
 int commandGuide(bool useRpm) {
     const std::string manager = useRpm ? "dnf" : "apt";
 
+    // /run/ostree-booted exists on exactly the machines that boot a
+    // deployment rather than an ordinary root: bootc, rpm-ostree,
+    // Silverblue. Everything else that uses rpm is dnf's to update.
+    const bool imageBased =
+        std::filesystem::exists("/run/ostree-booted");
+
     std::cout << R"(Nexus - how to work this system
 
 Nexus decides and explains; )" << manager << R"( does the work.
@@ -2430,25 +2468,37 @@ INSTALLING AND REMOVING
 
 UPDATING
 
-  Nexus does not update the system. Use )" << manager << R"( directly:
+  Nexus does not update the system. Use )"
+              << (useRpm && imageBased ? "rpm-ostree" : manager)
+              << R"( directly:
 )";
 
-    if (useRpm) {
+    if (useRpm && imageBased) {
         std::cout << R"(
-      sudo bootc upgrade               pull a newer image
+      sudo rpm-ostree upgrade          pull a newer image, keep what
+                                       you added on top of it
       sudo reboot                      and boot into it
 
   An image-based system updates by replacing the whole image rather
   than by changing packages one at a time, so the change arrives at
   a reboot and the previous one stays bootable if it does not work.
 
-      sudo bootc rollback              go back to the previous one
+      sudo rpm-ostree rollback         go back to the previous one
 
-  If bootc reports nothing to pull, this machine was installed from
-  an image that was never published, and cannot update. That is a
+  Not bootc upgrade, unless nothing has ever been added to this
+  machine. bootc refuses a deployment with packages layered on top,
+  and that is what `nexus install` and first-boot setup do here.
+  rpm-ostree upgrade pulls the same new image and puts the layered
+  packages back on it. And not dnf upgrade: /usr is part of the
+  image, so dnf cannot change it in place.
+
+  If there is nothing to pull, this machine was installed from an
+  image that was never published, and cannot update. That is a
   property of how it was built, not a fault.
-
-      sudo dnf upgrade                 packages layered on top
+)";
+    } else if (useRpm) {
+        std::cout << R"(
+      sudo dnf upgrade --refresh       update everything
 )";
     } else {
         std::cout << R"(

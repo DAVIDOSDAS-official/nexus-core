@@ -1,7 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 
+# The one place the version is written down. The binary reports it,
+# the image reads it from the binary (image/identity.sh), and
+# publish.sh reads it from the image. Change it here, commit, build.
 project(NexusCore
-    VERSION 0.1.0
+    VERSION 0.1.2
     DESCRIPTION "A modular Linux operating system platform"
     LANGUAGES CXX
 )

@@ -65,11 +65,23 @@ ARG FEDORA_VERSION=44
 # true or false and rejects "newer" outright. That is a big push, and it
 # is the one that carries security fixes -- see image/README.md.
 
-# Defaults declared once, before the first FROM, for the same reason
+# Declared once, before the first FROM, for the same reason
 # FEDORA_VERSION is: a stage that needs one restates the name without
-# a value and inherits this. Two defaults for one version number are
-# two things that will eventually disagree.
-ARG NEXUS_VERSION=0.1.0
+# a value and inherits this.
+#
+# NEXUS_VERSION has no default on purpose. The version lives in one
+# place -- project(VERSION ...) in CMakeLists.txt -- and the image asks
+# the binary it just built (image/identity.sh). It used to live in
+# three: CMakeLists for the binary, a default here for os-release, and
+# another in publish.sh for the tag. On 23 September a laptop upgraded
+# to an image whose os-release said 0.1.1 while `nexus --version` in
+# the same image said 0.1.0, because the build argument reached one of
+# the three and not the others.
+#
+# Passing --build-arg NEXUS_VERSION is still allowed, as a check: the
+# build fails if it disagrees with the source, rather than one of the
+# two quietly winning.
+ARG NEXUS_VERSION
 ARG NEXUS_PROFILE=minimalism
 
 # ------------------------------------------------------------- builder

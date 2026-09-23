@@ -13,14 +13,44 @@
 
 set -eu
 
-# Refuse rather than guess.
+# The version comes from the binary, not from a build argument.
 #
+# There is one place the version is written down: project(VERSION ...)
+# in CMakeLists.txt, which the binary reports. Asking the binary means
+# the system and the tool cannot disagree about what they are -- they
+# did, on 23 September, when a build argument set os-release to 0.1.1
+# and `nexus --version` in the same image still said 0.1.0.
+BINARY_VERSION="$(/usr/bin/nexus --version 2>/dev/null | awk 'NR == 1 {print $2}')"
+
+# Refuse rather than guess: an image that cannot say its own version
+# is worse than one that does not build. Not merely non-empty -- a
+# version. While this was being tested, a binary that printed its
+# version wrongly had its next word, "(stub)", accepted as one, and the
+# image called itself "Nexus-CORE (stub)".
+case "${BINARY_VERSION}" in
+    [0-9]*.[0-9]*.[0-9]*) ;;
+    *)
+        echo "The nexus binary reported '${BINARY_VERSION}', which is not a version." >&2
+        echo "Expected the first line of 'nexus --version' to be: nexus X.Y.Z (commit)" >&2
+        exit 1
+        ;;
+esac
+
+# A version passed in is a claim to check, not a second source.
+if [ -n "${NEXUS_VERSION:-}" ] && [ "${NEXUS_VERSION}" != "${BINARY_VERSION}" ]; then
+    echo "Asked to build ${NEXUS_VERSION}, but the source says ${BINARY_VERSION}." >&2
+    echo "Change project(VERSION ...) in CMakeLists.txt and commit;" >&2
+    echo "the build argument is only a check against it." >&2
+    exit 1
+fi
+
+NEXUS_VERSION="${BINARY_VERSION}"
+
 # A global ARG declared after the first FROM in the Containerfile is
 # not global, and arrives here empty. The result would be an image
-# calling itself "Nexus-CORE  (minimalism)" -- built, installed, and
-# booted, with nothing along the way noticing. That exact mistake was
-# made, and caught, while this file was being written.
-: "${NEXUS_VERSION:?NEXUS_VERSION is empty; check the ARG defaults in image/Containerfile}"
+# calling itself "Nexus-CORE 0.1.2 ()" -- built, installed and booted
+# with nothing noticing. That exact mistake was made, and caught, while
+# this file was first being written.
 : "${NEXUS_PROFILE:?NEXUS_PROFILE is empty; check the ARG defaults in image/Containerfile}"
 
 # The first thing a new machine does. See image/first-boot/README.md.
