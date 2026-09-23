@@ -34,8 +34,40 @@ fi
 # finished.
 ASKED=0
 
+# Hold the screen until somebody has read it.
+#
+# Whatever this script prints, the display manager takes the console
+# the moment it exits. On 23 September a laptop booted with no network:
+# the offline explanation -- how to connect, what to run -- was printed
+# and replaced by the login screen in the same instant, and from the
+# chair it looked as though first boot had never run at all. The VM
+# never showed this, because a VM is always online.
+#
+# So every exit waits for Enter, on a terminal only (with none there is
+# nobody to wait for), and not forever: an unattended machine still
+# reaches its login screen, five minutes later.
+SHOWN=0
+
+pause_before_leaving() {
+    if [ "${SHOWN}" != "1" ] || [ ! -t 0 ]; then
+        return
+    fi
+
+    echo
+    printf "  Press Enter to continue to the login screen. "
+
+    # Same reason as before the question: keys pressed while the text
+    # was scrolling past would otherwise count as the Enter.
+    while read -r -s -t 0.05 -n 1 _ 2>/dev/null; do :; done
+
+    read -r -t 300 _ 2>/dev/null || true
+    echo
+}
+
 finish() {
     restore_printk
+    pause_before_leaving
+
     if [ "${ASKED}" != "1" ]; then
         return
     fi
@@ -78,6 +110,10 @@ if [ ! -t 0 ]; then
 fi
 
 clear 2>/dev/null
+
+# From here on something is on the screen worth reading before it
+# goes; see pause_before_leaving.
+SHOWN=1
 
 cat <<'BANNER'
 

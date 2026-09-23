@@ -31,6 +31,47 @@
 #     podman build --build-arg FEDORA_VERSION=45 ...
 ARG FEDORA_VERSION=44
 
+# ---------------------------------------------------------- layer order
+# Why the stages below are arranged the way they are.
+#
+# An image is a stack of layers, and changing one invalidates every
+# layer above it. Nexus used to go in near the bottom and the desktop
+# -- five hundred packages, most of the image -- on top of it. So any
+# change to Nexus, down to the version number in os-release, rebuilt
+# the whole desktop, and pushing it meant uploading gigabytes again.
+# The first push to GHCR, on 22-23 September, took all night.
+#
+# That cost does not stay with whoever publishes. bootc upgrade pulls
+# the layers that changed, so every installed machine would have
+# downloaded a whole desktop to receive a one-line fix.
+#
+# So the order is now: Fedora, then what rarely changes (tools, logos,
+# kernel arguments), then the packages, and Nexus last. A change to
+# Nexus is a few megabytes, for the person pushing and for every
+# machine pulling.
+#
+# The trade-off, stated rather than discovered: a cached package layer
+# is a stale one. Rebuilding for a Nexus change reuses the packages
+# from the last time they were installed, so Fedora's security updates
+# reach an image only when the package layer is deliberately rebuilt:
+#
+#     podman pull quay.io/fedora/fedora-bootc:44
+#     podman build --build-arg REFRESH="$(date +%Y%m%d)" ...
+#
+# The pull fetches a newer fedora-bootc if there is one; REFRESH
+# forces the package installs to run again. The pull is its own
+# command rather than --pull=newer because that spelling only exists
+# from podman 4, and Pop!_OS 22.04 ships 3.4, where --pull takes only
+# true or false and rejects "newer" outright. That is a big push, and it
+# is the one that carries security fixes -- see image/README.md.
+
+# Defaults declared once, before the first FROM, for the same reason
+# FEDORA_VERSION is: a stage that needs one restates the name without
+# a value and inherits this. Two defaults for one version number are
+# two things that will eventually disagree.
+ARG NEXUS_VERSION=0.1.0
+ARG NEXUS_PROFILE=minimalism
+
 # ------------------------------------------------------------- builder
 # Compiling happens here and stays here. The shipped image gets the
 # binary and nothing else: no compiler, no source, no build tree.
@@ -63,28 +104,24 @@ RUN cmake -S /src -B /build \
         -DNEXUS_COMMIT_OVERRIDE="${NEXUS_COMMIT}" \
     && cmake --build /build --parallel
 
-# ---------------------------------------------------------------- base
-# Rebuild the SELinux policy store.
-#
-# dnf writes into the store during a container build and what comes
-# out is inconsistent: a module listed with its files missing. Nothing
-# notices until a deployment is finalized on a real machine, where the
-# policy is refreshed, fails, and takes the deployment with it.
-#
-# At the end of every stage a build can stop at, not once at the
-# start: --target desktop never reaches the later stages, and a store
-# rebuilt before six more installs is a store rebuilt too early.
-# (not in the builder stage: it is discarded, and
-#  there is no policy store here to rebuild.)
+# ------------------------------------------------------------------- os
+# Fedora plus the things that almost never change. Not a target:
+# nothing ships from here directly.
 
-FROM quay.io/fedora/fedora-bootc:${FEDORA_VERSION} AS base
+FROM quay.io/fedora/fedora-bootc:${FEDORA_VERSION} AS os
+
+# Changing this reruns every install below -- the package refresh
+# described above. Its value is only ever printed; it exists to be
+# different from last time.
+ARG REFRESH=none
 
 # Nexus reads repository metadata, which arrives compressed in
 # whichever format the tool that wrote it preferred. Fedora uses zstd
 # for small repositories and zchunk for large ones, so an image that
 # ships Nexus has to ship the decompressors or it can only read the
 # small ones.
-RUN dnf install -y \
+RUN echo "Package refresh: ${REFRESH}" \
+    && dnf install -y \
         --exclude=rootfiles \
         --setopt=install_weak_deps=False \
         zchunk \
@@ -127,73 +164,6 @@ RUN set -eu; \
     rpm -q generic-logos; \
     dnf clean all
 
-COPY --from=builder /build/cli/nexus /usr/bin/nexus
-# The first thing a new machine does. See image/first-boot/README.md.
-#
-# In base rather than in the last stage: a --target build stops
-# wherever it is told, so anything attached to the end is absent from
-# every image except the complete one -- and the unit simply did not
-# exist in the desktop image, which looks exactly like systemd
-# refusing to run it.
-COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
-COPY image/first-boot/nexus-first-boot.service \
-     /usr/lib/systemd/system/nexus-first-boot.service
-
-RUN chmod 0755 /usr/bin/nexus-first-boot \
-    && systemctl enable nexus-first-boot.service
-
-COPY components/profiles /usr/share/nexus/profiles
-COPY components/aliases /usr/share/nexus/aliases
-
-# What this system says it is.
-#
-# Without this an installed machine introduces itself as Fedora --
-# in the installer, in /etc/os-release, and to every tool that reads
-# it. That is not a cosmetic gap: somebody debugging their own
-# machine needs to know what they are running.
-#
-# ID and VERSION_ID stay Fedora's deliberately.
-#
-# Both are read by tooling that has to know what the base is: package
-# managers branch on ID, and the image builder composes a distro name
-# from ID plus VERSION_ID. Setting VERSION_ID to the Nexus version
-# sent it looking for "fedora-0.1", which does not exist, and the ISO
-# build failed at manifest generation.
-#
-# Branding goes in the fields meant for it. NAME, PRETTY_NAME and
-# VARIANT are what a person reads; ID and VERSION_ID are what
-# programs read, and a system that lies to programs about its base
-# breaks things that were right to trust it.
-#
-# PLATFORM_ID is copied only when the base has one. Fedora 43 removed
-# it from os-release, so on 44 the variable does not exist, and under
-# `set -u` referring to it killed the build. Copying a field the base
-# no longer carries would also be the image claiming something about
-# its base that the base does not say.
-ARG NEXUS_VERSION=0.1.0
-ARG NEXUS_PROFILE=minimalism
-
-RUN set -eu; \
-    . /etc/os-release; \
-    { \
-        echo "NAME=\"Nexus-CORE\""; \
-        echo "PRETTY_NAME=\"Nexus-CORE ${NEXUS_VERSION} (${NEXUS_PROFILE})\""; \
-        echo "ID=fedora"; \
-        echo "ID_LIKE=fedora"; \
-        echo "VERSION=\"${VERSION_ID} (Nexus-CORE ${NEXUS_VERSION})\""; \
-        echo "VERSION_ID=${VERSION_ID}"; \
-        echo "NEXUS_VERSION=\"${NEXUS_VERSION}\""; \
-        echo "VARIANT=\"${NEXUS_PROFILE}\""; \
-        echo "VARIANT_ID=${NEXUS_PROFILE}"; \
-        echo "BUILD_ID=\"$(date -u +%Y%m%d)\""; \
-        if [ -n "${PLATFORM_ID:-}" ]; then \
-            echo "PLATFORM_ID=\"${PLATFORM_ID}\""; \
-        fi; \
-        echo "ANSI_COLOR=\"0;38;2;249;115;22\""; \
-        echo "NEXUS_BASE=\"${PRETTY_NAME}\""; \
-    } > /usr/lib/os-release; \
-    ln -sf ../usr/lib/os-release /etc/os-release
-
 # Let somebody mistype the disk passphrase.
 #
 # systemd-cryptsetup gives up after three attempts. On a machine
@@ -213,9 +183,8 @@ RUN set -eu; \
 # of the image: it arrives on machines installed from this ISO and on
 # machines that upgrade into it, without anyone having to remember.
 #
-# Whether it takes effect has to be checked on a real boot, not
-# inferred here -- see docs. `cat /proc/cmdline` on the installed
-# machine is the evidence.
+# Verified 22 September 2026: in a VM, three wrong passphrases were
+# followed by a fourth prompt, and /proc/cmdline carried the option.
 RUN mkdir -p /usr/lib/bootc/kargs.d \
     && printf '%s\n' \
         '# Keep asking for the disk passphrase instead of giving up' \
@@ -223,55 +192,14 @@ RUN mkdir -p /usr/lib/bootc/kargs.d \
         'kargs = ["rd.luks.options=tries=0"]' \
         > /usr/lib/bootc/kargs.d/10-nexus-luks.toml
 
-ENV NEXUS_PROFILES=/usr/share/nexus/profiles
-ENV NEXUS_ALIASES=/usr/share/nexus/aliases
-
-# ------------------------------------------------------------- desktop
-# Rebuild the SELinux policy store.
+# ----------------------------------------------------- desktop-packages
+# The desktop, before Nexus. Not a target on its own; `desktop` below
+# is this plus Nexus.
 #
-# dnf writes into the store during a container build and what comes
-# out is inconsistent: a module listed with its files missing. Nothing
-# notices until a deployment is finalized on a real machine, where the
-# policy is refreshed, fails, and takes the deployment with it.
-#
-# At the end of every stage a build can stop at, not once at the
-# start: --target desktop never reaches the later stages, and a store
-# rebuilt before six more installs is a store rebuilt too early.
-# Remove a policy module that has no files.
-#
-# A container build leaves extra_varrun registered in the store as an
-# empty directory. semodule cannot read past it -- not to rebuild the
-# policy, not even to list modules -- so finalizing a deployment on a
-# real machine fails and the deployment is discarded. That is what
-# stopped rpm-ostree from layering a package, and it looked like
-# every other kind of problem first.
-#
-# A module with no files provides no policy, so removing it loses
-# nothing. With it gone, semodule reads 429 modules and layering
-# works: packages survive a reboot and the machine stays atomic.
-# (removed at first boot instead -- see first-boot/nexus-first-boot:
-#  overlayfs refuses to delete it during a build, and it deletes
-#  cleanly on a real filesystem.)
-
-# Restore the SELinux policy files dnf left incomplete.
-#
-# A container build can leave a policy module listed with its files
-# missing -- extra_varrun, in this case. Nothing notices until a
-# deployment is finalized on a real machine, where refreshing the
-# policy fails and takes the deployment with it, which is what
-# stopped rpm-ostree from layering a package.
-#
-# Reinstalling puts the files back. Rebuilding the store with
-# semodule -B would be the direct fix and cannot work here: it swaps
-# directories by renaming them, and overlayfs cannot rename across
-# layers.
-RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
-
-FROM base AS desktop
-
 # KDE on Wayland. Chosen over GNOME because gaming benefits from
 # variable refresh and per-display scaling, which KDE has handled
 # better for longer.
+#
 # --exclude=rootfiles: it ships /root/.bash_logout, and in a bootc
 # image /root is managed by ostree rather than being an ordinary
 # directory. RPM cannot unpack into it, and one failed unpack aborts
@@ -279,9 +207,6 @@ FROM base AS desktop
 #
 # --setopt=install_weak_deps=False: Recommends are what somebody else
 # thought you might like. An image should contain what it needs.
-#
-# Split across commands on purpose: a single dnf install of a whole
-# desktop makes any failure anonymous.
 #
 # The desktop comes from the profile, not from this file, and which
 # profile is a build argument rather than a decision baked in here.
@@ -293,8 +218,13 @@ FROM base AS desktop
 #
 # The lists are generated by image/generate-lists.sh and committed:
 # a build you cannot read is a build you cannot audit, and every line
-# of those files says which capability it answers.
-ARG NEXUS_PROFILE=minimalism
+# of those files says which capability it answers. Installing them
+# does not need the nexus binary -- the list is already written --
+# which is what lets this stage sit below Nexus.
+
+FROM os AS desktop-packages
+
+ARG NEXUS_PROFILE
 
 # Kept rather than deleted, in /usr/share so the built image carries
 # the list it was built from. That is worth a few kilobytes: an image
@@ -350,15 +280,14 @@ RUN set -eu; \
 
 # Fedora's artwork must still be gone.
 #
-# The base stage swapped it out, but that proves nothing about this
+# The os stage swapped it out, but that proves nothing about this
 # one: a desktop is hundreds of packages, and any of them may require
 # fedora-logos by name rather than the system-logos both packages
 # provide. dnf would install it without comment, and the image would
-# ship Fedora's marks again with the base stage's check still reading
-# as passed -- a check that looked at the base and said nothing about
+# ship Fedora's marks again with the earlier check still reading as
+# passed -- a check that looked at the base and said nothing about
 # the machine.
 #
-# Asked here because --target desktop is what gets built and shipped.
 # If this fails, the message names the package that wanted it, which
 # is the thing to fix.
 RUN if rpm -q fedora-logos > /dev/null 2>&1; then \
@@ -368,47 +297,79 @@ RUN if rpm -q fedora-logos > /dev/null 2>&1; then \
         exit 1; \
     fi
 
-# -------------------------------------------------------------- gaming
-# Rebuild the SELinux policy store.
+# ---------------------------------------------------------------- Nexus
+# The same few layers end both `base` and `desktop` below: the binary,
+# first boot, profiles, and what the system says it is. They are
+# written out twice because a Containerfile has no way to include one
+# block in two stages; image/identity.sh holds the logic, so what is
+# repeated is only which files go where. Keep the two copies the same.
 #
-# dnf writes into the store during a container build and what comes
-# out is inconsistent: a module listed with its files missing. Nothing
-# notices until a deployment is finalized on a real machine, where the
-# policy is refreshed, fails, and takes the deployment with it.
+# The first-boot unit is in every target rather than only the last
+# one: a --target build stops wherever it is told, and the unit once
+# simply did not exist in the desktop image, which looked exactly like
+# systemd refusing to run it.
 #
-# At the end of every stage a build can stop at, not once at the
-# start: --target desktop never reaches the later stages, and a store
-# rebuilt before six more installs is a store rebuilt too early.
-# Remove a policy module that has no files.
-#
-# A container build leaves extra_varrun registered in the store as an
-# empty directory. semodule cannot read past it -- not to rebuild the
-# policy, not even to list modules -- so finalizing a deployment on a
-# real machine fails and the deployment is discarded. That is what
-# stopped rpm-ostree from layering a package, and it looked like
-# every other kind of problem first.
-#
-# A module with no files provides no policy, so removing it loses
-# nothing. With it gone, semodule reads 429 modules and layering
-# works: packages survive a reboot and the machine stays atomic.
-# (removed at first boot instead -- see first-boot/nexus-first-boot:
-#  overlayfs refuses to delete it during a build, and it deletes
-#  cleanly on a real filesystem.)
+# Every target ends by reinstalling the SELinux policy. dnf leaves the
+# policy store inconsistent during a container build -- a module listed
+# with its files missing -- and nothing notices until a deployment is
+# finalized on a real machine, where refreshing the policy fails and
+# takes the deployment with it. Reinstalling puts the files back;
+# `semodule -B` cannot, because it renames directories and overlayfs
+# cannot rename across layers. (The empty extra_varrun module the build
+# also leaves is removed at first boot, where the filesystem allows it.)
 
-# Restore the SELinux policy files dnf left incomplete.
-#
-# A container build can leave a policy module listed with its files
-# missing -- extra_varrun, in this case. Nothing notices until a
-# deployment is finalized on a real machine, where refreshing the
-# policy fails and takes the deployment with it, which is what
-# stopped rpm-ostree from layering a package.
-#
-# Reinstalling puts the files back. Rebuilding the store with
-# semodule -B would be the direct fix and cannot work here: it swaps
-# directories by renaming them, and overlayfs cannot rename across
-# layers.
+# ----------------------------------------------------------------- base
+# Fedora, the tools and Nexus, with no desktop. What
+# image/generate-lists.sh runs `nexus image` inside.
+
+FROM os AS base
+
+ARG NEXUS_VERSION
+ARG NEXUS_PROFILE
+
+COPY --from=builder /build/cli/nexus /usr/bin/nexus
+COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
+COPY image/first-boot/nexus-first-boot.service \
+     /usr/lib/systemd/system/nexus-first-boot.service
+COPY components/profiles /usr/share/nexus/profiles
+COPY components/aliases /usr/share/nexus/aliases
+COPY image/identity.sh /usr/libexec/nexus/identity
+
+RUN NEXUS_VERSION="${NEXUS_VERSION}" NEXUS_PROFILE="${NEXUS_PROFILE}" \
+    sh /usr/libexec/nexus/identity
+
+ENV NEXUS_PROFILES=/usr/share/nexus/profiles
+ENV NEXUS_ALIASES=/usr/share/nexus/aliases
+
 RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
 
+# -------------------------------------------------------------- desktop
+# What ships: the desktop packages, then Nexus on top.
+
+FROM desktop-packages AS desktop
+
+ARG NEXUS_VERSION
+ARG NEXUS_PROFILE
+
+COPY --from=builder /build/cli/nexus /usr/bin/nexus
+COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
+COPY image/first-boot/nexus-first-boot.service \
+     /usr/lib/systemd/system/nexus-first-boot.service
+COPY components/profiles /usr/share/nexus/profiles
+COPY components/aliases /usr/share/nexus/aliases
+COPY image/identity.sh /usr/libexec/nexus/identity
+
+RUN NEXUS_VERSION="${NEXUS_VERSION}" NEXUS_PROFILE="${NEXUS_PROFILE}" \
+    sh /usr/libexec/nexus/identity
+
+ENV NEXUS_PROFILES=/usr/share/nexus/profiles
+ENV NEXUS_ALIASES=/usr/share/nexus/aliases
+
+RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
+
+# Not what ships. It still stacks its packages above Nexus, so a
+# gaming image pays the old cost on every change; worth the same
+# reordering if it is ever released.
 FROM desktop AS gaming
 
 # Fedora bootc ships no 32-bit multilib. Steam needs it, so it is added

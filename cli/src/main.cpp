@@ -236,6 +236,10 @@ struct SourceSummary {
 
     std::map<std::string, std::size_t> gaps;
     std::vector<std::string> notes;
+
+    // Why this read may not be the whole database; empty when it is.
+    // See RpmDatabaseResult::incomplete.
+    std::string incomplete;
 };
 
 int commandScan(const SourceSummary& result) {
@@ -1743,7 +1747,17 @@ int commandDoctor(
 
     source_.check = "Package database";
 
-    if (havePackages) {
+    if (havePackages && !source.incomplete.empty()) {
+        source_.health = nexus::Health::Warning;
+        source_.detail =
+            std::to_string(source.components.size()) +
+            " components read from " + source.name +
+            ", but the read was incomplete.";
+        source_.examples.push_back(source.incomplete);
+        source_.total = 1;
+        source_.suggestion = "nexus doctor   (again; if it persists, "
+                             "rpm -qa | wc -l)";
+    } else if (havePackages) {
         source_.health = nexus::Health::Ok;
         source_.detail =
             std::to_string(source.components.size()) +
@@ -1847,7 +1861,21 @@ int commandDoctor(
 
     findings.push_back(std::move(locked));
 
-    if (havePackages) {
+    if (havePackages && !source.incomplete.empty()) {
+        // Not judged. Every "nothing installed satisfies this" would be
+        // a claim about packages this read never saw -- 305 of them,
+        // on the laptop where this was found, libsystemd included.
+        nexus::Finding deps;
+
+        deps.check = "Dependencies";
+        deps.health = nexus::Health::Unknown;
+        deps.detail =
+            "Not judged: the package list was read incompletely, so "
+            "anything it lacks may be missing from the read rather "
+            "than from the machine.";
+
+        findings.push_back(std::move(deps));
+    } else if (havePackages) {
         const auto detail = nexus::diagnose(
             installed, roots,
             buildDetector(),
@@ -3951,7 +3979,19 @@ int main(int argc, char** argv) {
                 result.name = "rpm database";
                 result.components = loaded.components;
                 result.recordsRead = loaded.packagesRead;
+                result.incomplete = loaded.incomplete;
                 havePackages = true;
+
+                // Said once, here, for every command: anything that
+                // reasons about what is missing is reasoning from a
+                // list that is itself missing something.
+                if (!loaded.incomplete.empty()) {
+                    std::cerr
+                        << "Warning: the rpm database was not read "
+                           "completely (" << loaded.incomplete << ").\n"
+                        << "Anything reported as missing may be missing "
+                           "from the read, not from the machine.\n";
+                }
 
                 for (const Component& component : result.components) {
                     const auto count = component.requirements().size();

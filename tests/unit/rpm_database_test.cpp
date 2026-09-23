@@ -1,7 +1,12 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <string>
+
+#include <unistd.h>
 
 #include <nexus/system/rpm_database.hpp>
 
@@ -225,4 +230,103 @@ TEST(RpmDatabaseTest, IgnoresOrphanedDependencyLines) {
 
     ASSERT_EQ(result.components.size(), 1u);
     EXPECT_FALSE(provides(result.components[0], "stray"));
+}
+
+// Reading the real database, through a stand-in rpm.
+//
+// On 23 September doctor on a freshly installed laptop read 1054
+// packages where rpm lists 1103, and reported 305 requirements that
+// "nothing installed satisfies" -- libsystemd among them, on a
+// machine that could not have booted without it. It did not happen
+// again, so the cause was never seen. What made it dangerous was that
+// it could not be seen: rpm's exit status was never checked, its
+// errors went to /dev/null, and a short list was taken as the whole
+// machine. These tests are about that, not about the cause.
+
+namespace {
+
+class FakeRpm {
+public:
+    // A directory holding an executable `rpm`, put first on PATH for
+    // the life of the object.
+    explicit FakeRpm(const std::string& script) {
+        dir_ = std::filesystem::temp_directory_path() /
+               ("nexus-fake-rpm-" + std::to_string(::getpid()) + "-" +
+                std::to_string(counter_++));
+        std::filesystem::create_directories(dir_);
+
+        const auto path = dir_ / "rpm";
+        {
+            std::ofstream out(path);
+            out << "#!/bin/sh\n" << script;
+        }
+        std::filesystem::permissions(
+            path, std::filesystem::perms::owner_all);
+
+        const char* old = std::getenv("PATH");
+        oldPath_ = old == nullptr ? "" : old;
+        ::setenv("PATH", (dir_.string() + ":" + oldPath_).c_str(), 1);
+    }
+
+    ~FakeRpm() {
+        ::setenv("PATH", oldPath_.c_str(), 1);
+        std::error_code error;
+        std::filesystem::remove_all(dir_, error);
+    }
+
+private:
+    std::filesystem::path dir_;
+    std::string oldPath_;
+    static inline int counter_ = 0;
+};
+
+// The full query asks for PKG lines; the count asks for one '.' per
+// package. The fake answers each the way it is told to.
+const char* kTwoPackages =
+    "printf 'PKG\\ta\\t(none)\\t1\\t1\\tx86_64\\t10\\n"
+    "PKG\\tb\\t(none)\\t1\\t1\\tx86_64\\t10\\n'\n";
+
+}
+
+TEST(RpmDatabaseLoadTest, AConsistentReadIsNotFlagged) {
+    FakeRpm rpm(
+        "case \"$*\" in *PKG*) " + std::string(kTwoPackages) +
+        " ;; *) printf '.\\n.\\n' ;; esac\n");
+
+    const auto result = RpmDatabase().load();
+
+    EXPECT_TRUE(result.error.empty()) << result.error;
+    EXPECT_EQ(result.packagesRead, 2u);
+    EXPECT_TRUE(result.incomplete.empty()) << result.incomplete;
+}
+
+// rpm lists three; the full query yields two. Whatever the reason,
+// the list is not the machine, and must not be presented as it.
+TEST(RpmDatabaseLoadTest, FewerPackagesThanRpmListsIsIncomplete) {
+    FakeRpm rpm(
+        "case \"$*\" in *PKG*) " + std::string(kTwoPackages) +
+        " ;; *) printf '.\\n.\\n.\\n' ;; esac\n");
+
+    const auto result = RpmDatabase().load();
+
+    EXPECT_EQ(result.packagesRead, 2u);
+    EXPECT_NE(result.incomplete.find("2"), std::string::npos)
+        << result.incomplete;
+    EXPECT_NE(result.incomplete.find("3"), std::string::npos)
+        << result.incomplete;
+}
+
+// rpm printed some records, then failed. Its exit status and its own
+// words both have to reach the person reading the report.
+TEST(RpmDatabaseLoadTest, AFailingRpmIsReportedWithItsOwnMessage) {
+    FakeRpm rpm(
+        "case \"$*\" in *PKG*) " + std::string(kTwoPackages) +
+        " echo 'error: rpmdb: database is locked' >&2; exit 1 ;;"
+        " *) printf '.\\n.\\n' ;; esac\n");
+
+    const auto result = RpmDatabase().load();
+
+    EXPECT_FALSE(result.incomplete.empty());
+    EXPECT_NE(result.incomplete.find("database is locked"),
+              std::string::npos) << result.incomplete;
 }

@@ -124,6 +124,39 @@ Not every profile can produce an image. `server` and `security` add
 things to a machine rather than describing one, so generating an image
 from either alone gives a system with no way to log in.
 
+## Two kinds of update, and why they cost different amounts
+
+The Containerfile puts the packages below Nexus, so the two things an
+image contains change independently:
+
+| What changed | Build | What gets uploaded, and downloaded by every machine |
+|---|---|---|
+| Nexus: code, profiles, version | the usual `podman build ...` | a few small layers |
+| Fedora: security and bug fixes | `podman pull quay.io/fedora/fedora-bootc:44` first, then the usual build plus `--build-arg REFRESH="$(date +%Y%m%d)"` | the whole package layer, gigabytes |
+
+Measured on 23 September with a stub Fedora: changing only the version
+number used to rebuild the 500-package desktop install; now it
+rebuilds two layers and the package install stays cached.
+
+**The cache is why the second row has to be deliberate.** A cached
+package layer is exactly as old as the last time it was built. Without
+`REFRESH`, every image keeps the packages from the last refresh, and
+Fedora's fixes never reach anybody -- while every build reports
+success. So refresh on a schedule, not when you remember: at least
+every couple of weeks, and at once for anything serious.
+
+(Not `--pull=newer`: that exists only from podman 4, and Pop!_OS 22.04
+ships 3.4.)
+
+The first push after this change is a full one, because the package
+layer now sits on a different parent. Every one after it is not.
+
+**Later:** a refresh still re-sends the whole package layer even when
+three packages changed. `rpm-ostree compose build-chunked-oci`
+("rechunking") splits an image into many layers by package, so a
+machine downloads only what changed. Worth doing before there are
+users on slow connections; not needed for 0.1.
+
 ## Moving to a new Fedora
 
 The base is named once, as `FEDORA_VERSION` at the top of the

@@ -4,9 +4,12 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <sstream>
 #include <utility>
 #include <vector>
+
+#include <unistd.h>
 
 #include <nexus/constraint.hpp>
 #include <nexus/requirement.hpp>
@@ -293,11 +296,34 @@ RpmDatabaseResult RpmDatabase::load() const {
         command += " --root '" + root_ + "'";
     }
 
+    // rpm's own complaints go to a file rather than /dev/null, so that
+    // when it has trouble the person reading the report hears it in
+    // rpm's words. Not into stdout: two streams interleaved into one
+    // pipe can split a record in half.
+    char errorsPath[] = "/tmp/nexus-rpm-XXXXXX";
+    const int errorsFd = ::mkstemp(errorsPath);
+
+    if (errorsFd != -1) {
+        ::close(errorsFd);
+    }
+
+    const std::string base = command;
+
     command += " -qa --qf '";
     command += kFormat;
-    command += "' 2>/dev/null";
+    command += "' 2>";
+    command += errorsFd != -1 ? std::string(errorsPath) : "/dev/null";
 
     const ProcessResult ran = runCommand(command, false);
+
+    std::string firstError;
+
+    if (errorsFd != -1) {
+        std::ifstream errors(errorsPath);
+        std::getline(errors, firstError);
+        errors.close();
+        std::remove(errorsPath);
+    }
 
     if (!ran.ran) {
         result.error = "could not run rpm";
@@ -307,11 +333,57 @@ RpmDatabaseResult RpmDatabase::load() const {
     const std::string& output = ran.text;
 
     if (output.empty()) {
-        result.error = "rpm returned nothing";
+        result.error = firstError.empty()
+            ? "rpm returned nothing"
+            : "rpm returned nothing: " + firstError;
         return result;
     }
 
-    return parse(output);
+    result = parse(output);
+
+    // A second, cheap question to the same database: how many
+    // packages are there? One character per package, no dependency
+    // lists. If the two answers differ, the full read lost some --
+    // whatever the reason -- and the difference is the evidence.
+    const ProcessResult counted =
+        runCommand(base + " -qa --qf '.\\n' 2>/dev/null", false);
+
+    std::size_t listed = 0;
+
+    if (counted.ran && counted.ok) {
+        for (char character : counted.text) {
+            if (character == '\n') {
+                ++listed;
+            }
+        }
+    }
+
+    std::vector<std::string> reasons;
+
+    if (!ran.ok) {
+        reasons.push_back(
+            "rpm exited with status " + std::to_string(ran.exitCode));
+    }
+
+    if (!firstError.empty()) {
+        reasons.push_back("rpm said: " + firstError);
+    }
+
+    if (listed > 0 && listed != result.packagesRead) {
+        reasons.push_back(
+            "read " + std::to_string(result.packagesRead) + " of the " +
+            std::to_string(listed) + " packages rpm lists");
+    }
+
+    for (const std::string& reason : reasons) {
+        if (!result.incomplete.empty()) {
+            result.incomplete += "; ";
+        }
+
+        result.incomplete += reason;
+    }
+
+    return result;
 }
 
 }

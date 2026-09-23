@@ -33,6 +33,19 @@ struct RpmDatabaseResult {
     std::size_t booleanRequirements = 0;
 
     std::string error;
+
+    // Set when what was read cannot be trusted to be the whole
+    // database: rpm exited with an error, said something on stderr,
+    // or listed more packages than the full query yielded. The
+    // components are still here -- a partial list is worth showing --
+    // but nothing may be concluded from what is absent from it.
+    //
+    // On 23 September a laptop read 1054 of its 1103 packages and
+    // doctor reported 305 requirements nothing satisfied, libsystemd
+    // among them. rpm's exit status was never checked and its errors
+    // went to /dev/null, so a short list looked exactly like a
+    // complete one. This field is what makes the difference visible.
+    std::string incomplete;
 };
 
 // Reads the installed set from the rpm database.
