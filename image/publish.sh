@@ -105,6 +105,31 @@ fi
 echo "Version: ${VERSION}"
 echo
 
+# Logged in, as the user who is about to push?
+#
+# Asked rather than inferred from a failed push. podman keeps logins
+# in $XDG_RUNTIME_DIR, which is emptied at every shutdown, so a login
+# that worked yesterday is gone today -- and GHCR's answer to a push
+# nobody is logged in for is "403 (Forbidden)" while "requesting bear
+# token", which reads like a permissions problem rather than a missing
+# login. It was misdiagnosed twice (22 and 24 September): once as the
+# token's scope, once as a registry refusal. Both times the fix was to
+# log in again.
+#
+# Not `sudo podman login`: root's podman and yours keep separate
+# logins, and this script pushes as you.
+LOGIN_HOST="${REGISTRY%%/*}"
+
+if ! WHO="$(podman login --get-login "${LOGIN_HOST}" 2>/dev/null)"; then
+    echo "Not logged in to ${LOGIN_HOST} as $(id -un)." >&2
+    echo "Logins are forgotten at every shutdown. Log in, no sudo:" >&2
+    echo "    podman login ${LOGIN_HOST} -u DAVIDOSDAS-official" >&2
+    exit 1
+fi
+
+echo "Logged in to ${LOGIN_HOST} as ${WHO}."
+echo
+
 # An image built as localhost/ cannot be updated from: bootc records
 # where it was pulled from, and localhost is not somewhere a machine
 # can reach. So it is retagged before pushing, and the ISO has to be
@@ -117,8 +142,9 @@ echo
 
 if ! podman push "${REMOTE}"; then
     echo >&2
-    echo "Push failed. Usually that is a login:" >&2
-    echo "    podman login ${REGISTRY%%/*}" >&2
+    echo "Push failed; see podman's message above." >&2
+    echo "  401 or 403 while requesting a token: the login -- check with" >&2
+    echo "      podman login --get-login ${REGISTRY%%/*}" >&2
     exit 1
 fi
 

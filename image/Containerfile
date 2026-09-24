@@ -81,7 +81,12 @@ ARG FEDORA_VERSION=44
 # Passing --build-arg NEXUS_VERSION is still allowed, as a check: the
 # build fails if it disagrees with the source, rather than one of the
 # two quietly winning.
-ARG NEXUS_VERSION
+#
+# Empty rather than absent: with no default at all, podman prints
+# "missing NEXUS_VERSION build argument. Try adding --build-arg
+# NEXUS_VERSION=<VALUE>" three times on every build -- advice to bring
+# back the second source of truth this exists to remove.
+ARG NEXUS_VERSION=
 ARG NEXUS_PROFILE=minimalism
 
 # ------------------------------------------------------------- builder

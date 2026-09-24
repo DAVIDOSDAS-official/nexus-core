@@ -1,18 +1,23 @@
 # Nexus-CORE — where things stand
 
 Paste this at the start of a new session. Written for someone picking
-the project up cold. Supersedes `docs/HANDOFF.md` (stale, 190 lines),
-`NEXUS-STATE.md` (14 Sept) and `CAPABILITIES.md` (22 Sept).
+the project up cold. Supersedes every earlier HANDOFF, `NEXUS-STATE.md`
+and `CAPABILITIES.md`.
 
-**Repo:** `~/Documents/nexus-core` on the Pop!_OS laptop (Acer).
-**Test machine:** Asus laptop, 3.6 GB RAM, QCA9377 wifi, Secure Boot
-enforcing, TPM present, not encrypted.
-**Test VM:** qemu on the Acer, 4 GB. Disk passphrase `testtest123`.
-**Registry:** `ghcr.io/davidosdas-official/nexus-core` — account
-`DAVIDOSDAS-official`, logged in with podman. **Nothing pushed yet.**
+**Machines**
+- **Acer** (Pop!_OS 22.04, podman 3.4) — builds. Repo at
+  `~/Documents/nexus-core`.
+- **Asus** — the test machine. 3.6 GB RAM, QCA9377 wifi, Secure Boot
+  enforcing. Running Nexus **0.1.2** from GHCR, encrypted (LUKS), with
+  aircrack-ng, gamemode, gobuster, john, nmap and radare2 layered.
+- **VM** — qemu on the Acer, for anything that does not need hardware.
 
-Last session: 21–22 September 2026. Four patches applied on top of
-`86932f0`. **496 tests.**
+**Registry:** `ghcr.io/davidosdas-official/nexus-core-testing:minimalism`
+— **public**. The real name, `nexus-core`, has never been pushed; its
+first push is the actual release.
+
+**Last session:** 21–24 September 2026. Head `98603ab` plus patches 12
+and 13 (check `git status`; commit them if they are not). **505 tests.**
 
 ---
 
@@ -22,283 +27,229 @@ A capability-based decision layer for Linux package management: you
 ask for a *web browser*, not `firefox`; Nexus shows every way to get
 one with what each costs, verifies the plan against the real package
 manager, and hands the work over. **Nexus decides and explains; apt,
-dnf and rpm-ostree do the work.** Six sources, five metadata formats,
-twelve profiles. There is also a distribution built from it: a Fedora
-bootc image whose package list is generated from a profile.
-
-The tool is essentially done for 0.1. **What is left is mostly
-verification on the VM, not code** — plus a licence, artwork, and the
-website.
+dnf and rpm-ostree do the work.** There is also a distribution built
+from it: a Fedora 44 bootc image whose package list is generated from a
+profile, installed from an ISO, updated from GHCR.
 
 ---
 
-## The release bar
+## The release bar — all passed
 
-"Flawless" cannot be a ship criterion; nobody can prove it. This list
-can. When every line passes, 0.1.0 ships.
-
-| # | Test | Status |
+| # | Test | Result |
 |---|---|---|
-| 0 | Base is a supported Fedora (44), builds end to end | **in progress** — base stage fails at os-release; patch 4 fixes |
-| 1 | VM: clean install → encrypted boot → first boot → profiles → reboot | not run on 44 |
-| 2 | VM: wrong passphrase ×3, then right one → boots normally | not run — `tries=0` is inference until a real boot |
-| 3 | VM: first boot **offline** → honest message, no false "missing" | not run |
-| 4 | Publish 0.1.0 → ISO from the ghcr name → install → `bootc status` shows ghcr → push 0.1.1 → `bootc upgrade` → new version appears | not run |
-| 5 | `nexus --version` on the installed machine shows a real commit, not `unknown` or `-dirty` | not run |
-| 6 | Asus: Secure Boot enforcing and wifi still work on 44 | not run |
+| 0 | Supported base, builds end to end | Fedora 44. Built 22 Sept |
+| 1 | Install → encrypted boot → first boot → profiles → reboot | VM and Asus |
+| 2 | Wrong passphrase ×3, then right → boots | VM: asked a 4th time |
+| 3 | First boot offline → honest message | VM and Asus (Asus found a bug; fixed) |
+| 4 | Publish → install from GHCR ISO → upgrade | Asus: 0.1.0 → 0.1.1 → 0.1.2, layered packages kept |
+| 5 | Real version on the installed machine | Asus: `nexus 0.1.2 (98603ab)` |
+| 6 | Secure Boot and wifi on hardware | Asus: `SecureBoot enabled`, picker ran over wifi |
 
-Tests 1–5 on the VM; 6 on the Asus. Every one needs a machine, which
-is why none of them can be done by the test suite.
+**Not yet re-verified on hardware:** first boot now waits for Enter
+before the login screen (patch 8). It only runs once per install, so
+test it without reinstalling, network off:
+
+```bash
+nmcli networking off
+sudo NEXUS_SETUP_MARKER=/tmp/t /usr/bin/nexus-first-boot
+nmcli networking on
+```
+
+It should stop at "Press Enter to continue to the login screen."
 
 ---
 
-## Done on 21–22 September
+## What changed 21–24 September
 
-Four patches, all in the tree.
+**Base and image**
+- Fedora 42 (end of life 27 May 2026) → **44**, named once as
+  `ARG FEDORA_VERSION`.
+- `fedora-logos` → `generic-logos`, checked with `rpm -q` after the base,
+  after the desktop, and at the end. Fedora 44 bootc ships no
+  fedora-logos at all.
+- `PLATFORM_ID` copied only if present (Fedora 43 removed it).
+- `rd.luks.options=tries=0` in kargs.d — **verified**: a 4th prompt.
+- **Layer order: packages below Nexus.** A Nexus change used to rebuild
+  and re-upload the whole desktop. Now it rebuilds a few small layers —
+  verified in the 0.1.2 build: every `desktop-packages` step "Using
+  cache". The cost: packages refresh only on purpose:
+  ```bash
+  podman pull quay.io/fedora/fedora-bootc:44
+  podman build ... --build-arg REFRESH="$(date +%Y%m%d)"
+  ```
+  Do that every couple of weeks. It is a big push; it is also the only
+  way Fedora's security fixes reach anyone.
+- **One version.** `project(VERSION ...)` in `CMakeLists.txt`. The image
+  asks the binary (`image/identity.sh`); `publish.sh` asks the image.
+  `--build-arg NEXUS_VERSION` / `VERSION=` are only checks and stop the
+  build if they disagree.
 
-**Patch 1**
-- The rpm branch says when it reads no package metadata, as the apt
-  branch always did.
-- First boot fetches package lists before asking, and checks for
-  `repodata/repomd.xml` the same way `rpm_repo.cpp` does. If dnf
-  reports success but leaves nothing readable, it says so.
-- `rd.luks.options=tries=0` in `/usr/lib/bootc/kargs.d/`, so a
-  mistyped passphrase is asked again instead of giving up after three.
-- The `final` stage had **three** SELinux reinstalls, two of them after
-  `bootc container lint` — so the lint never saw the shipped layer.
-  Duplicated by a patch script that checked "done?" by looking for a
-  line already present. Now: no reinstall (nothing installs there),
-  lint last.
-- Installed hostname is `nexus`, not `fedora`.
-- `build-installer.sh` moves the previous `output/` aside and reclaims
-  root's copy of the image afterwards (`CLEAN=no` keeps it). That was
-  8–11 GB per build.
-- `showcase.profile`'s "unresolvable requirement" was
-  `gpu-vendor-amd | …`, copied from gaming where it is the condition
-  for a `Prefers-When`. Nothing in showcase read it, and a GPU is not
-  installable. Removed.
-- **Parser bug.** `control_file.cpp` had no comment handling. Comments
-  survived by accident — a line with no colon is dropped — but a
-  comment *with* a colon is parsed as a field and ends the field above
-  it, so a note inside a `Requires:` list silently drops everything
-  after it. Nine comments already contain a colon; none currently sits
-  above a continuation line. Fixed, with two tests that fail without
-  the fix (checked by disabling it) and one guarding against the fix
-  over-reaching.
+**Installer and first boot**
+- Hostname `nexus`. Keymap line made explicit — **did not fix** the empty
+  `vconsole.keymap=` (see open items).
+- First boot fetches package lists before asking; says so honestly when
+  it cannot; **waits for Enter** before the login screen takes the
+  console.
 
-**Patch 2**
-- `publish.sh` defaults to `ghcr.io/davidosdas-official` and
-  lowercases the registry, because image references must be lowercase
-  and the account is not.
-- It used to tell you to rebuild before building the ISO. Unnecessary:
-  the tag already exists locally.
-- It now says the package is **private until made public**, and prints
-  the check that decides whether any of it worked:
-  `sudo bootc status | grep -i image` on the installed machine.
+**Nexus itself**
+- rpm branch says when it reads no metadata.
+- Control-file parser skips `#` comments. A comment containing a colon
+  used to be parsed as a field and could swallow the rest of a
+  `Requires:` list.
+- `showcase.profile` no longer requires a GPU vendor (it was copied
+  from gaming, where it is a condition, not a requirement).
+- `doctor` Encryption: judges a composefs `/` by `/sysroot`. It said
+  "not encrypted" on a LUKS machine. Swap files judged by the
+  filesystem they live on.
+- `doctor` Updates: reads status without root (rpm-ostree), and names
+  **`rpm-ostree upgrade`** on machines with layered packages —
+  `bootc upgrade` refuses those.
+- `nexus guide`: rpm-ostree on image-based systems, dnf elsewhere.
+- rpm reads check themselves: exit status, rpm's own errors, and a
+  second count. On a mismatch, doctor warns and marks Dependencies
+  **not judged** instead of reporting false "missing".
 
-**Patch 3**
-- **Fedora 42 → 44.** 42 reached end of life on 27 May 2026. Declared
-  once as `ARG FEDORA_VERSION=44` before the first `FROM`.
-- `fedora-logos` → `generic-logos` (not built for 42 — another reason
-  to move). Ends with `rpm -q`, failing the build if Fedora's logos
-  survived. **Verified on 22 Sept:** the F44 bootc image does not ship
-  fedora-logos at all; generic-logos installed cleanly.
-- `build.sh` now passes `NEXUS_COMMIT`, appending `-dirty` for a
-  modified tree. It never passed it, so every image it built reported
-  `unknown`.
-- `build-installer.sh` writes `output/nexus-build.txt`: image and
-  builder refs **and digests**, nexus version, date. The first half of
-  pinning bootc-image-builder.
-
-**Patch 4**
-- Fedora 43 removed `PLATFORM_ID` from os-release. Under `set -u` the
-  os-release step died on 44. Now copied only if the base has one.
-- The logos check ran only in the base stage — which proves nothing
-  about the desktop's hundreds of packages. Checked again at the end
-  of `desktop` and `final`, naming whatever required it.
+**Tooling**
+- `build-installer.sh`: moves old `output/` aside, reclaims disk,
+  writes `output/nexus-build.txt` (image and builder digests).
+- `build.sh` passes the commit, `-dirty` when modified.
 - `generate-lists.sh` refuses an image whose Fedora differs from the
-  Containerfile's. See the next section for why.
+  Containerfile's.
+- `publish.sh`: defaults to the account, lowercases it, reads the
+  version from the image, **checks the login before pushing**.
 
 ---
 
-## The recurring failure, worth knowing
+## Things learned the hard way
 
-Nearly every bug has the same shape: **something reported success
-about its own narrow view while the wider claim was false.**
+- **podman logins vanish at shutdown** (kept in `/run`). Log in again
+  after every reboot, **as yourself, no sudo**:
+  `podman login ghcr.io -u DAVIDOSDAS-official`. Every 403 so far was
+  this — misdiagnosed twice, once as the token, once as the registry.
+- **Don't delete `~/.local/share/containers/cache/blob-info-cache-v1.*`.**
+  It is how podman knows what GHCR already has. Deleting it turned a
+  small push into a full re-upload.
+- **Push with the VPN off** and heavy apps closed. A dropped tunnel
+  killed a 2 GB upload mid-layer; running everything at once froze the
+  Acer (REISUB).
+- **`git apply`, never `patch`.** `patch` asks questions and reads the
+  answers from whatever you pasted next.
+- **One command at a time when the first can fail.** A failed build
+  followed by pasted commands produced "Fedora 44" lists from Fedora 42.
+- **The package is separate from the repo.** Package public, repo
+  private is fine: the image carries the binary, not the source.
+- **A VM is always online.** The offline first-boot bug only showed on
+  hardware. Use the VM to iterate, hardware before release.
+- **`bootc upgrade` refuses machines with layered packages.** Use
+  `sudo rpm-ostree upgrade`.
 
-This session added three:
-
-- **`generate-lists.sh` reported "nothing changed" about a release it
-  never read.** On 22 Sept the F44 base build failed; the script, run
-  straight after, used the previous F42 image, loaded the same 82,210
-  packages, and produced a clean diff. Fixed in patch 4.
-- **The logos check looked at one stage and would have read as passed
-  for the image.** Fixed in patch 4.
-- **Four of five tests first written for the parser bug passed without
-  the fix.** They were testing nothing. A test that cannot fail reads
-  like coverage. Always disable the fix and watch the test fail.
-
-From before: `history` said "no changes recorded"; `--apply` reported
-success into a `usr-overlay`; `scan` reported `Loaded 0`; the version
-string went stale; first boot reported `SUCCESS` after asking nobody.
-
-Almost none were found by a failing test. They were found by computing
-a number, finding it implausible, and comparing against a native tool
-— or by putting it on hardware.
+The recurring bug shape, still: **something reported success about
+its own narrow view while the wider claim was false.** This week:
+doctor's encryption check, its update advice, `generate-lists.sh`
+reading a stale image, the logos check that looked at one stage, three
+places holding one version number, a first-boot message nobody could
+see, and tests that could not fail. Always disable a fix and watch its
+test fail.
 
 ---
 
-## What is left, in order
+## Open, in order
 
-**Engineering**
-1. Commit patches 1–4 **before** building anything that matters. An
-   image built from an uncommitted tree with
-   `NEXUS_COMMIT=$(git rev-parse --short HEAD)` claims to be a clean
-   `86932f0` while containing none of it.
-2. F44 base builds → `generate-lists.sh` → **read the diff** → desktop
-   image → ISO.
-3. Release-bar tests 1–6.
-4. Pin bootc-image-builder by digest (the manifest now records it).
-   The project was archived 18 June 2026 and merged into `image-builder
-   --bootc-ref`; plan the migration.
+**Before the first public release (0.1.0 under `nexus-core`)**
+1. **`LICENSE` is 0 bytes.** Nobody can legally redistribute anything.
+   The choice also decides what "the last release is paid" can mean:
+   GPL parts of the system stay freely redistributable; what you
+   control is your own code and the Nexus-CORE name and mark.
+2. **Steam.** The gaming profile installs only `gamemode` on the
+   shipped image: `steam` is in RPM Fusion, which only the unshipped
+   gaming stage enables. Decide: RPM Fusion by default (a third-party
+   repo on every machine) or Steam as a Flatpak (Nexus already reads
+   Flatpak).
+3. **Website** — rewrite after the above, so it describes what ships.
+   Current page is wrong in places (unsigned kernel, no installer, test
+   count, "the terminal above", a stray `</section>`, two footers).
+4. **Publish under the real name:** `./image/publish.sh` (no `NAME=`),
+   make `nexus-core` public, build the ISO from
+   `ghcr.io/davidosdas-official/nexus-core:minimalism`.
 
-**Before 0.1 ships**
-- **`LICENSE` is 0 bytes.** Nobody can legally redistribute anything.
-  The choice also decides what "the last release is paid" can mean:
-  binaries can be sold, but GPL parts stay redistributable by anyone.
-  What you control is your own code and the Nexus-CORE name and mark.
-- Repo public, or at least the website's "read the source" link real.
-- Website rewrite — after the release bar passes, so it describes what
-  ships. Current page is wrong in several places (says the kernel is
-  unsigned, no installer, ~480 tests, "the terminal above"; has a
-  stray `</section>`, two footers, `<main>` outside `.container`).
+**Before a paid release**
+- **Image signing.** Machines show `ostree-unverified-registry:` — they
+  check where an update came from, not who built it. cosign/sigstore
+  plus a policy on the machine.
+- **Installer artwork** is Fedora's (comes from bootc-image-builder,
+  not this image). `ID=fedora` stays for tooling — a legal question,
+  not a technical one.
+- **bootc-image-builder** is archived (18 June 2026): pin its digest
+  (recorded in `nexus-build.txt`), plan `image-builder --bootc-ref`.
 
-**Polish**
-- Artwork into the image (next section).
-- The installer still shows Fedora's logo — it comes from anaconda
-  branding inside bootc-image-builder, not from this image.
-- Warn when someone creates a user called `nexus`.
-- Verify no plaintext swap on a fresh install: `swapon --show`.
-- Delete the 17 empty junk files at the root, the five empty
-  directories (`gui/ installer/ recovery/ package/ tools/`), and the
+**Artwork**
+- **Logo: the white node-graph N** (four corner nodes, one centre) —
+  already the SVG on the website; survives 16 px.
+- Brand colour is orange (`ANSI_COLOR` 249;115;22 = `#f97316`).
+- Wallpapers per profile are 3840×2160 now. Two fixes left: they draw a
+  different (zigzag) N — composite the real mark instead; the security
+  one still has garbled text ("VERIFIEB").
+- Choosing a profile changes nothing you can see. Per-profile
+  wallpapers, set by first boot in `/etc`, would fix that. The mark
+  also replaces generic-logos' files (boot splash, login).
+
+**Smaller**
+- Empty `vconsole.keymap=` on installed machines; the kickstart change
+  did not fix it. Harmless for US layouts.
+- No zram on the image — add `zram-generator-defaults` for small
+  machines.
+- Once, on the Asus, doctor read 1054 of 1103 packages. Never
+  reproduced; doctor now says so itself if it happens.
+- `runCommand` holds a whole decompressed repository in memory (1.3 GB
+  of the 2.8 GB peak). Needs a streaming XML reader.
+- Rechunking (`rpm-ostree compose build-chunked-oci`) so a Fedora
+  refresh downloads only changed packages.
+- Clean up: 17 empty junk files at the root, five empty directories,
   stale `docs/HANDOFF.md`.
 
-**Known and not blocking 0.1**
-- `runCommand` still holds a whole decompressed repository (1.3 GB of
-  the 2.8 GB peak heap). Needs `XmlReader` to consume a stream.
-- No conditional dependencies (rpm `(a if b)` is counted as a gap).
-- Changes are recorded, not atomic across sources.
-
 ---
 
-## Artwork
-
-Eleven images supplied on 22 Sept. Decisions so far:
-
-- **The mark is the white node-graph N** — four corner nodes, one
-  centre node. It is already the SVG on the website, it *is* the idea
-  (capabilities as nodes, what connects them as edges), and it survives
-  16 px and one colour. The others (Tux-and-atom star, orbit N,
-  wireframe N, low-poly N) are not the mark.
-- **The brand colour is already orange.** `ANSI_COLOR` in os-release
-  is `249;115;22` = `#f97316`, the website's accent. Blue-led images
-  are off-brand against both.
-- Proposed wallpapers per profile: gaming → orange carbon; security →
-  green circuit; school → light "friendly core"; minimal/minimalism →
-  flat grey with the small mark; showcase → silver carbon.
-
-Problems to fix before any of it ships:
-- **All wallpapers are 1376×768.** Blurry on 1080p, unusable on 4K.
-  Need 3840×2160 sources.
-- **The wallpapers draw a different N** from the chosen mark. Composite
-  the real SVG onto plain backgrounds instead of an AI-drawn mark.
-- **The security wallpaper has garbled AI text** ("SDC_KEPNEL.LDR",
-  "INTEGRITIT", hex noise) — worst on the one profile whose pitch is
-  honesty.
-
-How it gets in: the profile is chosen at first boot, after the image
-is built. So every profile's wallpaper ships in the image (they are
-small), and first boot writes the default for the chosen one into
-`/etc` (writable on bootc). The mark replaces generic-logos' files for
-Plymouth, SDDM and "about this system".
-
----
-
-## What is done and should not be re-litigated
-
-- **Secure Boot works.** Fedora's kernel, Fedora's signature.
-- **Wifi needs three things:** `network-manager`,
-  `network-manager-wifi`, `wifi-supplicant`.
-- **`base` is composed into every image**, and is the floor.
-- **rpm-ostree layering works** once the empty `extra_varrun` SELinux
-  module is removed at first boot. `--apply` reports `staged`.
-- **Anaconda asks for a user**; no account in the ISO. Encryption on by
-  default, never forced (Decision 15).
-- **`ID` and `VERSION_ID` stay Fedora's** — tooling reads them.
-- **Memory:** `scan --with-available` fits 2.3 GB.
-- **systemd ordering was never the problem** for first boot.
-- **The first-boot picker** discards keys pressed at the passphrase
-  prompt and asks twice before accepting a skip.
-
----
-
-## Useful commands
+## Commands
 
 ```bash
 cd ~/Documents/nexus-core
-cmake --build build && ctest --test-dir build       # 496
+cmake --build build && ctest --test-dir build        # 505
 ./build/cli/nexus --version
 ```
 
-**Applying a patch.** Use `git apply`, never `patch`: `patch` asks
-questions and reads its answers from whatever you pasted next.
-
+**Release a Nexus change** (small push):
 ```bash
-git apply --check ~/Downloads/X.patch && git apply ~/Downloads/X.patch
-```
-
-Silence means it worked. Already applied → `--check` fails, nothing
-happens.
-
-**Paste one command at a time** when the first can fail. A failed
-build followed by a pasted `generate-lists.sh` is how the F42 lists
-passed for F44 lists.
-
-**After changing the Fedora version:**
-
-```bash
-podman build --target base \
-    --build-arg NEXUS_COMMIT="$(git rev-parse --short HEAD)" \
-    -t localhost/nexus-os:base -f image/Containerfile .
-# check it ended with a COMMIT line, not "Error:"
-./image/generate-lists.sh      # refuses a stale image now
-git diff image/generated/
-```
-
-**Build the desktop image and ISO:**
-
-```bash
-podman build --target desktop \
-    --build-arg NEXUS_PROFILE=minimalism \
+# bump project(VERSION ...) in CMakeLists.txt, commit, then:
+podman build --target desktop --build-arg NEXUS_PROFILE=minimalism \
     --build-arg NEXUS_COMMIT="$(git rev-parse --short HEAD)" \
     -t localhost/nexus-os:minimalism -f image/Containerfile .
+podman login ghcr.io -u DAVIDOSDAS-official          # after any reboot
+NAME=nexus-core-testing ./image/publish.sh
+```
 
-PROFILE=minimalism ./image/build-installer.sh   # wants 20 GB free
+**Refresh Fedora** (big push, every couple of weeks): same, after
+`podman pull quay.io/fedora/fedora-bootc:44`, with
+`--build-arg REFRESH="$(date +%Y%m%d)"`.
+
+**After changing the Fedora version:** build `--target base`, run
+`./image/generate-lists.sh`, read `git diff image/generated/`.
+
+**ISO:**
+```bash
+IMAGE=ghcr.io/davidosdas-official/nexus-core-testing:minimalism \
+    PROFILE=minimalism ./image/build-installer.sh
 cat output/nexus-build.txt
 ```
 
-**Publish, then build the ISO that can update:**
-
+**On an installed machine:**
 ```bash
-./image/publish.sh
-# then make the package public on GitHub, and check logged out:
-podman logout ghcr.io && podman pull ghcr.io/davidosdas-official/nexus-core:minimalism
-IMAGE=ghcr.io/davidosdas-official/nexus-core:minimalism PROFILE=minimalism \
-    ./image/build-installer.sh
+sudo rpm-ostree upgrade && systemctl reboot
+grep PRETTY /etc/os-release; nexus --version; nexus doctor
+sudo bootc status | grep -i image      # must say ghcr, not localhost
+cat /proc/cmdline                      # rd.luks.options=tries=0
 ```
 
-**Test in a VM:**
-
+**VM:**
 ```bash
 rm -f /tmp/nexus-test.qcow2 && qemu-img create -f qcow2 /tmp/nexus-test.qcow2 30G
 qemu-system-x86_64 -m 4096 -smp 4 -enable-kvm -bios /usr/share/ovmf/OVMF.fd \
@@ -306,30 +257,16 @@ qemu-system-x86_64 -m 4096 -smp 4 -enable-kvm -bios /usr/share/ovmf/OVMF.fd \
     -cdrom output/bootiso/install.iso -boot d
 ```
 
-Drop `-cdrom` and `-boot d` to boot the installed disk. On the
-installed machine — **not on the Acer**, which has no bootc:
-
+**Applying a patch:**
 ```bash
-sudo bootc status | grep -i image     # must say ghcr, not localhost
-cat /proc/cmdline                     # must contain rd.luks.options=tries=0
-nexus --version                       # a real commit
+git apply --check ~/Downloads/X.patch && git apply ~/Downloads/X.patch
 ```
-
-**Profile memory** and **check a small machine**: unchanged, see git
-history of this file.
-
-**Writing an ISO to a USB stick** — plug it in first, check `lsblk`;
-`/dev/sdX` is a placeholder:
-
-```bash
-sudo umount /dev/sda1
-sudo dd if=output/bootiso/install.iso of=/dev/sda bs=4M status=progress oflag=sync
-sync
-```
+Same name on both sides. Silence means it worked; "does not apply"
+on a second run means it was already in.
 
 ## Key documents
 
 `README.md`, `docs/overview.md`, `docs/vision.md`,
 `docs/specifications/00-decisions.md` (15 decisions),
-`image/README.md` (now documents the Fedora-bump order and the logos
-swap), `image/first-boot/README.md`.
+`image/README.md` (layer order, refresh rule, Fedora bump order, logos,
+update commands), `image/first-boot/README.md`.
