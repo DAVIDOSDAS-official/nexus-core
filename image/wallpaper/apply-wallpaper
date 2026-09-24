@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+#
+# Put the Nexus wallpaper on this user's desktop, once.
+#
+# Run at login by /etc/xdg/autostart/nexus-wallpaper.desktop. Which
+# wallpaper:
+#
+#   1. /etc/nexus/wallpaper -- a profile name, written by first boot
+#      for the first add-on somebody chose there;
+#   2. otherwise the image's own profile (VARIANT_ID in os-release);
+#   3. otherwise base, which every image has.
+#
+# Once per choice, not once per login. What was applied is recorded in
+# ~/.config/nexus/wallpaper-applied, and while /etc/nexus/wallpaper
+# still names the same thing this does nothing -- so a wallpaper the
+# person picks themselves stays. Only a new choice in first boot
+# changes it again.
+#
+# Never fails a login: every problem ends in exit 0.
+
+set -u
+
+STATE="${XDG_CONFIG_HOME:-${HOME}/.config}/nexus/wallpaper-applied"
+WALLPAPERS=/usr/share/wallpapers
+
+wanted=""
+
+if [ -r /etc/nexus/wallpaper ]; then
+    # A name, and only a name: it becomes part of a path.
+    wanted="$(head -n 1 /etc/nexus/wallpaper | tr -cd 'a-z0-9-')"
+fi
+
+if [ -z "${wanted}" ] && [ -r /etc/os-release ]; then
+    wanted="$(. /etc/os-release && printf '%s' "${VARIANT_ID:-}" \
+        | tr -cd 'a-z0-9-')"
+fi
+
+if [ -z "${wanted}" ] || [ ! -d "${WALLPAPERS}/nexus-${wanted}" ]; then
+    wanted=base
+fi
+
+package="${WALLPAPERS}/nexus-${wanted}"
+
+if [ ! -d "${package}" ]; then
+    exit 0
+fi
+
+if [ "$(cat "${STATE}" 2>/dev/null)" = "${wanted}" ]; then
+    exit 0
+fi
+
+if ! command -v plasma-apply-wallpaperimage > /dev/null 2>&1; then
+    exit 0
+fi
+
+image=""
+for candidate in "${package}"/contents/images/*.jpg; do
+    [ -f "${candidate}" ] && image="${candidate}" && break
+done
+
+if [ -z "${image}" ]; then
+    exit 0
+fi
+
+# The desktop may not be up yet when autostart runs this, and
+# plasma-apply-wallpaperimage fails until it is. So it is retried for
+# a minute, and nothing is recorded unless it worked -- a wallpaper
+# that failed to apply is tried again at the next login rather than
+# marked done.
+for _ in $(seq 1 30); do
+    if plasma-apply-wallpaperimage "${image}" > /dev/null 2>&1; then
+        mkdir -p "$(dirname "${STATE}")"
+        printf '%s\n' "${wanted}" > "${STATE}"
+        exit 0
+    fi
+    sleep 2
+done
+
+exit 0

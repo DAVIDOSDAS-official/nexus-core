@@ -3208,6 +3208,15 @@ int commandSetup(
         std::cout << "What would you like this machine to be?\n\n";
 
         for (const nexus::Profile& profile : loaded.profiles) {
+            // base is not a choice. It is composed into every image
+            // (see commandImage), so it is always "already satisfied"
+            // and picking it adds nothing -- yet it was listed like
+            // every other profile, and read as one of twelve things
+            // this machine could be.
+            if (profile.name == "base") {
+                continue;
+            }
+
             nexus::Profile local = profile;
 
             if (!architecture.empty()) {

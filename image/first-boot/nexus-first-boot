@@ -331,6 +331,23 @@ echo
 "${NEXUS}" setup "${CHOICE}" --with-available --apply --yes
 STATUS=$?
 
+# The wallpaper follows the choice: the first add-on named that has
+# one. Written whatever the setup's result -- it records what was
+# chosen, and a partly failed install is still that choice. Applied at
+# the next login by /usr/libexec/nexus/apply-wallpaper; see there.
+#
+# Only names that are wallpapers get this far, and a name is all that
+# is written: it becomes part of a path.
+for name in ${CHOICE//,/ }; do
+    name="$(printf '%s' "${name}" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
+
+    if [ -n "${name}" ] && [ -d "/usr/share/wallpapers/nexus-${name}" ]; then
+        mkdir -p /etc/nexus
+        printf '%s\n' "${name}" > /etc/nexus/wallpaper
+        break
+    fi
+done
+
 echo
 
 if [ "${STATUS}" -eq 0 ]; then

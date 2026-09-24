@@ -121,6 +121,24 @@ RUN cmake -S /src -B /build \
         -DNEXUS_COMMIT_OVERRIDE="${NEXUS_COMMIT}" \
     && cmake --build /build --parallel
 
+# ------------------------------------------------------------- artwork
+# The wallpapers, converted once. Its own stage so the converter and
+# its library never reach the shipped image, and so a changed picture
+# rebuilds only this and the few layers that copy from it.
+#
+# The originals are PNG in image/artwork/wallpapers, one per profile,
+# named after it. image/wallpaper/make-wallpapers.py says what it
+# refuses and why.
+
+FROM quay.io/fedora/fedora-bootc:${FEDORA_VERSION} AS artwork
+
+RUN dnf install -y python3-pillow && dnf clean all
+
+COPY image/wallpaper/make-wallpapers.py /usr/local/bin/make-wallpapers
+COPY image/artwork/wallpapers /artwork/wallpapers
+
+RUN python3 /usr/local/bin/make-wallpapers /artwork/wallpapers /wallpapers
+
 # ------------------------------------------------------------------- os
 # Fedora plus the things that almost never change. Not a target:
 # nothing ships from here directly.
@@ -342,12 +360,56 @@ RUN if rpm -q fedora-logos > /dev/null 2>&1; then \
         exit 1; \
     fi
 
+# The wallpapers: one per profile, all of them in the picker.
+#
+# Below the packages and above Nexus, because a picture changes less
+# often than the tool and far more often than Fedora. A new wallpaper
+# rebuilds from here down -- a few megabytes -- and leaves the
+# packages above cached.
+#
+# Which one a person sees is decided at their login, by
+# apply-wallpaper: the add-on they chose at first boot, else this
+# image's profile, else base. Plasma's own default cannot do that. It
+# is one setting for the whole image, fixed when the image is built,
+# and the whole point is that choosing gaming should look like it.
+#
+# The login screen gets base. It is shown before anybody has logged
+# in, so there is no one's choice to follow, and /usr cannot be
+# changed on a running machine to follow it anyway.
+COPY --from=artwork /wallpapers/ /usr/share/wallpapers/
+COPY image/wallpaper/apply-wallpaper /usr/libexec/nexus/apply-wallpaper
+COPY image/wallpaper/nexus-wallpaper.desktop \
+     /etc/xdg/autostart/nexus-wallpaper.desktop
+
+RUN set -eu; \
+    chmod 0755 /usr/libexec/nexus/apply-wallpaper; \
+    login="$(ls /usr/share/wallpapers/nexus-base/contents/images/*.jpg | head -n 1)"; \
+    test -f "${login}"; \
+    if ! command -v plasma-apply-wallpaperimage > /dev/null; then \
+        echo "No Plasma in this profile; wallpapers are in the image"; \
+        echo "but nothing will apply them at login."; \
+    fi; \
+    themed=0; \
+    for theme in /usr/share/sddm/themes/*/; do \
+        if grep -q '^background=' "${theme}theme.conf" 2>/dev/null; then \
+            printf '[General]\nbackground=%s\n' "${login}" \
+                > "${theme}theme.conf.user"; \
+            echo "Login background: ${theme}"; \
+            themed=1; \
+        fi; \
+    done; \
+    if [ "${themed}" -eq 0 ]; then \
+        echo "No SDDM theme with a background setting; the login"; \
+        echo "screen keeps its own."; \
+    fi
+
 # ---------------------------------------------------------------- Nexus
 # The same few layers end both `base` and `desktop` below: the binary,
 # first boot, profiles, and what the system says it is. They are
 # written out twice because a Containerfile has no way to include one
 # block in two stages; image/identity.sh holds the logic, so what is
-# repeated is only which files go where. Keep the two copies the same.
+# repeated is only which files go where. Keep the two copies the same,
+# except the profile list, which desktop narrows on purpose.
 #
 # The first-boot unit is in every target rather than only the last
 # one: a --target build stops wherever it is told, and the unit once
@@ -400,7 +462,29 @@ COPY --from=builder /build/cli/nexus /usr/bin/nexus
 COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
 COPY image/first-boot/nexus-first-boot.service \
      /usr/lib/systemd/system/nexus-first-boot.service
-COPY components/profiles /usr/share/nexus/profiles
+# Only what can be added to this desktop -- the one place this block
+# differs from base's copy, on purpose.
+#
+# minimal, tiling and server are not additions. Each is a different
+# machine: choosing server here gave a KDE desktop with an SSH server
+# on it, and minimal or tiling gave KDE plus a second desktop, the
+# opposite of what either asks for. First boot lists whatever is in
+# this directory, so leaving them out is what takes them off the
+# list. They come back as images of their own once they are done.
+#
+# A profile added to components/profiles is not offered here until it
+# is added to this list. That is deliberate: it is the moment to ask
+# whether it belongs on this desktop.
+COPY components/profiles/base.profile \
+     components/profiles/basic.profile \
+     components/profiles/development.profile \
+     components/profiles/gaming.profile \
+     components/profiles/minimalism.profile \
+     components/profiles/school.profile \
+     components/profiles/security.profile \
+     components/profiles/showcase.profile \
+     components/profiles/vpn.profile \
+     /usr/share/nexus/profiles/
 COPY components/aliases /usr/share/nexus/aliases
 COPY image/identity.sh /usr/libexec/nexus/identity
 
