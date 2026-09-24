@@ -214,3 +214,13 @@ docs/        specifications, decisions, and where this is going
 `docs/specifications/00-decisions.md` is the one worth reading: the
 reasoning that is not recoverable from the code. `docs/overview.md`
 describes the project in prose; `docs/vision.md` is where it is going.
+
+## Licence
+
+The code is under the GNU General Public License, version 3: anyone
+may change it and share it, and anyone who shares a changed version
+must publish its source under the same licence. See `LICENSE`.
+
+The name Nexus-CORE and the node-graph N logo are trademarks and are
+not covered by the GPL. A changed version has to be renamed. See
+`TRADEMARKS.md`.

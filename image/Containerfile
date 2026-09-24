@@ -181,6 +181,34 @@ RUN set -eu; \
     rpm -q generic-logos; \
     dnf clean all
 
+# RPM Fusion, enabled on every image.
+#
+# Fedora ships only what it can legally and freely ship, so Steam, the
+# NVIDIA driver and full video codecs live in RPM Fusion, a third-party
+# repository run since 2008 alongside Fedora and pointed to by Fedora's
+# own documentation. Without it the gaming profile installed gamemode
+# and nothing else on the Asus on 23 September: `steam` resolved to
+# nothing, and so does gaming's NVIDIA preference, nvidia-driver-libs.
+#
+# Only the repositories are enabled here -- two small packages that
+# carry the .repo files and signing keys. Nothing from RPM Fusion is
+# installed into the image itself; it arrives when somebody chooses a
+# profile that asks for it, and Nexus names the source when it does.
+#
+# Chosen over Flatpak Steam (24 September): a native package integrates
+# with controllers, drives and the rest of the system without a sandbox
+# in the way, and updates with everything else.
+#
+# Known limit, not fixed by this: the NVIDIA driver is a kernel module.
+# On an image-based system it cannot be built on the machine at update
+# time the way akmods does on ordinary Fedora, and with Secure Boot on
+# an unsigned module will not load. NVIDIA needs a build-time answer.
+RUN dnf install -y \
+        "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
+        "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm" \
+    && rpm -q rpmfusion-free-release rpmfusion-nonfree-release \
+    && dnf clean all
+
 # Let somebody mistype the disk passphrase.
 #
 # systemd-cryptsetup gives up after three attempts. On a machine
