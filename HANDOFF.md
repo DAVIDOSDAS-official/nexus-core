@@ -8,16 +8,19 @@ and `CAPABILITIES.md`.
 - **Acer** (Pop!_OS 22.04, podman 3.4) — builds. Repo at
   `~/Documents/nexus-core`.
 - **Asus** — the test machine. 3.6 GB RAM, QCA9377 wifi, Secure Boot
-  enforcing. Running Nexus **0.1.2** from GHCR, encrypted (LUKS), with
-  aircrack-ng, gamemode, gobuster, john, nmap and radare2 layered.
+  enforcing. Upgraded to Nexus **0.1.3** from GHCR (confirm),
+  encrypted (LUKS), with aircrack-ng, gamemode, gobuster, john, nmap
+  and radare2 layered (plus whatever `nexus setup gaming` added on 24
+  Sept — see Steam below).
+- **No NVIDIA hardware anywhere.** Matters for the NVIDIA plan.
 - **VM** — qemu on the Acer, for anything that does not need hardware.
 
 **Registry:** `ghcr.io/davidosdas-official/nexus-core-testing:minimalism`
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–24 September 2026. Head `98603ab` plus patches 12
-and 13 (check `git status`; commit them if they are not). **505 tests.**
+**Last session:** 21–24 September 2026. Head `5581cea` (0.1.3,
+patches 1–16). Patch 17 (0.1.4) delivered, not yet built. **505 tests.**
 
 ---
 
@@ -45,17 +48,11 @@ profile, installed from an ISO, updated from GHCR.
 | 5 | Real version on the installed machine | Asus: `nexus 0.1.2 (98603ab)` |
 | 6 | Secure Boot and wifi on hardware | Asus: `SecureBoot enabled`, picker ran over wifi |
 
-**Not yet re-verified on hardware:** first boot now waits for Enter
-before the login screen (patch 8). It only runs once per install, so
-test it without reinstalling, network off:
+Also verified on the Asus, 24 Sept: first boot waits for Enter before
+the login screen (patch 8), run by hand with the network off.
 
-```bash
-nmcli networking off
-sudo NEXUS_SETUP_MARKER=/tmp/t /usr/bin/nexus-first-boot
-nmcli networking on
-```
-
-It should stop at "Press Enter to continue to the login screen."
+That bar was "does it work end to end". The bar for the first public
+release is below, under **Open**.
 
 ---
 
@@ -120,6 +117,36 @@ It should stop at "Press Enter to continue to the login screen."
 
 ---
 
+**24 September, evening (patches 14–17)**
+- **RPM Fusion** (free + nonfree) enabled in the `os` stage — the
+  release packages only, nothing from it installed by default. For
+  Steam, codecs, and later NVIDIA.
+- **Licence:** GPL-3.0 in `LICENSE` (copied from Pop!_OS's
+  `/usr/share/common-licenses/GPL-3` — gnu.org reset the connection).
+  **`TRADEMARKS.md`:** the name and the node-graph N are not GPL; a
+  changed version must be renamed; unmodified copies may be shared.
+- **Wallpapers:** `image/artwork/wallpapers/<profile>.png`, 12 files,
+  3840×2160 (`base.png` = `minimal.png` on purpose). An `artwork` stage
+  converts them to JPEG (42 MB → 9 MB) as Plasma packages
+  `/usr/share/wallpapers/nexus-<profile>/`. At login,
+  `/usr/libexec/nexus/apply-wallpaper` (autostart) applies: the first
+  add-on chosen at first boot (`/etc/nexus/wallpaper`) → else the
+  image's profile (`VARIANT_ID`) → else base. Once per choice; a
+  wallpaper the user picks stays.
+- **First boot offers 8, not 12:** basic, development, gaming,
+  minimalism, school, security, showcase, vpn. minimal, tiling and
+  server are left out of the desktop image's profile directory (they
+  are different machines, not add-ons); `base` is hidden from
+  `nexus setup` (it is in every image anyway).
+- **Patch 17 (0.1.4, not built yet):** `sddm-breeze` + login theme
+  (the build said "No SDDM theme" — the login screen was SDDM's bare
+  fallback), Plymouth `bgrt` splash with a graphical passphrase box,
+  initramfs rebuilt with `dracut --no-hostonly --add "ostree plymouth"`
+  and checked for plymouthd, systemd-cryptsetup and
+  ostree-prepare-root before it is kept; `rhgb quiet` via kargs.d.
+  **This is the riskiest change so far** — it replaces the initramfs.
+  If a machine fails to boot, pick the previous entry in the boot menu.
+
 ## Things learned the hard way
 
 - **podman logins vanish at shutdown** (kept in `/run`). Log in again
@@ -142,6 +169,9 @@ It should stop at "Press Enter to continue to the login screen."
   hardware. Use the VM to iterate, hardware before release.
 - **`bootc upgrade` refuses machines with layered packages.** Use
   `sudo rpm-ostree upgrade`.
+- **`/etc/nexus` does not exist until first boot writes to it.** Writing
+  a file there by hand needs `sudo mkdir -p /etc/nexus` first (my
+  instruction on 24 Sept forgot it).
 
 The recurring bug shape, still: **something reported success about
 its own narrow view while the wider claim was false.** This week:
@@ -155,55 +185,79 @@ test fail.
 
 ## Open, in order
 
-**Before the first public release (0.1.0 under `nexus-core`)**
-1. **`LICENSE` is 0 bytes.** Nobody can legally redistribute anything.
-   The choice also decides what "the last release is paid" can mean:
-   GPL parts of the system stay freely redistributable; what you
-   control is your own code and the Nexus-CORE name and mark.
-2. **Steam.** The gaming profile installs only `gamemode` on the
-   shipped image: `steam` is in RPM Fusion, which only the unshipped
-   gaming stage enables. Decide: RPM Fusion by default (a third-party
-   repo on every machine) or Steam as a Flatpak (Nexus already reads
-   Flatpak).
-3. **Website** — rewrite after the above, so it describes what ships.
-   Current page is wrong in places (unsigned kernel, no installer, test
-   count, "the terminal above", a stray `</section>`, two footers).
-4. **Publish under the real name:** `./image/publish.sh` (no `NAME=`),
-   make `nexus-core` public, build the ISO from
-   `ghcr.io/davidosdas-official/nexus-core:minimalism`.
+**Waiting on the Asus (24 Sept)**
+- **Steam did not appear** after `sudo nexus setup gaming --apply`
+  ("1 of 1 installed"). Needs `rpm -q steam`, `rpm-ostree status`,
+  `nexus setup gaming` output. Suspect: Steam in RPM Fusion is an
+  i686 package; check how Nexus treats it.
+- **Wallpaper:** the grey "NEXUS-CORE" picture is `minimalism.png` —
+  probably working. Confirm with
+  `cat ~/.config/nexus/wallpaper-applied`, then test a choice:
+  `sudo mkdir -p /etc/nexus && echo gaming | sudo tee /etc/nexus/wallpaper`,
+  log out and in.
+- **Patch 17:** build, publish, upgrade, reboot; expect the splash and
+  a passphrase box. Check `cat /proc/cmdline` for `rhgb quiet` — if
+  `rpm-ostree upgrade` does not apply new kargs.d, add them once with
+  `sudo rpm-ostree kargs --append=rhgb --append=quiet`.
 
-**Before a paid release**
-- **Image signing.** Machines show `ostree-unverified-registry:` — they
-  check where an update came from, not who built it. cosign/sigstore
-  plus a policy on the machine.
-- **Installer artwork** is Fedora's (comes from bootc-image-builder,
-  not this image). `ID=fedora` stays for tooling — a legal question,
-  not a technical one.
-- **bootc-image-builder** is archived (18 June 2026): pin its digest
-  (recorded in `nexus-build.txt`), plan `image-builder --bootc-ref`.
+**The bar for the first public release** (one stable, impressive
+release first; paid comes later)
+1. **Every offered profile focused and tested.** Each strictly about its
+   job while still able to do normal things. Written out for review
+   before code. `basic` currently adds nothing on KDE — make it the
+   media add-on (codecs from RPM Fusion, hardware video decoding, VLC).
+2. **Artwork:** wallpapers ✓ (patch 16); login theme and boot splash
+   (patch 17); the Nexus mark in the splash and on the login screen.
+3. **Steam working** from the gaming add-on.
+4. **NVIDIA** — no hardware to test on. First release: ship Fedora's
+   open driver (nouveau/NVK) and have `nexus doctor` say so honestly.
+   Alongside: find one tester with an NVIDIA card. The real fix, later:
+   build and sign the driver at image build (ublue-os/akmods approach),
+   a Nexus MOK key enrolled once, an NVIDIA image variant that first
+   boot offers to switch to.
+5. **Image signing** (cosign) — before the public release, because
+   adding it later means switching every installed machine by hand.
+6. **`nexus update`** preview (what an update changes) and automatic
+   rollback when an update fails to boot (greenboot).
+7. Keymap (`vconsole.keymap=` empty), zram.
+8. **Publish under the real name** `nexus-core`, make it public, ISO
+   from `ghcr.io/davidosdas-official/nexus-core:minimalism`.
+9. **Website** rewritten to match what ships.
 
-**Artwork**
-- **Logo: the white node-graph N** (four corner nodes, one centre) —
-  already the SVG on the website; survives 16 px.
-- Brand colour is orange (`ANSI_COLOR` 249;115;22 = `#f97316`).
-- Wallpapers per profile are 3840×2160 now. Two fixes left: they draw a
-  different (zigzag) N — composite the real mark instead; the security
-  one still has garbled text ("VERIFIEB").
-- Choosing a profile changes nothing you can see. Per-profile
-  wallpapers, set by first boot in `/etc`, would fix that. The mark
-  also replaces generic-logos' files (boot splash, login).
+**Decided, 24 Sept**
+- **One ISO (KDE) for now.** minimal, tiling and server return later as
+  their own images; server = no desktop, managed from Cockpit, services
+  as Podman containers (clean removal), firewall/SSH/fail2ban, updates
+  with rollback, disk health, restic backups, no hacking tools.
+- **RPM Fusion over Flatpak** for Steam and codecs.
+- **Licence:** GPL-3.0 code + trademark policy. Under GPL, sharing
+  unmodified copies cannot be forbidden; the paid part will have its
+  own closed licence. Search the name before registering it ("Nexus"
+  is crowded: WIPO Global Brand Database). AI-written code has weak
+  copyright; the trademark is the stronger protection.
 
-**Smaller**
-- Empty `vconsole.keymap=` on installed machines; the kickstart change
-  did not fix it. Harmless for US layouts.
-- No zram on the image — add `zram-generator-defaults` for small
-  machines.
-- Once, on the Asus, doctor read 1054 of 1103 packages. Never
-  reproduced; doctor now says so itself if it happens.
-- `runCommand` holds a whole decompressed repository in memory (1.3 GB
-  of the 2.8 GB peak). Needs a streaming XML reader.
-- Rechunking (`rpm-ostree compose build-chunked-oci`) so a Fedora
-  refresh downloads only changed packages.
+**Paid version (after the free release)**
+- Model: self-hosted, local-first, $1 once per account. Lemon Squeezy
+  (pays out to North Macedonia) issues and checks licence keys, so no
+  server of our own. At $1 a key check is an honesty box.
+- Keep everything that protects the user free: rollback, snapshots,
+  recovery, basic backup. Fedora gives rollback free; so do Bazzite,
+  Aurora, Silverblue.
+- Best Pro candidate: the **System Contract** — declare what the
+  machine should be, Nexus reports drift. Builds on profiles. One Pro
+  feature for the first paid release, not thirteen.
+- Source documents: "Nexus-upgrade" (feature list, S/A/B/C) and
+  "Nexus-paid-inside" (Free vs Pro). Several of their S items already
+  exist: atomic updates + rollback (rpm-ostree), signed boot chain
+  (Fedora shim/kernel), installer disk plan (Anaconda).
+
+**Later**
+- Installer artwork is Fedora's (from bootc-image-builder, archived 18
+  June 2026: pin its digest, plan `image-builder --bootc-ref`).
+- Backup, firmware status (fwupd), network doctor, export/apply,
+  security and privacy reports, app centre.
+- `runCommand` holds a whole decompressed repository in memory; needs
+  a streaming XML reader. Rechunking for smaller Fedora refreshes.
 - Clean up: 17 empty junk files at the root, five empty directories,
   stale `docs/HANDOFF.md`.
 
@@ -222,7 +276,7 @@ cmake --build build && ctest --test-dir build        # 505
 # bump project(VERSION ...) in CMakeLists.txt, commit, then:
 podman build --target desktop --build-arg NEXUS_PROFILE=minimalism \
     --build-arg NEXUS_COMMIT="$(git rev-parse --short HEAD)" \
-    -t localhost/nexus-os:minimalism -f image/Containerfile .
+    -t localhost/nexus-os:minimalism -f image/Containerfile . 2>&1 | tee build.log
 podman login ghcr.io -u DAVIDOSDAS-official          # after any reboot
 NAME=nexus-core-testing ./image/publish.sh
 ```
@@ -255,6 +309,11 @@ rm -f /tmp/nexus-test.qcow2 && qemu-img create -f qcow2 /tmp/nexus-test.qcow2 30
 qemu-system-x86_64 -m 4096 -smp 4 -enable-kvm -bios /usr/share/ovmf/OVMF.fd \
     -drive file=/tmp/nexus-test.qcow2,format=qcow2 \
     -cdrom output/bootiso/install.iso -boot d
+```
+
+**Build check lines** (after a build, before publishing):
+```bash
+grep -E "KB ->|Login|Splash|No SDDM|No Plasma|Identity" build.log
 ```
 
 **Applying a patch:**

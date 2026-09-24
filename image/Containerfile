@@ -360,6 +360,81 @@ RUN if rpm -q fedora-logos > /dev/null 2>&1; then \
         exit 1; \
     fi
 
+# The login screen's theme and the boot splash.
+#
+# Both were missing, and both were noticed on the first machine. SDDM
+# was installed without a theme -- weak dependencies are off, and the
+# Breeze theme is one -- so the login screen was SDDM's bare fallback.
+# And there was no Plymouth, so booting scrolled systemd's "[ OK ]"
+# lines and asked for the disk passphrase as a line of text, where
+# Pop!_OS and Fedora show a splash with a password box.
+#
+# Here, below the wallpapers and above Nexus, rather than in the
+# package list: a Nexus change must not rebuild these, and adding them
+# here does not rebuild the few hundred packages above.
+RUN set -eu; \
+    extra=""; \
+    if rpm -q sddm > /dev/null 2>&1; then extra="sddm-breeze"; fi; \
+    dnf install -y \
+        --exclude=rootfiles \
+        --setopt=install_weak_deps=False \
+        plymouth \
+        plymouth-scripts \
+        plymouth-theme-spinner \
+        ${extra}; \
+    dnf clean all; \
+    if rpm -q fedora-logos > /dev/null 2>&1; then \
+        echo "fedora-logos came back with the splash or login theme." >&2; \
+        rpm -q --whatrequires fedora-logos >&2 || true; \
+        exit 1; \
+    fi
+
+# The splash has to be inside the initramfs, because the passphrase is
+# asked for before the real system is mounted. The initramfs in a
+# bootc image is built with the image, not on the machine, so it is
+# rebuilt here now that Plymouth is present. --no-hostonly because
+# the image boots on machines this build has never seen; ostree
+# because without it the initramfs cannot find the deployment to boot.
+#
+# bgrt is Fedora's own choice: the maker's logo from the firmware, a
+# spinner, and the password box. The Nexus mark can replace the
+# spinner's watermark later.
+#
+# rhgb and quiet are what turn the scrolling "[ OK ]" lines into the
+# splash. They are in kargs.d, like the LUKS setting, so they belong
+# to the image. Esc during boot still shows the lines.
+#
+# Rebuilding the initramfs is the one step here that can stop a
+# machine booting, so what it produced is checked before it is kept:
+# the splash, the passphrase prompt, and the piece that finds the
+# deployment. A missing one fails the build, not somebody's boot.
+RUN set -eu; \
+    plymouth-set-default-theme bgrt; \
+    kver="$(ls /usr/lib/modules)"; \
+    if [ "$(printf '%s\n' "${kver}" | wc -l)" -ne 1 ]; then \
+        echo "Expected one kernel in /usr/lib/modules, found:" >&2; \
+        echo "${kver}" >&2; \
+        exit 1; \
+    fi; \
+    dracut --no-hostonly --reproducible --force \
+        --kver "${kver}" --add "ostree plymouth" \
+        "/usr/lib/modules/${kver}/initramfs.img"; \
+    chmod 0600 "/usr/lib/modules/${kver}/initramfs.img"; \
+    contents="$(lsinitrd "/usr/lib/modules/${kver}/initramfs.img")"; \
+    for needed in plymouthd systemd-cryptsetup ostree-prepare-root; do \
+        if ! printf '%s\n' "${contents}" | grep -q "${needed}"; then \
+            echo "The rebuilt initramfs has no ${needed}; refusing it." >&2; \
+            echo "Without it this image would not boot an encrypted disk." >&2; \
+            exit 1; \
+        fi; \
+    done; \
+    echo "Splash: bgrt, in the initramfs for ${kver}"; \
+    mkdir -p /usr/lib/bootc/kargs.d; \
+    printf '%s\n' \
+        '# Boot splash instead of scrolling log lines. See image/Containerfile.' \
+        'kargs = ["rhgb", "quiet"]' \
+        > /usr/lib/bootc/kargs.d/20-nexus-splash.toml
+
 # The wallpapers: one per profile, all of them in the picker.
 #
 # Below the packages and above Nexus, because a picture changes less
@@ -390,6 +465,11 @@ RUN set -eu; \
         echo "but nothing will apply them at login."; \
     fi; \
     themed=0; \
+    if [ -f /usr/share/sddm/themes/breeze/theme.conf ]; then \
+        mkdir -p /etc/sddm.conf.d; \
+        printf '[Theme]\nCurrent=breeze\n' > /etc/sddm.conf.d/10-nexus.conf; \
+        echo "Login theme: breeze"; \
+    fi; \
     for theme in /usr/share/sddm/themes/*/; do \
         if grep -q '^background=' "${theme}theme.conf" 2>/dev/null; then \
             printf '[General]\nbackground=%s\n' "${login}" \
