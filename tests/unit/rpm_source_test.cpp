@@ -1,9 +1,14 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <sstream>
 #include <string>
 
+#include <nexus/profile_check.hpp>
+#include <nexus/system/identity.hpp>
+#include <nexus/system/profile_file.hpp>
 #include <nexus/system/rpm_source.hpp>
+#include <nexus/system/rpm_version.hpp>
 
 using nexus::Capability;
 using nexus::Component;
@@ -228,4 +233,111 @@ TEST(RpmSourceTest, ReportsMalformedMetadata) {
     const auto result = parseRepodataPrimary("<metadata><package name=x>");
 
     EXPECT_FALSE(result.error.empty());
+}
+
+namespace {
+
+// The shape of RPM Fusion's Steam: one build, i686 only, in the x86_64
+// repository beside 64-bit packages. Trimmed to what the rule needs and
+// written for this test, not copied -- the fact it rests on is the
+// architecture, which is in RPM Fusion's metadata as <arch>i686</arch>.
+const char* kMultilibRepository = R"XML(<metadata packages="3">
+<package type="rpm"><name>steam</name><arch>i686</arch>
+<version epoch="0" ver="1.0.0.85" rel="1.fc44"/>
+<format>
+  <rpm:provides><rpm:entry name="steam" flags="EQ" epoch="0" ver="1.0.0.85" rel="1.fc44"/></rpm:provides>
+  <rpm:requires><rpm:entry name="libc.so.6"/></rpm:requires>
+</format></package>
+<package type="rpm"><name>glibc</name><arch>i686</arch>
+<version epoch="0" ver="2.43" rel="8.fc44"/>
+<format>
+  <rpm:provides><rpm:entry name="libc.so.6"/></rpm:provides>
+</format></package>
+<package type="rpm"><name>glibc</name><arch>x86_64</arch>
+<version epoch="0" ver="2.43" rel="8.fc44"/>
+<format>
+  <rpm:provides><rpm:entry name="libc.so.6()(64bit)"/></rpm:provides>
+</format></package>
+</metadata>)XML";
+
+// As rpm_repo.cpp does: a name built for two architectures gets an id
+// per architecture, glibc:i386 and glibc:amd64.
+nexus::Solver rpmSolverOver(std::vector<Component> components) {
+    nexus::system::qualifyAmbiguousIds(components);
+
+    return nexus::Solver(
+        std::move(components),
+        nexus::ConflictDetector(
+            [](const std::string& left, const std::string& right) {
+                return nexus::system::compareRpmVersions(left, right);
+            }
+        )
+    );
+}
+
+nexus::Profile gamingOn64Bit() {
+    std::istringstream input(
+        "Profile: gaming\n"
+        "Description: test\n"
+        "Architecture: amd64\n"
+        "Requires: steam\n"
+    );
+
+    const auto parsed = nexus::system::parseProfileStream(input);
+    EXPECT_EQ(parsed.profiles.size(), 1u);
+    return parsed.profiles.at(0);
+}
+
+}
+
+// An rpm name carries no architecture, so any build satisfies it.
+TEST(RpmSourceTest, AnyBuildSatisfiesAName) {
+    const auto result = parseRepodataPrimary(kMultilibRepository);
+
+    ASSERT_TRUE(result.error.empty()) << result.error;
+    ASSERT_EQ(result.components.size(), 3u);
+    EXPECT_EQ(result.components[0].architecture(), "i386");
+    EXPECT_EQ(result.components[0].multiArch(), nexus::MultiArch::Foreign);
+}
+
+// The Asus, 24 September: "sudo nexus setup gaming --apply" installed
+// everything but Steam, because an i686-only package could not satisfy
+// a requirement from a 64-bit profile. dnf would have installed it.
+TEST(RpmSourceTest, AnI686OnlyPackageIsReachableFromA64BitProfile) {
+    const auto result = parseRepodataPrimary(kMultilibRepository);
+    ASSERT_TRUE(result.error.empty()) << result.error;
+
+    const auto report = nexus::checkProfile(
+        gamingOn64Bit(), rpmSolverOver(result.components));
+
+    ASSERT_EQ(report.items.size(), 1u);
+    EXPECT_TRUE(report.complete());
+    ASSERT_FALSE(report.items[0].provided.empty());
+    EXPECT_EQ(report.items[0].provided.front(), "steam");
+}
+
+// Its own dependencies still resolve to its own architecture: the
+// 32-bit libc, not the 64-bit one, because the soname says which.
+TEST(RpmSourceTest, AnI686PackageStillGetsI686Libraries) {
+    const auto result = parseRepodataPrimary(kMultilibRepository);
+    ASSERT_TRUE(result.error.empty()) << result.error;
+
+    nexus::SolverRequest request;
+    request.requirements.push_back(
+        nexus::Requirement{{nexus::Constraint{"steam"}}});
+    request.architecture = "amd64";
+
+    const auto solution = rpmSolverOver(result.components).solve(request);
+
+    ASSERT_EQ(solution.status, nexus::SolverStatus::Success)
+        << solution.reason;
+
+    const auto chose = [&solution](const std::string& id) {
+        return std::find(solution.selected.begin(),
+                         solution.selected.end(), id) !=
+               solution.selected.end();
+    };
+
+    EXPECT_TRUE(chose("glibc:i386"));
+    EXPECT_FALSE(chose("glibc:amd64"));
 }

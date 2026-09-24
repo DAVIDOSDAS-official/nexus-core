@@ -179,6 +179,25 @@ RpmSourceResult parseRepodataPrimary(std::string document) {
         );
 
         component.setArchitecture(nativeArchitecture);
+
+        // RPM names carry no architecture. "Requires: steam" is met by
+        // steam.i686 as well as steam.x86_64, and dnf installs
+        // whichever the repository has -- preferring the machine's own
+        // when both exist. Where architecture matters, rpm says so in
+        // the name itself: libc.so.6()(64bit), foo(x86-64).
+        //
+        // Nexus's rule is Debian's, where an unqualified name means
+        // the requester's own architecture unless the package opts
+        // out with Multi-Arch: foreign. Applied to rpm, it made every
+        // i686-only package unreachable from a 64-bit machine -- and
+        // Steam in RPM Fusion is i686-only, so the gaming profile
+        // reported it unavailable and installed everything else.
+        // Found on 24 September, on the Asus.
+        //
+        // Foreign is how rpm behaves: any build satisfies a name, and
+        // the solver still prefers the native one when there is a
+        // choice.
+        component.setMultiArch(MultiArch::Foreign);
         component.setDownloadSize(downloadSize);
         component.setInstalledSize(installedSize);
 

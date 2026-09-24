@@ -20,7 +20,8 @@ and `CAPABILITIES.md`.
 first push is the actual release.
 
 **Last session:** 21–24 September 2026. Head `5581cea` (0.1.3,
-patches 1–16). Patch 17 (0.1.4) delivered, not yet built. **505 tests.**
+patches 1–16). Patch 17 (0.1.4, splash) built, not published; patch 18
+(0.1.5, Steam) delivered. **509 tests** (506 pass, 3 skipped).
 
 ---
 
@@ -187,14 +188,17 @@ test fail.
 
 **Waiting on the Asus (24 Sept)**
 - **Steam did not appear** after `sudo nexus setup gaming --apply`
-  ("1 of 1 installed"). Needs `rpm -q steam`, `rpm-ostree status`,
-  `nexus setup gaming` output. Suspect: Steam in RPM Fusion is an
-  i686 package; check how Nexus treats it.
-- **Wallpaper:** the grey "NEXUS-CORE" picture is `minimalism.png` —
-  probably working. Confirm with
-  `cat ~/.config/nexus/wallpaper-applied`, then test a choice:
-  `sudo mkdir -p /etc/nexus && echo gaming | sudo tee /etc/nexus/wallpaper`,
-  log out and in.
+  ("1 of 1 installed" — that was mesa-vulkan-drivers). Cause found:
+  Steam in RPM Fusion is i686-only, and Nexus applied Debian's rule
+  (an unqualified name means the requester's own architecture), so a
+  64-bit profile could not reach it. RPM names carry no architecture.
+  **Patch 18** marks every rpm package Multi-Arch foreign (any build
+  satisfies a name; native still preferred; sonames still pick the
+  right libraries). 4 tests, each seen failing without the fix.
+- **Wallpaper:** confirmed working — `wallpaper-applied` said
+  `minimalism`. `/etc/nexus/wallpaper` now says `gaming` on the Asus;
+  confirm the switch after logging out and in. (Also created by
+  accident on the Acer: `sudo rm -r /etc/nexus` there.)
 - **Patch 17:** build, publish, upgrade, reboot; expect the splash and
   a passphrase box. Check `cat /proc/cmdline` for `rhgb quiet` — if
   `rpm-ostree upgrade` does not apply new kargs.d, add them once with
@@ -267,7 +271,7 @@ release first; paid comes later)
 
 ```bash
 cd ~/Documents/nexus-core
-cmake --build build && ctest --test-dir build        # 505
+cmake --build build && ctest --test-dir build        # 509 (3 skipped)
 ./build/cli/nexus --version
 ```
 

@@ -330,3 +330,16 @@ TEST(RpmDatabaseLoadTest, AFailingRpmIsReportedWithItsOwnMessage) {
     EXPECT_NE(result.incomplete.find("database is locked"),
               std::string::npos) << result.incomplete;
 }
+
+// An installed package satisfies its name whatever its build, as in a
+// repository -- or an installed steam.i686 would leave the gaming
+// profile asking for Steam again. See RpmSourceTest.AnyBuildSatisfiesAName.
+TEST(RpmDatabaseTest, AnyBuildSatisfiesAName) {
+    const auto result = RpmDatabase::parse(
+        "PKG\tsteam\t(none)\t1.0.0.85\t1.fc44\ti686\n"
+        "PRV\tsteam\t=\t1.0.0.85-1.fc44\n");
+
+    ASSERT_EQ(result.components.size(), 1u);
+    EXPECT_EQ(result.components[0].architecture(), "i386");
+    EXPECT_EQ(result.components[0].multiArch(), nexus::MultiArch::Foreign);
+}

@@ -184,6 +184,12 @@ RpmDatabaseResult RpmDatabase::parse(const std::string& queryOutput) {
                 normaliseRpmArchitecture(architecture)
             );
 
+            // The same rule as for repositories, and it has to be the
+            // same: an installed steam.i686 must satisfy "steam", or
+            // the gaming profile would ask to install it again. See
+            // parseRepodataPrimary.
+            component.setMultiArch(MultiArch::Foreign);
+
             // Bytes, and it is the installed size: nothing is being
             // downloaded for something already here.
             component.setInstalledSize(
