@@ -1,13 +1,100 @@
-time="2026-09-25T18:11:19+02:00" level=warning msg="missing \"NEXUS_VERSION\" build argument. Try adding \"--build-arg NEXUS_VERSION=<VALUE>\" to the command line"
-time="2026-09-25T18:11:19+02:00" level=warning msg="missing \"NEXUS_VERSION\" build argument. Try adding \"--build-arg NEXUS_VERSION=<VALUE>\" to the command line"
+time="2026-09-25T20:16:16+02:00" level=warning msg="missing \"NEXUS_VERSION\" build argument. Try adding \"--build-arg NEXUS_VERSION=<VALUE>\" to the command line"
+time="2026-09-25T20:16:16+02:00" level=warning msg="missing \"NEXUS_VERSION\" build argument. Try adding \"--build-arg NEXUS_VERSION=<VALUE>\" to the command line"
 [1/6] STEP 1/5: FROM quay.io/fedora/fedora-bootc:44 AS builder
 [1/6] STEP 2/5: RUN dnf install -y         cmake         gcc-c++         make     && dnf clean all
---> Using cache 3deebea152426d51cf6b5f77e3549148f36d6570a28537d68ed8153aefe94ed1
---> 3deebea1524
+Updating and loading repositories:
+ Fedora 44 openh264 (From Cisco) - x86_ 100% |  68.0   B/s |   5.3 KiB |  01m19s
+ Fedora 44 - x86_64 - Updates           100% | 148.3 KiB/s |  16.6 MiB |  01m54s
+>>> Curl error (28): Timeout was reached for http://fedora.mirror.liteserver.nl/linux/updates/44/Everything/x86_64/repodata/7b06fffcd6f13ba6227a23c94bd8d66e28d3c6d3ff6955e1551a6efc575b6764-updateinfo.xml.zck [Operation too slow. Less than 1000 bytes/sec transferred the last 30 seconds] - http://fedora.mirror.liteserver.nl/linux/updates/44/Everything/x86_64/repodata/7b06fffcd6f13ba6227a23c94bd8d66e28d3c6d3ff6955e1551a6efc575b6764-updateinfo.xml.zck
+>>> Curl error (28): Timeout was reached for http://fedora.mirror.liteserver.nl/linux/updates/44/Everything/x86_64/repodata/7134300e508d1aef19603cc0b39b54dfe5df459769c07b62c83a5fb033f6eeda-primary.xml.zck [Operation too slow. Less than 1000 bytes/sec transferred the last 30 seconds] - http://fedora.mirror.liteserver.nl/linux/updates/44/Everything/x86_64/repodata/7134300e508d1aef19603cc0b39b54dfe5df459769c07b62c83a5fb033f6eeda-primary.xml.zck
+ Fedora 44 - x86_64                     100% | 294.2 KiB/s |  44.0 MiB |  02m33s
+ Fedora 44 - x86_64 - Updates Archive    46% | 129.7 KiB/s |  19.9 MiB |  02m37s
+>>> Curl error (28): Timeout was reached for https://fedoraproject-updates-archive.fedoraproject.org/fedora/44/x86_64/repodata/d646d8d8856425c1a33e0e616075e22373cfdb35fecfbe7a09c26ddeaae75ea9-primary.xml.zck [Operation too slow. Less than 1000 bytes/sec transferred the last 30 seconds] - https://fedoraproject-updates-archive.fedoraproject.org/fedora/44/x86_64/repodata/d646d8d8856425c1a33e0e616075e22373cfdb35fecfbe7a09c26ddeaae75ea9-primary.xml.zck
+>>> Curl error (28): Timeout was reached for https://fedoraproject-updates-archive.fedoraproject.org/fedora/44/x86_64/repodata/d646d8d8856425c1a33e0e616075e22373cfdb35fecfbe7a09c26ddeaae75ea9-primary.xml.zck [Operation too slow. Less than 1000 bytes/sec transferred the last 30 seconds] - https://fedoraproject-updates-archive.fedoraproject.org/fedora/44/x86_64/repodata/d646d8d8856425c1a33e0e616075e22373cfdb35fecfbe7a09c26ddeaae75ea9-primary.xml.zck
+>>> Curl error (28): Timeout was reached for https://fedoraproject-updates-archive.fedoraproject.org/fedora/44/x86_64/repodata/d646d8d8856425c1a33e0e616075e22373cfdb35fecfbe7a09c26ddeaae75ea9-primary.xml.zck [Operation too slow. Less than 1000 bytes/sec transferred the last 30 seconds] - https://fedoraproject-updates-archive.fedoraproject.org/fedora/44/x86_64/repodata/d646d8d8856425c1a33e0e616075e22373cfdb35fecfbe7a09c26ddeaae75ea9-primary.xml.zck
+>>> Curl error (28): Timeout was reached for https://fedoraproject-updates-archive.fedoraproject.org/fedora/44/x86_64/repodata/d646d8d8856425c1a33e0e616075e22373cfdb35fecfbe7a09c26ddeaae75ea9-primary.xml.zck [Operation too slow. Less than 1000 bytes/sec transferred the last 30 seconds] - https://fedoraproject-updates-archive.fedoraproject.org/fedora/44/x86_64/repodata/d646d8d8856425c1a33e0e616075e22373cfdb35fecfbe7a09c26ddeaae75ea9-primary.xml.zck
+>>> No more mirrors to try - All mirrors were already tried without success
+Repositories loaded.
+Package           Arch   Version           Repository      Size
+Installing:
+ cmake            x86_64 0:4.3.0-1.fc44    fedora      40.5 MiB
+ gcc-c++          x86_64 0:16.2.1-2.fc44   updates     46.8 MiB
+ make             x86_64 1:4.4.1-12.fc44   fedora       1.8 MiB
+Installing dependencies:
+ binutils         x86_64 0:2.46.1-1.fc44   updates     28.2 MiB
+ cmake-data       noarch 0:4.3.0-1.fc44    fedora       9.4 MiB
+ cmake-filesystem x86_64 0:4.3.0-1.fc44    fedora       0.0   B
+ cpp              x86_64 0:16.2.1-2.fc44   updates     42.6 MiB
+ emacs-filesystem x86_64 1:30.2-2.fc44     fedora       0.0   B
+ gcc              x86_64 0:16.2.1-2.fc44   updates    121.8 MiB
+ glibc-devel      x86_64 0:2.43-8.fc44     updates      2.3 MiB
+ jsoncpp          x86_64 0:1.9.6-3.fc44    fedora     285.6 KiB
+ kernel-headers   x86_64 0:7.2.4-200.fc44  updates      7.0 MiB
+ libatomic        x86_64 0:16.2.1-2.fc44   updates     45.6 KiB
+ libmpc           x86_64 0:1.4.1-1.fc44    updates    168.7 KiB
+ libstdc++-devel  x86_64 0:16.2.1-2.fc44   updates     41.2 MiB
+ libxcrypt-devel  x86_64 0:4.5.2-3.fc44    fedora      31.0 KiB
+ rhash            x86_64 0:1.4.5-4.fc44    fedora     354.8 KiB
+ vim-filesystem   noarch 2:9.2.1119-1.fc44 updates     40.0   B
+
+Transaction Summary:
+ Installing:        18 packages
+
+Total size of inbound packages is 108 MiB. Need to download 108 MiB.
+After this operation, 343 MiB extra will be used (install 343 MiB, remove 0 B).
+[ 1/18] make-1:4.4.1-12.fc44.x86_64     100% | 134.0 KiB/s | 588.7 KiB |  00m04s
+[ 2/18] cmake-filesystem-0:4.3.0-1.fc44 100% |  17.0 KiB/s |  15.0 KiB |  00m01s
+[ 3/18] jsoncpp-0:1.9.6-3.fc44.x86_64   100% |  81.9 KiB/s | 110.0 KiB |  00m01s
+[ 4/18] rhash-0:1.4.5-4.fc44.x86_64     100% | 278.1 KiB/s | 201.9 KiB |  00m01s
+[ 5/18] emacs-filesystem-1:30.2-2.fc44. 100% |  44.4 KiB/s |   8.0 KiB |  00m00s
+[ 6/18] cmake-data-0:4.3.0-1.fc44.noarc 100% | 152.9 KiB/s |   2.7 MiB |  00m18s
+[ 7/18] gcc-c++-0:16.2.1-2.fc44.x86_64  100% | 245.3 KiB/s |  17.3 MiB |  01m12s
+[ 8/18] cmake-0:4.3.0-1.fc44.x86_64     100% | 179.0 KiB/s |  14.4 MiB |  01m23s
+[ 9/18] vim-filesystem-2:9.2.1119-1.fc4 100% |  32.6 KiB/s |  15.6 KiB |  00m00s
+[10/18] libmpc-0:1.4.1-1.fc44.x86_64    100% | 135.5 KiB/s |  75.5 KiB |  00m01s
+[11/18] libstdc++-devel-0:16.2.1-2.fc44 100% | 105.0 KiB/s |   6.0 MiB |  00m58s
+[12/18] binutils-0:2.46.1-1.fc44.x86_64 100% | 241.8 KiB/s |   6.2 MiB |  00m26s
+[13/18] glibc-devel-0:2.43-8.fc44.x86_6 100% | 205.5 KiB/s | 617.4 KiB |  00m03s
+[14/18] libxcrypt-devel-0:4.5.2-3.fc44. 100% |  35.2 KiB/s |  30.0 KiB |  00m01s
+[15/18] libatomic-0:16.2.1-2.fc44.x86_6 100% | 137.2 KiB/s |  55.3 KiB |  00m00s
+[16/18] cpp-0:16.2.1-2.fc44.x86_64      100% | 145.9 KiB/s |  14.6 MiB |  01m42s
+[17/18] kernel-headers-0:7.2.4-200.fc44 100% | 168.2 KiB/s |   1.7 MiB |  00m11s
+[18/18] gcc-0:16.2.1-2.fc44.x86_64      100% | 226.8 KiB/s |  43.3 MiB |  03m15s
+--------------------------------------------------------------------------------
+[18/18] Total                           100% | 518.1 KiB/s | 107.9 MiB |  03m33s
+Running transaction
+Importing OpenPGP key 0x6D9F90A6:
+ UserID     : "Fedora (44) <fedora-44-primary@fedoraproject.org>"
+ Fingerprint: 36F612DCF27F7D1A48A835E4DBFCF71C6D9F90A6
+ From       : file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-44-x86_64
+The key was successfully imported.
+[ 1/20] Verify package files            100% |  65.0   B/s |  18.0   B |  00m00s
+[ 2/20] Prepare transaction             100% | 281.0   B/s |  18.0   B |  00m00s
+[ 3/20] Installing libmpc-0:1.4.1-1.fc4 100% |  23.8 MiB/s | 170.4 KiB |  00m00s
+[ 4/20] Installing cmake-filesystem-0:4 100% |   3.0 MiB/s |   9.4 KiB |  00m00s
+[ 5/20] Installing make-1:4.4.1-12.fc44 100% |  18.9 MiB/s |   1.8 MiB |  00m00s
+[ 6/20] Installing cpp-0:16.2.1-2.fc44. 100% | 291.7 MiB/s |  42.6 MiB |  00m00s
+[ 7/20] Installing kernel-headers-0:7.2 100% | 162.5 MiB/s |   7.1 MiB |  00m00s
+[ 8/20] Installing glibc-devel-0:2.43-8 100% | 119.2 MiB/s |   2.4 MiB |  00m00s
+[ 9/20] Installing libxcrypt-devel-0:4. 100% |  16.3 MiB/s |  33.3 KiB |  00m00s
+[10/20] Installing libatomic-0:16.2.1-2 100% |  22.7 MiB/s |  46.6 KiB |  00m00s
+[11/20] Installing binutils-0:2.46.1-1. 100% | 206.3 MiB/s |  28.3 MiB |  00m00s
+[12/20] Installing gcc-0:16.2.1-2.fc44. 100% | 382.1 MiB/s | 121.9 MiB |  00m00s
+[13/20] Installing libstdc++-devel-0:16 100% | 372.3 MiB/s |  41.3 MiB |  00m00s
+[14/20] Installing vim-filesystem-2:9.2 100% |   2.4 MiB/s |   4.8 KiB |  00m00s
+[15/20] Installing emacs-filesystem-1:3 100% | 396.5 KiB/s | 812.0   B |  00m00s
+[16/20] Installing rhash-0:1.4.5-4.fc44 100% |  19.5 MiB/s | 360.1 KiB |  00m00s
+[17/20] Installing jsoncpp-0:1.9.6-3.fc 100% |  70.1 MiB/s | 287.1 KiB |  00m00s
+[18/20] Installing cmake-0:4.3.0-1.fc44 100% | 295.6 MiB/s |  40.5 MiB |  00m00s
+[19/20] Installing cmake-data-0:4.3.0-1 100% |  81.9 MiB/s |  10.1 MiB |  00m00s
+[20/20] Installing gcc-c++-0:16.2.1-2.f 100% | 113.4 MiB/s |  46.8 MiB |  00m00s
+Complete!
+Removed 18 files, 12 directories (total of 103 MiB). 0 errors occurred.
+--> c958f0c5fdb
 [1/6] STEP 3/5: COPY . /src
---> 78ee8406642
+--> 9b5b052d160
 [1/6] STEP 4/5: ARG NEXUS_COMMIT=unknown
---> b5a15276f6d
+--> 40ffccabb1c
 [1/6] STEP 5/5: RUN cmake -S /src -B /build         -DCMAKE_BUILD_TYPE=Release         -DNEXUS_BUILD_TESTS=OFF         -DNEXUS_COMMIT_OVERRIDE="${NEXUS_COMMIT}"     && cmake --build /build --parallel
 -- The CXX compiler identification is GNU 16.2.1
 -- Detecting CXX compiler ABI info
@@ -15,63 +102,63 @@ time="2026-09-25T18:11:19+02:00" level=warning msg="missing \"NEXUS_VERSION\" bu
 -- Check for working CXX compiler: /usr/sbin/c++ - skipped
 -- Detecting CXX compile features
 -- Detecting CXX compile features - done
--- Configuring done (0.4s)
+-- Configuring done (0.3s)
 -- Generating done (0.0s)
 -- Build files have been written to: /build
-[  5%] Reading build version from git
-[  7%] Building CXX object core/CMakeFiles/nexus_core.dir/src/profile_check.cpp.o
-[  8%] Building CXX object core/CMakeFiles/nexus_core.dir/src/solver.cpp.o
-[  8%] Building CXX object core/CMakeFiles/nexus_core.dir/src/requirement.cpp.o
-[  8%] Building CXX object core/CMakeFiles/nexus_core.dir/src/source.cpp.o
-[ 10%] Building CXX object core/CMakeFiles/nexus_core.dir/src/core.cpp.o
-[ 16%] Building CXX object core/CMakeFiles/nexus_core.dir/src/constraint.cpp.o
-[ 16%] Building CXX object core/CMakeFiles/nexus_core.dir/src/architecture.cpp.o
-[ 16%] Building CXX object core/CMakeFiles/nexus_core.dir/src/component.cpp.o
+[  1%] Building CXX object core/CMakeFiles/nexus_core.dir/src/profile_check.cpp.o
+[  3%] Reading build version from git
+[  5%] Building CXX object core/CMakeFiles/nexus_core.dir/src/solver.cpp.o
+[  7%] Building CXX object core/CMakeFiles/nexus_core.dir/src/source.cpp.o
+[ 10%] Building CXX object core/CMakeFiles/nexus_core.dir/src/architecture.cpp.o
+[ 10%] Building CXX object core/CMakeFiles/nexus_core.dir/src/constraint.cpp.o
+[ 12%] Building CXX object core/CMakeFiles/nexus_core.dir/src/removal.cpp.o
+[ 14%] Building CXX object core/CMakeFiles/nexus_core.dir/src/core.cpp.o
+[ 16%] Building CXX object core/CMakeFiles/nexus_core.dir/src/requirement.cpp.o
 [ 17%] Building CXX object core/CMakeFiles/nexus_core.dir/src/transaction.cpp.o
-[ 19%] Building CXX object core/CMakeFiles/nexus_core.dir/src/removal.cpp.o
+[ 21%] Building CXX object core/CMakeFiles/nexus_core.dir/src/capability.cpp.o
 [ 21%] Building CXX object core/CMakeFiles/nexus_core.dir/src/options.cpp.o
-[ 23%] Building CXX object core/CMakeFiles/nexus_core.dir/src/alias.cpp.o
-[ 25%] Building CXX object core/CMakeFiles/nexus_core.dir/src/diagnosis.cpp.o
-[ 26%] Building CXX object core/CMakeFiles/nexus_core.dir/src/composition.cpp.o
-[ 28%] Building CXX object core/CMakeFiles/nexus_core.dir/src/resolver.cpp.o
-[ 30%] Building CXX object core/CMakeFiles/nexus_core.dir/src/capability.cpp.o
-[ 32%] Building CXX object core/CMakeFiles/nexus_core.dir/src/conflict_detector.cpp.o
-[ 32%] Built target nexus_version_header
+[ 23%] Building CXX object core/CMakeFiles/nexus_core.dir/src/composition.cpp.o
+[ 25%] Building CXX object core/CMakeFiles/nexus_core.dir/src/conflict_detector.cpp.o
+[ 26%] Building CXX object core/CMakeFiles/nexus_core.dir/src/component.cpp.o
+[ 28%] Building CXX object core/CMakeFiles/nexus_core.dir/src/alias.cpp.o
+[ 30%] Building CXX object core/CMakeFiles/nexus_core.dir/src/diagnosis.cpp.o
+[ 32%] Building CXX object core/CMakeFiles/nexus_core.dir/src/resolver.cpp.o
 [ 33%] Building CXX object core/CMakeFiles/nexus_core.dir/src/dependency_graph.cpp.o
+[ 33%] Built target nexus_version_header
 [ 35%] Linking CXX static library libnexus_core.a
 [ 35%] Built target nexus_core
-[ 37%] Building CXX object system/CMakeFiles/nexus_system.dir/src/dependency_expression.cpp.o
+[ 37%] Building CXX object system/CMakeFiles/nexus_system.dir/src/control_file.cpp.o
+[ 39%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/secure_boot.cpp.o
 [ 41%] Building CXX object system/CMakeFiles/nexus_system.dir/src/dpkg_source.cpp.o
-[ 41%] Building CXX object system/CMakeFiles/nexus_system.dir/src/control_file.cpp.o
-[ 42%] Building CXX object system/CMakeFiles/nexus_system.dir/src/profile_file.cpp.o
-[ 44%] Building CXX object system/CMakeFiles/nexus_system.dir/src/protection.cpp.o
-[ 46%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/hardware.cpp.o
-[ 48%] Building CXX object system/CMakeFiles/nexus_system.dir/src/identity.cpp.o
-[ 50%] Building CXX object system/CMakeFiles/nexus_system.dir/src/plan_check.cpp.o
+[ 44%] Building CXX object system/CMakeFiles/nexus_system.dir/src/profile_file.cpp.o
+[ 44%] Building CXX object system/CMakeFiles/nexus_system.dir/src/auto_installed.cpp.o
+[ 46%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/encryption.cpp.o
+[ 48%] Building CXX object system/CMakeFiles/nexus_system.dir/src/plan_check.cpp.o
+[ 50%] Building CXX object system/CMakeFiles/nexus_system.dir/src/transaction_log.cpp.o
 [ 51%] Building CXX object system/CMakeFiles/nexus_system.dir/src/version.cpp.o
-[ 55%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/secure_boot.cpp.o
-[ 58%] Building CXX object system/CMakeFiles/nexus_system.dir/src/transaction_log.cpp.o
-[ 58%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/encryption.cpp.o
-[ 60%] Building CXX object system/CMakeFiles/nexus_system.dir/src/apt_source.cpp.o
-[ 55%] Building CXX object system/CMakeFiles/nexus_system.dir/src/auto_installed.cpp.o
-[ 62%] Building CXX object system/CMakeFiles/nexus_system.dir/src/pacman_source.cpp.o
-[ 64%] Building CXX object system/CMakeFiles/nexus_system.dir/src/process.cpp.o
-[ 66%] Building CXX object system/CMakeFiles/nexus_system.dir/src/flatpak_source.cpp.o
-[ 67%] Building CXX object system/CMakeFiles/nexus_system.dir/src/vpn.cpp.o
-[ 69%] Building CXX object system/CMakeFiles/nexus_system.dir/src/plan_apply.cpp.o
-[ 71%] Building CXX object system/CMakeFiles/nexus_system.dir/src/xml.cpp.o
+[ 53%] Building CXX object system/CMakeFiles/nexus_system.dir/src/dependency_expression.cpp.o
+[ 55%] Building CXX object system/CMakeFiles/nexus_system.dir/src/protection.cpp.o
+[ 57%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/hardware.cpp.o
+[ 58%] Building CXX object system/CMakeFiles/nexus_system.dir/src/apt_source.cpp.o
+[ 60%] Building CXX object system/CMakeFiles/nexus_system.dir/src/identity.cpp.o
+[ 62%] Building CXX object system/CMakeFiles/nexus_system.dir/src/plan_apply.cpp.o
+[ 64%] Building CXX object system/CMakeFiles/nexus_system.dir/src/container.cpp.o
+[ 67%] Building CXX object system/CMakeFiles/nexus_system.dir/src/flatpak_source.cpp.o
+[ 67%] Building CXX object system/CMakeFiles/nexus_system.dir/src/pacman_source.cpp.o
+[ 69%] Building CXX object system/CMakeFiles/nexus_system.dir/src/process.cpp.o
+[ 71%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_version.cpp.o
 [ 73%] Building CXX object system/CMakeFiles/nexus_system.dir/src/services.cpp.o
-[ 75%] Building CXX object system/CMakeFiles/nexus_system.dir/src/container.cpp.o
-[ 78%] Building CXX object system/CMakeFiles/nexus_system.dir/src/portage_source.cpp.o
+[ 75%] Building CXX object system/CMakeFiles/nexus_system.dir/src/source_build.cpp.o
+[ 76%] Building CXX object system/CMakeFiles/nexus_system.dir/src/xml.cpp.o
+[ 80%] Building CXX object system/CMakeFiles/nexus_system.dir/src/snap_source.cpp.o
+[ 80%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_database.cpp.o
 [ 82%] Building CXX object system/CMakeFiles/nexus_system.dir/src/nix_source.cpp.o
-[ 78%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_version.cpp.o
-[ 82%] Building CXX object system/CMakeFiles/nexus_system.dir/src/snap_source.cpp.o
-[ 83%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_source.cpp.o
-[ 85%] Building CXX object system/CMakeFiles/nexus_system.dir/src/source_build.cpp.o
-[ 89%] Building CXX object system/CMakeFiles/nexus_system.dir/src/alias_file.cpp.o
-[ 89%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_database.cpp.o
-[ 91%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_repo.cpp.o
-[ 92%] Building CXX object system/CMakeFiles/nexus_system.dir/src/compression.cpp.o
+[ 83%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_repo.cpp.o
+[ 85%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_source.cpp.o
+[ 87%] Building CXX object system/CMakeFiles/nexus_system.dir/src/alias_file.cpp.o
+[ 89%] Building CXX object system/CMakeFiles/nexus_system.dir/src/vpn.cpp.o
+[ 91%] Building CXX object system/CMakeFiles/nexus_system.dir/src/compression.cpp.o
+[ 92%] Building CXX object system/CMakeFiles/nexus_system.dir/src/portage_source.cpp.o
 [ 94%] Linking CXX static library libnexus_hardware.a
 [ 94%] Built target nexus_hardware
 [ 96%] Linking CXX static library libnexus_system.a
@@ -79,20 +166,109 @@ time="2026-09-25T18:11:19+02:00" level=warning msg="missing \"NEXUS_VERSION\" bu
 [ 98%] Building CXX object cli/CMakeFiles/nexus.dir/src/main.cpp.o
 [100%] Linking CXX executable nexus
 [100%] Built target nexus
---> 6c0084ef324
+--> 0d173a13a79
 [2/6] STEP 1/5: FROM quay.io/fedora/fedora-bootc:44 AS artwork
 [2/6] STEP 2/5: RUN dnf install -y python3-pillow && dnf clean all
---> Using cache 2911bff692309b23dccaa4342db732af421eb2a24126a82ea4522ecf9366f2fa
---> 2911bff6923
+Updating and loading repositories:
+ Fedora 44 openh264 (From Cisco) - x86_ 100% | 186.0   B/s |   5.3 KiB |  00m29s
+ Fedora 44 - x86_64 - Updates           100% | 441.7 KiB/s |  12.9 MiB |  00m30s
+ Fedora 44 - x86_64 - Updates Archive   100% | 671.0 KiB/s |  39.5 MiB |  01m00s
+ Fedora 44 - x86_64                     100% | 376.7 KiB/s |  36.7 MiB |  01m40s
+Repositories loaded.
+Package          Arch   Version          Repository      Size
+Installing:
+ python3-pillow  x86_64 0:12.3.0-1.fc44  updates      4.5 MiB
+Installing dependencies:
+ freetype        x86_64 0:2.14.3-1.fc44  updates    918.3 KiB
+ fribidi         x86_64 0:1.0.16-4.fc44  fedora     190.0 KiB
+ graphite2       x86_64 0:1.3.14-20.fc44 fedora     191.5 KiB
+ harfbuzz        x86_64 0:14.1.0-2.fc44  updates      2.8 MiB
+ jbigkit-libs    x86_64 0:2.1-33.fc44    fedora     117.2 KiB
+ lcms2           x86_64 0:2.16-7.fc44    fedora     445.7 KiB
+ libXau          x86_64 0:1.0.12-4.fc44  fedora      72.8 KiB
+ libimagequant   x86_64 0:4.1.0-2.fc44   fedora     707.6 KiB
+ libjpeg-turbo   x86_64 0:3.1.3-1.fc44   fedora     818.2 KiB
+ liblerc         x86_64 0:4.0.0-10.fc44  fedora     647.9 KiB
+ libpng          x86_64 2:1.6.58-1.fc44  updates    249.6 KiB
+ libraqm         x86_64 0:0.10.1-4.fc44  fedora      32.5 KiB
+ libtiff         x86_64 0:4.7.2-1.fc44   updates    640.4 KiB
+ libwebp         x86_64 0:1.6.0-3.fc44   fedora     968.0 KiB
+ libxcb          x86_64 0:1.17.0-7.fc44  fedora       1.1 MiB
+ openjpeg        x86_64 0:2.5.4-3.fc44   fedora     464.2 KiB
+ python3-olefile noarch 0:0.47-13.fc44   fedora     346.5 KiB
+
+Transaction Summary:
+ Installing:        18 packages
+
+Total size of inbound packages is 5 MiB. Need to download 5 MiB.
+After this operation, 15 MiB extra will be used (install 15 MiB, remove 0 B).
+[ 1/18] lcms2-0:2.16-7.fc44.x86_64      100% | 344.2 KiB/s | 191.4 KiB |  00m01s
+[ 2/18] libimagequant-0:4.1.0-2.fc44.x8 100% | 425.5 KiB/s | 323.0 KiB |  00m01s
+[ 3/18] libraqm-0:0.10.1-4.fc44.x86_64  100% |  82.7 KiB/s |  22.9 KiB |  00m00s
+[ 4/18] libjpeg-turbo-0:3.1.3-1.fc44.x8 100% | 505.0 KiB/s | 243.4 KiB |  00m00s
+[ 5/18] libwebp-0:1.6.0-3.fc44.x86_64   100% | 324.0 KiB/s | 329.9 KiB |  00m01s
+[ 6/18] libxcb-0:1.17.0-7.fc44.x86_64   100% | 231.5 KiB/s | 238.0 KiB |  00m01s
+[ 7/18] python3-olefile-0:0.47-13.fc44. 100% | 261.3 KiB/s |  75.0 KiB |  00m00s
+[ 8/18] openjpeg-0:2.5.4-3.fc44.x86_64  100% | 394.6 KiB/s | 198.1 KiB |  00m01s
+[ 9/18] fribidi-0:1.0.16-4.fc44.x86_64  100% | 261.0 KiB/s |  53.8 KiB |  00m00s
+[10/18] libXau-0:1.0.12-4.fc44.x86_64   100% | 109.1 KiB/s |  33.7 KiB |  00m00s
+[11/18] python3-pillow-0:12.3.0-1.fc44. 100% | 350.5 KiB/s |   1.1 MiB |  00m03s
+[12/18] graphite2-0:1.3.14-20.fc44.x86_ 100% | 122.2 KiB/s |  96.5 KiB |  00m01s
+[13/18] freetype-0:2.14.3-1.fc44.x86_64 100% | 237.0 KiB/s | 444.0 KiB |  00m02s
+[14/18] jbigkit-libs-0:2.1-33.fc44.x86_ 100% |  99.2 KiB/s |  54.3 KiB |  00m01s
+[15/18] libtiff-0:4.7.2-1.fc44.x86_64   100% | 106.8 KiB/s | 231.4 KiB |  00m02s
+[16/18] liblerc-0:4.0.0-10.fc44.x86_64  100% | 194.5 KiB/s | 225.9 KiB |  00m01s
+[17/18] harfbuzz-0:14.1.0-2.fc44.x86_64 100% | 275.1 KiB/s |   1.1 MiB |  00m04s
+[18/18] libpng-2:1.6.58-1.fc44.x86_64   100% | 112.4 KiB/s | 129.5 KiB |  00m01s
+--------------------------------------------------------------------------------
+[18/18] Total                           100% | 709.7 KiB/s |   5.0 MiB |  00m07s
+Running transaction
+Importing OpenPGP key 0x6D9F90A6:
+ UserID     : "Fedora (44) <fedora-44-primary@fedoraproject.org>"
+ Fingerprint: 36F612DCF27F7D1A48A835E4DBFCF71C6D9F90A6
+ From       : file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-44-x86_64
+The key was successfully imported.
+[ 1/20] Verify package files            100% |   1.5 KiB/s |  18.0   B |  00m00s
+[ 2/20] Prepare transaction             100% | 450.0   B/s |  18.0   B |  00m00s
+[ 3/20] Installing libwebp-0:1.6.0-3.fc 100% | 135.6 MiB/s | 972.1 KiB |  00m00s
+[ 4/20] Installing libjpeg-turbo-0:3.1. 100% | 266.9 MiB/s | 819.9 KiB |  00m00s
+[ 5/20] Installing libpng-2:1.6.58-1.fc 100% |  61.3 MiB/s | 250.9 KiB |  00m00s
+[ 6/20] Installing liblerc-0:4.0.0-10.f 100% | 211.4 MiB/s | 649.4 KiB |  00m00s
+[ 7/20] Installing jbigkit-libs-0:2.1-3 100% |  38.8 MiB/s | 119.2 KiB |  00m00s
+[ 8/20] Installing libtiff-0:4.7.2-1.fc 100% | 209.2 MiB/s | 642.6 KiB |  00m00s
+[ 9/20] Installing graphite2-0:1.3.14-2 100% |  15.8 MiB/s | 193.6 KiB |  00m00s
+[10/20] Installing freetype-0:2.14.3-1. 100% | 224.6 MiB/s | 920.0 KiB |  00m00s
+[11/20] Installing harfbuzz-0:14.1.0-2. 100% | 312.5 MiB/s |   2.8 MiB |  00m00s
+[12/20] Installing libXau-0:1.0.12-4.fc 100% |  36.3 MiB/s |  74.3 KiB |  00m00s
+[13/20] Installing libxcb-0:1.17.0-7.fc 100% |  89.8 MiB/s |   1.1 MiB |  00m00s
+[14/20] Installing fribidi-0:1.0.16-4.f 100% |  15.7 MiB/s | 192.5 KiB |  00m00s
+[15/20] Installing libraqm-0:0.10.1-4.f 100% |  10.9 MiB/s |  33.6 KiB |  00m00s
+[16/20] Installing python3-olefile-0:0. 100% |  85.4 MiB/s | 349.8 KiB |  00m00s
+[17/20] Installing openjpeg-0:2.5.4-3.f 100% | 151.7 MiB/s | 466.1 KiB |  00m00s
+[18/20] Installing libimagequant-0:4.1. 100% | 230.9 MiB/s | 709.2 KiB |  00m00s
+[19/20] Installing lcms2-0:2.16-7.fc44. 100% | 145.6 MiB/s | 447.3 KiB |  00m00s
+[20/20] Installing python3-pillow-0:12. 100% |  33.6 MiB/s |   4.5 MiB |  00m00s
+Complete!
+Removed 21 files, 14 directories (total of 159 MiB). 0 errors occurred.
+--> 24bbacd64f8
 [2/6] STEP 3/5: COPY image/wallpaper/make-wallpapers.py /usr/local/bin/make-wallpapers
---> Using cache b14d036fade3025cbb1e4e0ffefbc19614f610cafd644d0cee11ba6eab2cea11
---> b14d036fade
+--> 3e1841a58cd
 [2/6] STEP 4/5: COPY image/artwork/wallpapers /artwork/wallpapers
---> Using cache 2572066134ed38521e7cea747a85decdfcc2629c77c4321be992f60673a27781
---> 2572066134e
+--> 725507f632f
 [2/6] STEP 5/5: RUN python3 /usr/local/bin/make-wallpapers /artwork/wallpapers /wallpapers
---> Using cache 5b20705860a015dccaa5e57928f18e37ebd2c14bed2baefe7661aa5d42a94663
---> 5b20705860a
+  base         3840x2160     126 KB ->   124 KB
+  basic        3840x2160    6015 KB ->  1214 KB
+  development  3840x2160    3768 KB ->   814 KB
+  gaming       3840x2160    5968 KB ->  1241 KB
+  minimal      3840x2160     126 KB ->   124 KB
+  minimalism   3840x2160     248 KB ->   146 KB
+  school       3840x2160    5023 KB ->   988 KB
+  security     3840x2160    6447 KB ->  1356 KB
+  server       3840x2160    6504 KB ->  1300 KB
+  showcase     3840x2160    2393 KB ->   602 KB
+  tiling       3840x2160     562 KB ->   185 KB
+  vpn          3840x2160    4703 KB ->  1049 KB
+--> 827ade6f24c
 [3/6] STEP 1/6: FROM quay.io/fedora/fedora-bootc:44 AS os
 [3/6] STEP 2/6: ARG REFRESH=none
 --> Using cache e62c0e84e519afc69a65866779d0efca3415e60c1bcc5918599dd7e090000fe8
@@ -109,6 +285,64 @@ time="2026-09-25T18:11:19+02:00" level=warning msg="missing \"NEXUS_VERSION\" bu
 [3/6] STEP 6/6: RUN mkdir -p /usr/lib/bootc/kargs.d     && printf '%s\n'         '# Keep asking for the disk passphrase instead of giving up'         '# after three attempts. See image/Containerfile.'         'kargs = ["rd.luks.options=tries=0"]'         > /usr/lib/bootc/kargs.d/10-nexus-luks.toml
 --> Using cache 96a5afba279328ed2cf8050fe1f15fc9f69edf7cd50932f9215dee631b1b91f1
 --> 96a5afba279
+[5/6] STEP 1/13: FROM 96a5afba279328ed2cf8050fe1f15fc9f69edf7cd50932f9215dee631b1b91f1 AS base
+[5/6] STEP 2/13: ARG NEXUS_VERSION
+--> 3a78469e0c9
+[5/6] STEP 3/13: ARG NEXUS_PROFILE
+--> 0b171a18726
+[5/6] STEP 4/13: COPY --from=builder /build/cli/nexus /usr/bin/nexus
+--> 453156e62e0
+[5/6] STEP 5/13: COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
+--> 009d00a83e3
+[5/6] STEP 6/13: COPY image/first-boot/nexus-first-boot.service      /usr/lib/systemd/system/nexus-first-boot.service
+--> 243c7c9e9a1
+[5/6] STEP 7/13: COPY components/profiles /usr/share/nexus/profiles
+--> 597a1678256
+[5/6] STEP 8/13: COPY components/aliases /usr/share/nexus/aliases
+--> 759425732c6
+[5/6] STEP 9/13: COPY image/identity.sh /usr/libexec/nexus/identity
+--> 2c29ec37f3e
+[5/6] STEP 10/13: RUN NEXUS_VERSION="${NEXUS_VERSION}" NEXUS_PROFILE="${NEXUS_PROFILE}"     sh /usr/libexec/nexus/identity
+Created symlink '/etc/systemd/system/multi-user.target.wants/nexus-first-boot.service' → '/usr/lib/systemd/system/nexus-first-boot.service'.
+Identity: Nexus-CORE 0.1.10 (minimalism) on Fedora Linux 44 (Forty Four)
+--> a0a1573738d
+[5/6] STEP 11/13: ENV NEXUS_PROFILES=/usr/share/nexus/profiles
+--> bf7174edf31
+[5/6] STEP 12/13: ENV NEXUS_ALIASES=/usr/share/nexus/aliases
+--> f721f346326
+[5/6] STEP 13/13: RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
+Updating and loading repositories:
+ RPM Fusion for Fedora 44 - Nonfree - U 100% |   1.7 KiB/s |  49.4 KiB |  00m29s
+ RPM Fusion for Fedora 44 - Nonfree     100% |   3.2 KiB/s | 100.3 KiB |  00m32s
+ RPM Fusion for Fedora 44 - Free - Upda 100% |   2.5 KiB/s |  83.2 KiB |  00m33s
+ RPM Fusion for Fedora 44 - Free        100% |   4.7 KiB/s | 157.6 KiB |  00m34s
+ Fedora 44 openh264 (From Cisco) - x86_ 100% | 156.0   B/s |   5.3 KiB |  00m35s
+ Fedora 44 - x86_64 - Updates           100% | 206.5 KiB/s |  12.7 MiB |  01m03s
+ Fedora 44 - x86_64 - Updates Archive   100% | 525.8 KiB/s |  39.5 MiB |  01m17s
+ Fedora 44 - x86_64                     100% | 346.9 KiB/s |  40.1 MiB |  01m58s
+Repositories loaded.
+Package                              Arch   Version        Repository      Size
+Reinstalling:
+ selinux-policy-targeted             noarch 0:44.10-1.fc44 updates     18.6 MiB
+   replacing selinux-policy-targeted noarch 0:44.10-1.fc44 <unknown>   18.6 MiB
+
+Transaction Summary:
+ Reinstalling:       1 package
+ Replacing:          1 package
+
+Total size of inbound packages is 7 MiB. Need to download 7 MiB.
+After this operation, 0 B extra will be used (install 19 MiB, remove 19 MiB).
+[1/1] selinux-policy-targeted-0:44.10-1 100% | 519.0 KiB/s |   6.8 MiB |  00m13s
+--------------------------------------------------------------------------------
+[1/1] Total                             100% | 518.9 KiB/s |   6.8 MiB |  00m13s
+Running transaction
+[1/4] Verify package files              100% |  55.0   B/s |   1.0   B |  00m00s
+[2/4] Prepare transaction               100% |  30.0   B/s |   2.0   B |  00m00s
+[3/4] Reinstalling selinux-policy-targe 100% | 119.2 MiB/s |  14.9 MiB |  00m00s
+[4/4] Removing selinux-policy-targeted- 100% | 314.0   B/s |   1.7 KiB |  00m06s
+Complete!
+Removed 45 files, 25 directories (total of 160 MiB). 0 errors occurred.
+--> 031a04aca10
 [4/6] STEP 1/19: FROM 96a5afba279328ed2cf8050fe1f15fc9f69edf7cd50932f9215dee631b1b91f1 AS desktop-packages
 [4/6] STEP 2/19: ARG NEXUS_PROFILE
 --> Using cache 28bd82c167557abb511073c7faeb7f37f7d9c6a19ad9d3c993c1cc998a209597
@@ -141,121 +375,63 @@ time="2026-09-25T18:11:19+02:00" level=warning msg="missing \"NEXUS_VERSION\" bu
 --> Using cache c5d936815988f56ce334b68bdc740364008c40acb74137ef521fd5848bbf05a9
 --> c5d93681598
 [4/6] STEP 12/19: COPY image/signing/cosign.pub /etc/pki/containers/nexus-core.pub
+--> Using cache 58224bbdd4bc4ae09f9944f53bcbd7cb16583eec763b33c5623ce9a825fd7713
 --> 58224bbdd4b
 [4/6] STEP 13/19: COPY image/signing/nexus-core.yaml /etc/containers/registries.d/nexus-core.yaml
+--> Using cache 5a04ef4c5defa97fce19a3bdbc9c926dfcd6e3cad1f2b89c6acc4cae8f54a77d
 --> 5a04ef4c5de
 [4/6] STEP 14/19: COPY image/signing/merge-policy.py /usr/libexec/nexus/merge-policy
---> 224cddaa26f
+--> 65596e2ecf1
 [4/6] STEP 15/19: RUN set -eu;     grep -q "BEGIN PUBLIC KEY" /etc/pki/containers/nexus-core.pub;     python3 /usr/libexec/nexus/merge-policy
 Fedora's policy default: [{'type': 'insecureAcceptAnything'}]
 Signing: ghcr.io/davidosdas-official requires the Nexus key
---> 6766fcefe98
+--> 7fc4ab41244
 [4/6] STEP 16/19: COPY --from=artwork /wallpapers/ /usr/share/wallpapers/
---> eba3c326f18
+--> 9add6138e70
 [4/6] STEP 17/19: COPY image/wallpaper/apply-wallpaper /usr/libexec/nexus/apply-wallpaper
---> 60f0db78c51
+--> 65ffce0c53f
 [4/6] STEP 18/19: COPY image/wallpaper/nexus-wallpaper.desktop      /etc/xdg/autostart/nexus-wallpaper.desktop
---> bbca5d58a4d
+--> eb44efc1c7c
 [4/6] STEP 19/19: RUN set -eu;     chmod 0755 /usr/libexec/nexus/apply-wallpaper;     login="$(ls /usr/share/wallpapers/nexus-base/contents/images/*.jpg | head -n 1)";     test -f "${login}";     if ! command -v plasma-apply-wallpaperimage > /dev/null; then         echo "No Plasma in this profile; wallpapers are in the image";         echo "but nothing will apply them at login.";     fi;     themed=0;     if [ -f /usr/share/sddm/themes/breeze/theme.conf ]; then         mkdir -p /etc/sddm.conf.d;         printf '[Theme]\nCurrent=breeze\n' > /etc/sddm.conf.d/10-nexus.conf;         echo "Login theme: breeze";     fi;     for theme in /usr/share/sddm/themes/*/; do         if grep -q '^background=' "${theme}theme.conf" 2>/dev/null; then             printf '[General]\nbackground=%s\n' "${login}"                 > "${theme}theme.conf.user";             echo "Login background: ${theme}";             themed=1;         fi;     done;     if [ "${themed}" -eq 0 ]; then         echo "No SDDM theme with a background setting; the login";         echo "screen keeps its own.";     fi
 Login theme: breeze
 Login background: /usr/share/sddm/themes/01-breeze-fedora/
 Login background: /usr/share/sddm/themes/breeze/
---> 20430a155be
-[5/6] STEP 1/13: FROM 96a5afba279328ed2cf8050fe1f15fc9f69edf7cd50932f9215dee631b1b91f1 AS base
-[5/6] STEP 2/13: ARG NEXUS_VERSION
---> Using cache 5d846a6968195070abd321e06020e907f5a39abc808ee5d2cf292cd7eac6f08e
---> 5d846a69681
-[5/6] STEP 3/13: ARG NEXUS_PROFILE
---> Using cache a895e49209eec4651de95b4b0679c53f42c368b77cb63a6c66d1b1cb1f623869
---> a895e49209e
-[5/6] STEP 4/13: COPY --from=builder /build/cli/nexus /usr/bin/nexus
---> 3472cb6eb2b
-[5/6] STEP 5/13: COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
---> 2c9aac3f3cd
-[5/6] STEP 6/13: COPY image/first-boot/nexus-first-boot.service      /usr/lib/systemd/system/nexus-first-boot.service
---> 8c60ffae293
-[5/6] STEP 7/13: COPY components/profiles /usr/share/nexus/profiles
---> 59fa9162288
-[5/6] STEP 8/13: COPY components/aliases /usr/share/nexus/aliases
---> 821d788e345
-[5/6] STEP 9/13: COPY image/identity.sh /usr/libexec/nexus/identity
---> db771dbdad9
-[5/6] STEP 10/13: RUN NEXUS_VERSION="${NEXUS_VERSION}" NEXUS_PROFILE="${NEXUS_PROFILE}"     sh /usr/libexec/nexus/identity
-Created symlink '/etc/systemd/system/multi-user.target.wants/nexus-first-boot.service' → '/usr/lib/systemd/system/nexus-first-boot.service'.
-Identity: Nexus-CORE 0.1.9 (minimalism) on Fedora Linux 44 (Forty Four)
---> 056e147faed
-[5/6] STEP 11/13: ENV NEXUS_PROFILES=/usr/share/nexus/profiles
---> 8205206e06d
-[5/6] STEP 12/13: ENV NEXUS_ALIASES=/usr/share/nexus/aliases
---> 4db64de6ea1
-[5/6] STEP 13/13: RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
-Updating and loading repositories:
- RPM Fusion for Fedora 44 - Nonfree - U 100% |   2.0 KiB/s |  46.6 KiB |  00m23s
- RPM Fusion for Fedora 44 - Nonfree     100% |   3.9 KiB/s |  97.2 KiB |  00m25s
- RPM Fusion for Fedora 44 - Free - Upda 100% |   2.9 KiB/s |  78.2 KiB |  00m27s
- Fedora 44 - x86_64 - Updates           100% | 296.7 KiB/s |  12.4 MiB |  00m43s
- Fedora 44 openh264 (From Cisco) - x86_ 100% | 127.0   B/s |   5.3 KiB |  00m42s
- RPM Fusion for Fedora 44 - Free        100% |   3.1 KiB/s | 152.1 KiB |  00m49s
- Fedora 44 - x86_64 - Updates Archive   100% | 532.2 KiB/s |  39.5 MiB |  01m16s
- Fedora 44 - x86_64                     100% | 318.8 KiB/s |  36.8 MiB |  01m58s
-Repositories loaded.
-Package                              Arch   Version        Repository      Size
-Reinstalling:
- selinux-policy-targeted             noarch 0:44.10-1.fc44 updates     18.6 MiB
-   replacing selinux-policy-targeted noarch 0:44.10-1.fc44 <unknown>   18.6 MiB
-
-Transaction Summary:
- Reinstalling:       1 package
- Replacing:          1 package
-
-Total size of inbound packages is 7 MiB. Need to download 7 MiB.
-After this operation, 0 B extra will be used (install 19 MiB, remove 19 MiB).
-[1/1] selinux-policy-targeted-0:44.10-1 100% | 907.7 KiB/s |   6.8 MiB |  00m08s
---------------------------------------------------------------------------------
-[1/1] Total                             100% | 907.5 KiB/s |   6.8 MiB |  00m08s
-Running transaction
-[1/4] Verify package files              100% |  55.0   B/s |   1.0   B |  00m00s
-[2/4] Prepare transaction               100% |  25.0   B/s |   2.0   B |  00m00s
-[3/4] Reinstalling selinux-policy-targe 100% |  69.3 MiB/s |  14.9 MiB |  00m00s
-[4/4] Removing selinux-policy-targeted- 100% | 265.0   B/s |   1.7 KiB |  00m07s
-Complete!
-Removed 45 files, 25 directories (total of 160 MiB). 0 errors occurred.
---> df153b3c108
-[6/6] STEP 1/13: FROM 20430a155be9bd8fbe04c7b31f895af24842afe63bca77ababb9ee32dd0b7530 AS desktop
+--> b09d5581b14
+[6/6] STEP 1/13: FROM b09d5581b14305213e9ee9648f2d26bf849f09af1bd8bfd233470e87a6bf0b40 AS desktop
 [6/6] STEP 2/13: ARG NEXUS_VERSION
---> 1e6bb64c5eb
+--> 9ec712505c0
 [6/6] STEP 3/13: ARG NEXUS_PROFILE
---> 501983ac0b6
+--> 52ad13eda44
 [6/6] STEP 4/13: COPY --from=builder /build/cli/nexus /usr/bin/nexus
---> 8619c08a012
+--> 1cf86487ff0
 [6/6] STEP 5/13: COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
---> cb4a77675ca
+--> f9a3e7dfe59
 [6/6] STEP 6/13: COPY image/first-boot/nexus-first-boot.service      /usr/lib/systemd/system/nexus-first-boot.service
---> 28c24ef9c04
+--> cb76dfbb882
 [6/6] STEP 7/13: COPY components/profiles/base.profile      components/profiles/basic.profile      components/profiles/development.profile      components/profiles/gaming.profile      components/profiles/minimalism.profile      components/profiles/school.profile      components/profiles/security.profile      components/profiles/showcase.profile      components/profiles/vpn.profile      /usr/share/nexus/profiles/
---> 714e00edfe8
+--> 2bda03d1325
 [6/6] STEP 8/13: COPY components/aliases /usr/share/nexus/aliases
---> fe7327ca5e6
+--> 86853e5db9f
 [6/6] STEP 9/13: COPY image/identity.sh /usr/libexec/nexus/identity
---> 0c79f3b90ec
+--> 3fc9e2cd606
 [6/6] STEP 10/13: RUN NEXUS_VERSION="${NEXUS_VERSION}" NEXUS_PROFILE="${NEXUS_PROFILE}"     sh /usr/libexec/nexus/identity
 Created symlink '/etc/systemd/system/multi-user.target.wants/nexus-first-boot.service' → '/usr/lib/systemd/system/nexus-first-boot.service'.
-Identity: Nexus-CORE 0.1.9 (minimalism) on Fedora Linux 44 (Forty Four)
---> 9f45708f932
+Identity: Nexus-CORE 0.1.10 (minimalism) on Fedora Linux 44 (Forty Four)
+--> 281139eaf24
 [6/6] STEP 11/13: ENV NEXUS_PROFILES=/usr/share/nexus/profiles
---> 09d376294fc
+--> abaa035bc50
 [6/6] STEP 12/13: ENV NEXUS_ALIASES=/usr/share/nexus/aliases
---> 5ae6273cd68
+--> 1d516b8e59d
 [6/6] STEP 13/13: RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
 Updating and loading repositories:
- RPM Fusion for Fedora 44 - Nonfree - U 100% |   1.6 KiB/s |  46.6 KiB |  00m28s
- RPM Fusion for Fedora 44 - Nonfree     100% |   3.0 KiB/s |  97.2 KiB |  00m32s
- RPM Fusion for Fedora 44 - Free - Upda 100% |   2.3 KiB/s |  78.2 KiB |  00m35s
- RPM Fusion for Fedora 44 - Free        100% |   3.9 KiB/s | 152.1 KiB |  00m39s
- Fedora 44 openh264 (From Cisco) - x86_ 100% | 135.0   B/s |   5.3 KiB |  00m40s
- Fedora 44 - x86_64 - Updates           100% | 259.3 KiB/s |  12.7 MiB |  00m50s
- Fedora 44 - x86_64 - Updates Archive   100% | 291.0 KiB/s |  39.5 MiB |  02m19s
- Fedora 44 - x86_64                     100% | 281.3 KiB/s |  39.5 MiB |  02m24s
+ RPM Fusion for Fedora 44 - Nonfree - U 100% |   1.6 KiB/s |  49.4 KiB |  00m31s
+ RPM Fusion for Fedora 44 - Nonfree     100% |   2.1 KiB/s | 100.3 KiB |  00m48s
+ RPM Fusion for Fedora 44 - Free - Upda 100% |   1.7 KiB/s |  83.2 KiB |  00m49s
+ RPM Fusion for Fedora 44 - Free        100% |   3.0 KiB/s | 157.6 KiB |  00m53s
+ Fedora 44 openh264 (From Cisco) - x86_ 100% |  99.0   B/s |   5.3 KiB |  00m54s
+ Fedora 44 - x86_64 - Updates           100% | 120.7 KiB/s |  12.5 MiB |  01m46s
+ Fedora 44 - x86_64                     100% | 378.8 KiB/s |  52.7 MiB |  02m23s
+ Fedora 44 - x86_64 - Updates Archive   100% | 243.4 KiB/s |  39.5 MiB |  02m46s
 Repositories loaded.
 Package                              Arch   Version        Repository      Size
 Reinstalling:
@@ -268,17 +444,17 @@ Transaction Summary:
 
 Total size of inbound packages is 7 MiB. Need to download 7 MiB.
 After this operation, 0 B extra will be used (install 19 MiB, remove 19 MiB).
-[1/1] selinux-policy-targeted-0:44.10-1 100% |   1.4 MiB/s |   6.8 MiB |  00m05s
+[1/1] selinux-policy-targeted-0:44.10-1 100% |   1.6 MiB/s |   6.8 MiB |  00m04s
 --------------------------------------------------------------------------------
-[1/1] Total                             100% |   1.4 MiB/s |   6.8 MiB |  00m05s
+[1/1] Total                             100% |   1.6 MiB/s |   6.8 MiB |  00m04s
 Running transaction
-[1/4] Verify package files              100% |  19.0   B/s |   1.0   B |  00m00s
-[2/4] Prepare transaction               100% |  16.0   B/s |   2.0   B |  00m00s
-[3/4] Reinstalling selinux-policy-targe 100% |  81.5 MiB/s |  14.9 MiB |  00m00s
-[4/4] Removing selinux-policy-targeted- 100% |   6.8 KiB/s |   1.7 KiB |  00m00s
+[1/4] Verify package files              100% |  55.0   B/s |   1.0   B |  00m00s
+[2/4] Prepare transaction               100% |  21.0   B/s |   2.0   B |  00m00s
+[3/4] Reinstalling selinux-policy-targe 100% | 119.2 MiB/s |  14.9 MiB |  00m00s
+[4/4] Removing selinux-policy-targeted- 100% |  10.9 KiB/s |   1.7 KiB |  00m00s
 Complete!
 Removed 45 files, 25 directories (total of 160 MiB). 0 errors occurred.
 [6/6] COMMIT localhost/nexus-os:minimalism
---> 741a050ea65
+--> dc0b5e1b2df
 Successfully tagged localhost/nexus-os:minimalism
-741a050ea6568ec9886ff7745b55f047ef3e6fdd752f3d1ead1252c6f3fb7281
+dc0b5e1b2df4afba164ca88f0e2d3b40d00c428290cfd6cf4f459fbc1cff80c6
