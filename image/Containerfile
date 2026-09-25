@@ -313,6 +313,8 @@ RUN set -eu; \
     dnf install -y \
         --exclude=rootfiles \
         --setopt=install_weak_deps=False \
+        --disablerepo='rpmfusion-*' \
+        --disablerepo=fedora-cisco-openh264 \
         $packages; \
     dnf clean all
 
@@ -360,6 +362,22 @@ RUN if rpm -q fedora-logos > /dev/null 2>&1; then \
         exit 1; \
     fi
 
+# Only Fedora's own packages go into the image.
+#
+# RPM Fusion is enabled in the os stage, so every dnf install after it
+# could choose RPM Fusion's builds -- and did: 0.1.3 to 0.1.7 shipped
+# fdk-aac from rpmfusion-nonfree, and openh264 from Cisco's repository,
+# found reading a build log on 25 September. Both are about patents,
+# not code: Cisco's licence covers openh264 only when each user
+# downloads it from Cisco, which is why Fedora's own images carry the
+# noopenh264 stub instead; and RPM Fusion's nonfree builds are meant to
+# be fetched by the user's machine, not redistributed inside someone
+# else's image. So image builds disable both repositories, and the
+# extras step below refuses the build if anything from them got in.
+# They stay enabled on installed machines: Steam and codecs are then
+# downloaded by the user, which is the arrangement they are offered
+# under.
+#
 # The login screen's theme and the boot splash.
 #
 # Both were missing, and both were noticed on the first machine. SDDM
@@ -393,6 +411,8 @@ RUN set -eu; \
     dnf install -y \
         --exclude=rootfiles \
         --setopt=install_weak_deps=False \
+        --disablerepo='rpmfusion-*' \
+        --disablerepo=fedora-cisco-openh264 \
         plymouth \
         plymouth-scripts \
         plymouth-theme-spinner \
@@ -405,7 +425,20 @@ RUN set -eu; \
         echo "fedora-logos came back with the splash or login theme." >&2; \
         rpm -q --whatrequires fedora-logos >&2 || true; \
         exit 1; \
-    fi
+    fi; \
+    shipped="$(rpm -qa --qf '%{NAME} %{VENDOR}\n' | grep -i 'rpm fusion' \
+        | grep -v '^rpmfusion-[a-z]*-release ' || true)"; \
+    for name in openh264 mozilla-openh264; do \
+        if rpm -q "${name}" > /dev/null 2>&1; then \
+            shipped="${shipped} ${name}"; \
+        fi; \
+    done; \
+    if [ -n "${shipped}" ]; then \
+        echo "The image would ship packages it must not redistribute:" >&2; \
+        echo "${shipped}" >&2; \
+        exit 1; \
+    fi; \
+    echo "Redistribution: Fedora packages only"
 
 # The splash has to be inside the initramfs, because the passphrase is
 # asked for before the real system is mounted. The initramfs in a
@@ -465,6 +498,23 @@ COPY image/timezone/90-nexus-timezone \
      /usr/lib/NetworkManager/dispatcher.d/90-nexus-timezone
 RUN chmod 0755 /usr/bin/nexus-timezone \
         /usr/lib/NetworkManager/dispatcher.d/90-nexus-timezone
+
+# Signed updates. See image/signing/README.md.
+#
+# The policy is merged, not replaced: everything under
+# ghcr.io/davidosdas-official must carry a signature made with the
+# Nexus key; every other registry keeps whatever Fedora set. The
+# machine only enforces this when its origin says ostree-image-signed:
+# -- the installer sets that; older machines switch once by hand.
+#
+# No public key, no build: an image whose policy points at a missing key
+# would refuse every update it is ever offered.
+COPY image/signing/cosign.pub /etc/pki/containers/nexus-core.pub
+COPY image/signing/nexus-core.yaml /etc/containers/registries.d/nexus-core.yaml
+COPY image/signing/merge-policy.py /usr/libexec/nexus/merge-policy
+RUN set -eu; \
+    grep -q "BEGIN PUBLIC KEY" /etc/pki/containers/nexus-core.pub; \
+    python3 /usr/libexec/nexus/merge-policy
 
 # The wallpapers: one per profile, all of them in the picker.
 #

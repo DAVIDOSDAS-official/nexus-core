@@ -85,10 +85,30 @@ echo
 echo "Building. This takes a while."
 echo
 
+# The installer config names the image it installs, for the %post that
+# makes installed machines require signed updates. A localhost image is
+# never signed and never updated, so for it the %post is left out
+# rather than written to fail.
+RENDERED="$(mktemp --suffix=.toml)"
+
+if [ "${IMAGE#localhost/}" != "${IMAGE}" ]; then
+    echo "Local image: installs will not require signed updates."
+    sed '/^%post/,/^%end/d' "${ROOT}/image/${CONFIG}" > "${RENDERED}"
+else
+    sed "s|@NEXUS_IMAGE@|${IMAGE}|" "${ROOT}/image/${CONFIG}" > "${RENDERED}"
+fi
+
+if grep -q '@NEXUS_IMAGE@' "${RENDERED}"; then
+    echo "The installer config still has a placeholder; refusing." >&2
+    exit 1
+fi
+
+chmod 0644 "${RENDERED}"
+
 sudo podman run --rm -it --privileged \
     --security-opt label=type:unconfined_t \
     -v "${OUTPUT}":/output \
-    -v "${ROOT}/image/${CONFIG}":/config.toml:ro \
+    -v "${RENDERED}":/config.toml:ro \
     -v /var/lib/containers/storage:/var/lib/containers/storage \
     "${BUILDER}" \
     --type "${TYPE}" \

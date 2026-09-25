@@ -130,6 +130,38 @@ fi
 echo "Logged in to ${LOGIN_HOST} as ${WHO}."
 echo
 
+# Signing, checked before anything is pushed.
+#
+# Machines installed with signing refuse an update that is not signed
+# with the Nexus key (image/signing/README.md). An unsigned push would
+# sit in the registry as the newest image and fail on every machine
+# that tried it, so the tools and the key are checked first, while
+# stopping costs nothing.
+COSIGN_KEY="${COSIGN_KEY:-${HOME}/.config/nexus-signing/cosign.key}"
+PUBLIC_KEY="${ROOT}/image/signing/cosign.pub"
+
+if ! command -v cosign > /dev/null 2>&1; then
+    echo "cosign is not installed; images must be signed. See HANDOFF," >&2
+    echo "'Signing', for the one-time setup." >&2
+    exit 1
+fi
+
+# cosign 3 writes signatures in a newer format that the machines'
+# container tools do not read yet; a signature they cannot find is the
+# same as none.
+if ! cosign version 2>/dev/null | grep -q 'GitVersion: *v2\.'; then
+    echo "cosign 2.x is needed; this is:" >&2
+    cosign version 2>/dev/null | grep GitVersion >&2
+    exit 1
+fi
+
+if [ ! -f "${COSIGN_KEY}" ] || [ ! -f "${PUBLIC_KEY}" ]; then
+    echo "Signing key missing. Expected:" >&2
+    echo "    private: ${COSIGN_KEY}" >&2
+    echo "    public:  ${PUBLIC_KEY}" >&2
+    exit 1
+fi
+
 # An image built as localhost/ cannot be updated from: bootc records
 # where it was pulled from, and localhost is not somewhere a machine
 # can reach. So it is retagged before pushing, and the ISO has to be
@@ -140,7 +172,9 @@ podman tag "${LOCAL}" "${REGISTRY}/${NAME}:${PROFILE}-${VERSION}"
 echo "Pushing. This takes a while: it is a few gigabytes."
 echo
 
-if ! podman push "${REMOTE}"; then
+DIGESTFILE="$(mktemp)"
+
+if ! podman push --digestfile "${DIGESTFILE}" "${REMOTE}"; then
     echo >&2
     echo "Push failed; see podman's message above." >&2
     echo "  401 or 403 while requesting a token: the login -- check with" >&2
@@ -149,6 +183,47 @@ if ! podman push "${REMOTE}"; then
 fi
 
 podman push "${REGISTRY}/${NAME}:${PROFILE}-${VERSION}" || true
+
+# Sign what was pushed, by digest -- the one image, whatever tags point
+# at it. cosign reads podman's own login, so there is nothing more to
+# log in to; the key's password is asked for here.
+#
+# --tlog-upload=false: the machines check the key, not a public
+# transparency log, and nothing about this build needs to be published
+# to one.
+DIGEST="$(cat "${DIGESTFILE}")"
+rm -f "${DIGESTFILE}"
+SIGNED_REF="${REGISTRY}/${NAME}@${DIGEST}"
+
+AUTHDIR="$(mktemp -d)"
+ln -s "${REGISTRY_AUTH_FILE:-${XDG_RUNTIME_DIR}/containers/auth.json}" \
+    "${AUTHDIR}/config.json"
+
+echo
+echo "Signing ${SIGNED_REF}"
+
+if ! DOCKER_CONFIG="${AUTHDIR}" cosign sign --yes --tlog-upload=false \
+        --key "${COSIGN_KEY}" "${SIGNED_REF}"; then
+    rm -rf "${AUTHDIR}"
+    echo >&2
+    echo "PUSHED BUT NOT SIGNED. Machines with signing will refuse it." >&2
+    echo "Fix the problem above and sign by hand:" >&2
+    echo "    cosign sign --tlog-upload=false --key ${COSIGN_KEY} ${SIGNED_REF}" >&2
+    exit 1
+fi
+
+# Checked, not assumed: the signature is read back from the registry
+# with the public key the machines carry.
+if ! DOCKER_CONFIG="${AUTHDIR}" cosign verify --insecure-ignore-tlog=true \
+        --key "${PUBLIC_KEY}" "${SIGNED_REF}" > /dev/null; then
+    rm -rf "${AUTHDIR}"
+    echo "Signed, but the signature does not verify with ${PUBLIC_KEY}." >&2
+    echo "Is image/signing/cosign.pub the partner of ${COSIGN_KEY}?" >&2
+    exit 1
+fi
+
+rm -rf "${AUTHDIR}"
+echo "Signed and verified."
 
 cat <<NEXT
 
@@ -177,8 +252,9 @@ After installing from that ISO, the machine should agree:
 
     sudo bootc status | grep -i image
 
-If that says localhost, the ISO was built from the wrong name and
-the machine can never update. That is the whole point of this
+It should say ostree-image-signed:docker://... -- signed updates
+required. If it says localhost, the ISO was built from the wrong name
+and the machine can never update. That is the whole point of this
 script, and it is worth checking rather than assuming.
 
 Then, on an installed machine:

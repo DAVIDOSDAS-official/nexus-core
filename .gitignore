@@ -19,3 +19,8 @@ CTestTestfile.cmake
 build/
 output/
 heaptrack.*.zst
+
+# A signing key must never be committed or copied into an image.
+# image/signing/README.md
+*.key
+cosign.key

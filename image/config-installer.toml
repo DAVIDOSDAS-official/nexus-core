@@ -35,6 +35,16 @@ enable = [
 # and turning it off is a thing they do rather than a thing that
 # happens to them.
 #
+# The %post makes the installed machine require signed updates. The
+# ISO installs from a copy of the image inside it, and the machine's
+# origin would otherwise say ostree-unverified-registry: -- checking
+# where an update came from but not who made it. bootc switch
+# --mutate-in-place is meant for exactly this: it rewrites the origin
+# without pulling anything. @NEXUS_IMAGE@ is filled in by
+# image/build-installer.sh with the image the ISO is built from; see
+# image/signing/README.md. --erroronfail: an install that cannot
+# enforce signatures should stop rather than finish quietly without.
+#
 # ostreecontainer is not here. The builder writes that line itself and
 # it is the one part of the installation a custom kickstart cannot
 # configure.
@@ -67,4 +77,8 @@ network --hostname=nexus
 zerombr
 clearpart --all --initlabel
 autopart --type=lvm --encrypted --luks-version=luks2
+
+%post --erroronfail
+bootc switch --mutate-in-place --enforce-container-sigpolicy --transport registry @NEXUS_IMAGE@
+%end
 """

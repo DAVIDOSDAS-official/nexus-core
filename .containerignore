@@ -7,3 +7,8 @@ output/
 *.o
 *.a
 *.qcow2
+
+# A signing key must never be committed or copied into an image.
+# image/signing/README.md
+*.key
+cosign.key

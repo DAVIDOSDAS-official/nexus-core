@@ -118,9 +118,11 @@ release is below, under **Open**.
 ---
 
 **24 September, evening (patches 14–17)**
-- **RPM Fusion** (free + nonfree) enabled in the `os` stage — the
-  release packages only, nothing from it installed by default. For
-  Steam, codecs, and later NVIDIA.
+- **RPM Fusion** (free + nonfree) enabled in the `os` stage, for Steam,
+  codecs, and later NVIDIA. **Correction (25 Sept):** I said nothing
+  from it would be installed by default. False — 0.1.3–0.1.7 shipped
+  `fdk-aac` (rpmfusion-nonfree) and `openh264`/`mozilla-openh264`
+  (Cisco's repo) inside the image. Patch 22 fixes it.
 - **Licence:** GPL-3.0 in `LICENSE` (copied from Pop!_OS's
   `/usr/share/common-licenses/GPL-3` — gnu.org reset the connection).
   **`TRADEMARKS.md`:** the name and the node-graph N are not GPL; a
@@ -228,6 +230,42 @@ test fail.
   `rd.luks.options=tries=0` on machines installed before it existed).
 - **Wallpaper: works** — minimalism by default, gaming after choosing
   it (Asus, 25 Sept). Remove the stray `/etc/nexus` on the Acer.
+
+- **Patch 22 (0.1.8) — redistribution.** Image builds now disable
+  `rpmfusion-*` and `fedora-cisco-openh264`, and the build fails if any
+  RPM Fusion package (other than the two repo-release packages) or
+  openh264 is in the image. Why: Cisco's patent licence covers openh264
+  only when each user downloads it from Cisco (Fedora ships the
+  `noopenh264` stub for that reason); RPM Fusion nonfree builds are
+  meant to be fetched by the user, not redistributed inside an image.
+  Machines keep the repos enabled, so users still get Steam/codecs by
+  downloading them. Package layer rebuilds: **big push**.
+- **Acer disk:** ISO build stopped at 11 GB free (needs ~20).
+
+- **Patch 23 (0.1.9) — signed updates.** cosign 2.x key pair; private
+  key `~/.config/nexus-signing/cosign.key` (password, offline backup,
+  never in git — `*.key` ignored), public key committed as
+  `image/signing/cosign.pub`. Image carries the key at
+  `/etc/pki/containers/nexus-core.pub`, `registries.d/nexus-core.yaml`
+  (sigstore attachments) and a policy.json *merged* to require the key
+  for `ghcr.io/davidosdas-official` only. `publish.sh` refuses without
+  cosign 2.x and the key, pushes by digest, signs
+  (`--tlog-upload=false`, using podman's login), then verifies with the
+  public key. New installs: kickstart `%post` runs `bootc switch
+  --mutate-in-place --enforce-container-sigpolicy`, image name filled in
+  by `build-installer.sh` (left out for localhost images). Tested with
+  fakes: signs+verifies; refuses cosign 3; sign failure says "PUSHED BUT
+  NOT SIGNED". **Not yet tested for real.** Existing machines switch
+  once: `sudo rpm-ostree rebase
+  ostree-image-signed:docker://ghcr.io/davidosdas-official/nexus-core-testing:minimalism`.
+  Negative test: push an image with a different digest and no
+  signature as `:unsigned-test`; rebasing to it must fail.
+- **nexus-timezone works** (Asus, 25 Sept). Paris showed the same clock
+  as Skopje because both are UTC+2 in summer; `now` then replaced the
+  manual Paris with the looked-up zone, as designed.
+- **Decided 25 Sept:** release as a public preview without other
+  testers (feedback on the website instead), NVIDIA on the open driver,
+  paid version not before ~6 months — all free until then.
 
 **The bar for the first public release** (one stable, impressive
 release first; paid comes later)

@@ -1,0 +1,6 @@
+# Where to find signatures for Nexus-CORE images: stored next to the
+# image in the same registry, the way cosign writes them. See
+# image/signing/README.md.
+docker:
+  ghcr.io/davidosdas-official:
+    use-sigstore-attachments: true
