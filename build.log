@@ -1,13 +1,13 @@
-time="2026-09-24T22:37:31+02:00" level=warning msg="missing \"NEXUS_VERSION\" build argument. Try adding \"--build-arg NEXUS_VERSION=<VALUE>\" to the command line"
-time="2026-09-24T22:37:31+02:00" level=warning msg="missing \"NEXUS_VERSION\" build argument. Try adding \"--build-arg NEXUS_VERSION=<VALUE>\" to the command line"
+time="2026-09-25T15:22:25+02:00" level=warning msg="missing \"NEXUS_VERSION\" build argument. Try adding \"--build-arg NEXUS_VERSION=<VALUE>\" to the command line"
+time="2026-09-25T15:22:25+02:00" level=warning msg="missing \"NEXUS_VERSION\" build argument. Try adding \"--build-arg NEXUS_VERSION=<VALUE>\" to the command line"
 [1/6] STEP 1/5: FROM quay.io/fedora/fedora-bootc:44 AS builder
 [1/6] STEP 2/5: RUN dnf install -y         cmake         gcc-c++         make     && dnf clean all
 --> Using cache f02d0f3efdda5cf5c2472255626a4978a6205807589d8b71ad97f582823bc84b
 --> f02d0f3efdd
 [1/6] STEP 3/5: COPY . /src
---> 06cbc47d1b9
+--> a8387b200e6
 [1/6] STEP 4/5: ARG NEXUS_COMMIT=unknown
---> cc927009b5f
+--> 70c8b9cedf1
 [1/6] STEP 5/5: RUN cmake -S /src -B /build         -DCMAKE_BUILD_TYPE=Release         -DNEXUS_BUILD_TESTS=OFF         -DNEXUS_COMMIT_OVERRIDE="${NEXUS_COMMIT}"     && cmake --build /build --parallel
 -- The CXX compiler identification is GNU 16.2.1
 -- Detecting CXX compiler ABI info
@@ -15,63 +15,63 @@ time="2026-09-24T22:37:31+02:00" level=warning msg="missing \"NEXUS_VERSION\" bu
 -- Check for working CXX compiler: /usr/sbin/c++ - skipped
 -- Detecting CXX compile features
 -- Detecting CXX compile features - done
--- Configuring done (0.3s)
+-- Configuring done (0.6s)
 -- Generating done (0.0s)
 -- Build files have been written to: /build
 [  1%] Reading build version from git
-[  3%] Building CXX object core/CMakeFiles/nexus_core.dir/src/constraint.cpp.o
-[  5%] Building CXX object core/CMakeFiles/nexus_core.dir/src/profile_check.cpp.o
-[  7%] Building CXX object core/CMakeFiles/nexus_core.dir/src/removal.cpp.o
-[  8%] Building CXX object core/CMakeFiles/nexus_core.dir/src/core.cpp.o
-[ 10%] Building CXX object core/CMakeFiles/nexus_core.dir/src/component.cpp.o
-[ 12%] Building CXX object core/CMakeFiles/nexus_core.dir/src/architecture.cpp.o
-[ 14%] Building CXX object core/CMakeFiles/nexus_core.dir/src/requirement.cpp.o
-[ 16%] Building CXX object core/CMakeFiles/nexus_core.dir/src/solver.cpp.o
-[ 17%] Building CXX object core/CMakeFiles/nexus_core.dir/src/transaction.cpp.o
-[ 19%] Building CXX object core/CMakeFiles/nexus_core.dir/src/source.cpp.o
-[ 23%] Building CXX object core/CMakeFiles/nexus_core.dir/src/options.cpp.o
-[ 23%] Building CXX object core/CMakeFiles/nexus_core.dir/src/diagnosis.cpp.o
-[ 25%] Building CXX object core/CMakeFiles/nexus_core.dir/src/alias.cpp.o
-[ 26%] Building CXX object core/CMakeFiles/nexus_core.dir/src/composition.cpp.o
-[ 28%] Building CXX object core/CMakeFiles/nexus_core.dir/src/conflict_detector.cpp.o
-[ 30%] Building CXX object core/CMakeFiles/nexus_core.dir/src/capability.cpp.o
-[ 32%] Building CXX object core/CMakeFiles/nexus_core.dir/src/dependency_graph.cpp.o
-[ 33%] Building CXX object core/CMakeFiles/nexus_core.dir/src/resolver.cpp.o
-[ 33%] Built target nexus_version_header
+[  5%] Building CXX object core/CMakeFiles/nexus_core.dir/src/requirement.cpp.o
+[  5%] Building CXX object core/CMakeFiles/nexus_core.dir/src/constraint.cpp.o
+[  7%] Building CXX object core/CMakeFiles/nexus_core.dir/src/architecture.cpp.o
+[  8%] Building CXX object core/CMakeFiles/nexus_core.dir/src/component.cpp.o
+[ 10%] Building CXX object core/CMakeFiles/nexus_core.dir/src/source.cpp.o
+[ 12%] Building CXX object core/CMakeFiles/nexus_core.dir/src/solver.cpp.o
+[ 14%] Building CXX object core/CMakeFiles/nexus_core.dir/src/transaction.cpp.o
+[ 16%] Building CXX object core/CMakeFiles/nexus_core.dir/src/profile_check.cpp.o
+[ 17%] Building CXX object core/CMakeFiles/nexus_core.dir/src/core.cpp.o
+[ 19%] Building CXX object core/CMakeFiles/nexus_core.dir/src/removal.cpp.o
+[ 21%] Building CXX object core/CMakeFiles/nexus_core.dir/src/diagnosis.cpp.o
+[ 23%] Building CXX object core/CMakeFiles/nexus_core.dir/src/resolver.cpp.o
+[ 25%] Building CXX object core/CMakeFiles/nexus_core.dir/src/options.cpp.o
+[ 26%] Building CXX object core/CMakeFiles/nexus_core.dir/src/conflict_detector.cpp.o
+[ 28%] Building CXX object core/CMakeFiles/nexus_core.dir/src/composition.cpp.o
+[ 30%] Building CXX object core/CMakeFiles/nexus_core.dir/src/dependency_graph.cpp.o
+[ 32%] Building CXX object core/CMakeFiles/nexus_core.dir/src/alias.cpp.o
+[ 32%] Built target nexus_version_header
+[ 33%] Building CXX object core/CMakeFiles/nexus_core.dir/src/capability.cpp.o
 [ 35%] Linking CXX static library libnexus_core.a
 [ 35%] Built target nexus_core
-[ 39%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/hardware.cpp.o
-[ 39%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/encryption.cpp.o
-[ 41%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/secure_boot.cpp.o
-[ 44%] Building CXX object system/CMakeFiles/nexus_system.dir/src/version.cpp.o
-[ 44%] Building CXX object system/CMakeFiles/nexus_system.dir/src/control_file.cpp.o
-[ 46%] Building CXX object system/CMakeFiles/nexus_system.dir/src/profile_file.cpp.o
-[ 48%] Building CXX object system/CMakeFiles/nexus_system.dir/src/auto_installed.cpp.o
+[ 37%] Building CXX object system/CMakeFiles/nexus_system.dir/src/profile_file.cpp.o
+[ 41%] Building CXX object system/CMakeFiles/nexus_system.dir/src/control_file.cpp.o
+[ 41%] Building CXX object system/CMakeFiles/nexus_system.dir/src/version.cpp.o
+[ 42%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/hardware.cpp.o
+[ 44%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/secure_boot.cpp.o
+[ 46%] Building CXX object system/CMakeFiles/nexus_system.dir/src/auto_installed.cpp.o
+[ 50%] Building CXX object system/CMakeFiles/nexus_system.dir/src/apt_source.cpp.o
 [ 50%] Building CXX object system/CMakeFiles/nexus_system.dir/src/plan_check.cpp.o
-[ 55%] Building CXX object system/CMakeFiles/nexus_system.dir/src/apt_source.cpp.o
-[ 57%] Building CXX object system/CMakeFiles/nexus_system.dir/src/protection.cpp.o
-[ 57%] Building CXX object system/CMakeFiles/nexus_system.dir/src/container.cpp.o
-[ 55%] Building CXX object system/CMakeFiles/nexus_system.dir/src/dependency_expression.cpp.o
-[ 64%] Building CXX object system/CMakeFiles/nexus_system.dir/src/plan_apply.cpp.o
-[ 64%] Building CXX object system/CMakeFiles/nexus_system.dir/src/snap_source.cpp.o
-[ 64%] Building CXX object system/CMakeFiles/nexus_system.dir/src/process.cpp.o
-[ 66%] Building CXX object system/CMakeFiles/nexus_system.dir/src/flatpak_source.cpp.o
-[ 64%] Building CXX object system/CMakeFiles/nexus_system.dir/src/transaction_log.cpp.o
-[ 67%] Building CXX object system/CMakeFiles/nexus_system.dir/src/identity.cpp.o
-[ 69%] Building CXX object system/CMakeFiles/nexus_system.dir/src/services.cpp.o
-[ 71%] Building CXX object system/CMakeFiles/nexus_system.dir/src/source_build.cpp.o
-[ 73%] Building CXX object system/CMakeFiles/nexus_system.dir/src/pacman_source.cpp.o
-[ 75%] Building CXX object system/CMakeFiles/nexus_system.dir/src/dpkg_source.cpp.o
-[ 76%] Building CXX object system/CMakeFiles/nexus_system.dir/src/xml.cpp.o
+[ 51%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/encryption.cpp.o
+[ 53%] Building CXX object system/CMakeFiles/nexus_system.dir/src/plan_apply.cpp.o
+[ 55%] Building CXX object system/CMakeFiles/nexus_system.dir/src/flatpak_source.cpp.o
+[ 58%] Building CXX object system/CMakeFiles/nexus_system.dir/src/identity.cpp.o
+[ 60%] Building CXX object system/CMakeFiles/nexus_system.dir/src/dependency_expression.cpp.o
+[ 60%] Building CXX object system/CMakeFiles/nexus_system.dir/src/dpkg_source.cpp.o
+[ 64%] Building CXX object system/CMakeFiles/nexus_system.dir/src/vpn.cpp.o
+[ 64%] Building CXX object system/CMakeFiles/nexus_system.dir/src/protection.cpp.o
+[ 67%] Building CXX object system/CMakeFiles/nexus_system.dir/src/container.cpp.o
+[ 69%] Building CXX object system/CMakeFiles/nexus_system.dir/src/process.cpp.o
+[ 69%] Building CXX object system/CMakeFiles/nexus_system.dir/src/snap_source.cpp.o
+[ 71%] Building CXX object system/CMakeFiles/nexus_system.dir/src/services.cpp.o
+[ 73%] Building CXX object system/CMakeFiles/nexus_system.dir/src/source_build.cpp.o
 [ 78%] Building CXX object system/CMakeFiles/nexus_system.dir/src/nix_source.cpp.o
-[ 80%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_version.cpp.o
-[ 82%] Building CXX object system/CMakeFiles/nexus_system.dir/src/vpn.cpp.o
-[ 83%] Building CXX object system/CMakeFiles/nexus_system.dir/src/portage_source.cpp.o
-[ 85%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_repo.cpp.o
-[ 87%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_database.cpp.o
+[ 80%] Building CXX object system/CMakeFiles/nexus_system.dir/src/transaction_log.cpp.o
+[ 82%] Building CXX object system/CMakeFiles/nexus_system.dir/src/xml.cpp.o
+[ 82%] Building CXX object system/CMakeFiles/nexus_system.dir/src/pacman_source.cpp.o
+[ 82%] Building CXX object system/CMakeFiles/nexus_system.dir/src/portage_source.cpp.o
+[ 83%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_database.cpp.o
+[ 85%] Building CXX object system/CMakeFiles/nexus_system.dir/src/alias_file.cpp.o
+[ 87%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_version.cpp.o
 [ 89%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_source.cpp.o
-[ 91%] Building CXX object system/CMakeFiles/nexus_system.dir/src/alias_file.cpp.o
-[ 92%] Building CXX object system/CMakeFiles/nexus_system.dir/src/compression.cpp.o
+[ 91%] Building CXX object system/CMakeFiles/nexus_system.dir/src/compression.cpp.o
+[ 92%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_repo.cpp.o
 [ 94%] Linking CXX static library libnexus_hardware.a
 [ 94%] Built target nexus_hardware
 [ 96%] Linking CXX static library libnexus_system.a
@@ -79,7 +79,7 @@ time="2026-09-24T22:37:31+02:00" level=warning msg="missing \"NEXUS_VERSION\" bu
 [ 98%] Building CXX object cli/CMakeFiles/nexus.dir/src/main.cpp.o
 [100%] Linking CXX executable nexus
 [100%] Built target nexus
---> e02a3ab9d4d
+--> c3d7a21287e
 [2/6] STEP 1/5: FROM quay.io/fedora/fedora-bootc:44 AS artwork
 [2/6] STEP 2/5: RUN dnf install -y python3-pillow && dnf clean all
 --> Using cache 1f33d836f941edbb1aa50f7c6875e9a72338ac5c7231a93866b233707246d718
@@ -109,66 +109,6 @@ time="2026-09-24T22:37:31+02:00" level=warning msg="missing \"NEXUS_VERSION\" bu
 [3/6] STEP 6/6: RUN mkdir -p /usr/lib/bootc/kargs.d     && printf '%s\n'         '# Keep asking for the disk passphrase instead of giving up'         '# after three attempts. See image/Containerfile.'         'kargs = ["rd.luks.options=tries=0"]'         > /usr/lib/bootc/kargs.d/10-nexus-luks.toml
 --> Using cache 96a5afba279328ed2cf8050fe1f15fc9f69edf7cd50932f9215dee631b1b91f1
 --> 96a5afba279
-[5/6] STEP 1/13: FROM 96a5afba279328ed2cf8050fe1f15fc9f69edf7cd50932f9215dee631b1b91f1 AS base
-[5/6] STEP 2/13: ARG NEXUS_VERSION
---> Using cache aeb2d052975882685d4547aeddc34c9804e0c30f54d360973bd14cba6ec82d5d
---> aeb2d052975
-[5/6] STEP 3/13: ARG NEXUS_PROFILE
---> Using cache 78c45becc18ef6f9778585ef220db70c5ec5724da6d2ed65e09fcaf0f8a80bb8
---> 78c45becc18
-[5/6] STEP 4/13: COPY --from=builder /build/cli/nexus /usr/bin/nexus
---> fb9a113f540
-[5/6] STEP 5/13: COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
---> 6dc7a484142
-[5/6] STEP 6/13: COPY image/first-boot/nexus-first-boot.service      /usr/lib/systemd/system/nexus-first-boot.service
---> b5aa1210120
-[5/6] STEP 7/13: COPY components/profiles /usr/share/nexus/profiles
---> 1add4027e22
-[5/6] STEP 8/13: COPY components/aliases /usr/share/nexus/aliases
---> 2adbfb81d15
-[5/6] STEP 9/13: COPY image/identity.sh /usr/libexec/nexus/identity
---> 4aa2b0b72a7
-[5/6] STEP 10/13: RUN NEXUS_VERSION="${NEXUS_VERSION}" NEXUS_PROFILE="${NEXUS_PROFILE}"     sh /usr/libexec/nexus/identity
-Created symlink '/etc/systemd/system/multi-user.target.wants/nexus-first-boot.service' → '/usr/lib/systemd/system/nexus-first-boot.service'.
-Identity: Nexus-CORE 0.1.5 (minimalism) on Fedora Linux 44 (Forty Four)
---> 17c25f816a5
-[5/6] STEP 11/13: ENV NEXUS_PROFILES=/usr/share/nexus/profiles
---> 13fc75c413a
-[5/6] STEP 12/13: ENV NEXUS_ALIASES=/usr/share/nexus/aliases
---> 486683e72a9
-[5/6] STEP 13/13: RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
-Updating and loading repositories:
- RPM Fusion for Fedora 44 - Nonfree - U 100% |   2.2 KiB/s |  46.0 KiB |  00m21s
- RPM Fusion for Fedora 44 - Nonfree     100% |   4.3 KiB/s |  97.2 KiB |  00m23s
- RPM Fusion for Fedora 44 - Free - Upda 100% |   3.8 KiB/s |  77.7 KiB |  00m21s
- Fedora 44 - x86_64 - Updates           100% | 446.1 KiB/s |  12.5 MiB |  00m29s
- RPM Fusion for Fedora 44 - Free        100% |   6.6 KiB/s | 152.1 KiB |  00m23s
- Fedora 44 openh264 (From Cisco) - x86_ 100% | 233.0   B/s |   5.3 KiB |  00m23s
- Fedora 44 - x86_64 - Updates Archive   100% | 831.1 KiB/s |  39.5 MiB |  00m49s
- Fedora 44 - x86_64                     100% | 524.8 KiB/s |  36.4 MiB |  01m11s
-Repositories loaded.
-Package                              Arch   Version        Repository      Size
-Reinstalling:
- selinux-policy-targeted             noarch 0:44.10-1.fc44 updates     18.6 MiB
-   replacing selinux-policy-targeted noarch 0:44.10-1.fc44 <unknown>   18.6 MiB
-
-Transaction Summary:
- Reinstalling:       1 package
- Replacing:          1 package
-
-Total size of inbound packages is 7 MiB. Need to download 7 MiB.
-After this operation, 0 B extra will be used (install 19 MiB, remove 19 MiB).
-[1/1] selinux-policy-targeted-0:44.10-1 100% | 511.4 KiB/s |   6.8 MiB |  00m14s
---------------------------------------------------------------------------------
-[1/1] Total                             100% | 511.3 KiB/s |   6.8 MiB |  00m14s
-Running transaction
-[1/4] Verify package files              100% |  58.0   B/s |   1.0   B |  00m00s
-[2/4] Prepare transaction               100% |  28.0   B/s |   2.0   B |  00m00s
-[3/4] Reinstalling selinux-policy-targe 100% | 104.2 MiB/s |  14.9 MiB |  00m00s
-[4/4] Removing selinux-policy-targeted- 100% | 370.0   B/s |   1.7 KiB |  00m05s
-Complete!
-Removed 45 files, 25 directories (total of 160 MiB). 0 errors occurred.
---> e27bb663d6d
 [4/6] STEP 1/12: FROM 96a5afba279328ed2cf8050fe1f15fc9f69edf7cd50932f9215dee631b1b91f1 AS desktop-packages
 [4/6] STEP 2/12: ARG NEXUS_PROFILE
 --> Using cache 28bd82c167557abb511073c7faeb7f37f7d9c6a19ad9d3c993c1cc998a209597
@@ -185,61 +125,127 @@ Removed 45 files, 25 directories (total of 160 MiB). 0 errors occurred.
 [4/6] STEP 6/12: RUN if rpm -q fedora-logos > /dev/null 2>&1; then         echo "fedora-logos came back in the desktop stage." >&2;         echo "Required by:" >&2;         rpm -q --whatrequires fedora-logos >&2 || true;         exit 1;     fi
 --> Using cache 5986821ac9ace8b2b9ecaac9de11d0411f677ed6cdd62570bfff93f34820a0fd
 --> 5986821ac9a
-[4/6] STEP 7/12: RUN set -eu;     extra="";     if rpm -q sddm > /dev/null 2>&1; then extra="sddm-breeze"; fi;     dnf install -y         --exclude=rootfiles         --setopt=install_weak_deps=False         plymouth         plymouth-scripts         plymouth-theme-spinner         ${extra};     dnf clean all;     if rpm -q fedora-logos > /dev/null 2>&1; then         echo "fedora-logos came back with the splash or login theme." >&2;         rpm -q --whatrequires fedora-logos >&2 || true;         exit 1;     fi
---> Using cache f81d2fc5e2a34c3b2bd6ab6a8b03f6b00c7e44360cf285c829c6e910116b5ab8
---> f81d2fc5e2a
-[4/6] STEP 8/12: RUN set -eu;     plymouth-set-default-theme bgrt;     kver="$(ls /usr/lib/modules)";     if [ "$(printf '%s\n' "${kver}" | wc -l)" -ne 1 ]; then         echo "Expected one kernel in /usr/lib/modules, found:" >&2;         echo "${kver}" >&2;         exit 1;     fi;     dracut --no-hostonly --reproducible --force         --kver "${kver}" --add "ostree plymouth"         "/usr/lib/modules/${kver}/initramfs.img";     chmod 0600 "/usr/lib/modules/${kver}/initramfs.img";     contents="$(lsinitrd "/usr/lib/modules/${kver}/initramfs.img")";     for needed in plymouthd systemd-cryptsetup ostree-prepare-root; do         if ! printf '%s\n' "${contents}" | grep -q "${needed}"; then             echo "The rebuilt initramfs has no ${needed}; refusing it." >&2;             echo "Without it this image would not boot an encrypted disk." >&2;             exit 1;         fi;     done;     echo "Splash: bgrt, in the initramfs for ${kver}";     mkdir -p /usr/lib/bootc/kargs.d;     printf '%s\n'         '# Boot splash instead of scrolling log lines. See image/Containerfile.'         'kargs = ["rhgb", "quiet"]'         > /usr/lib/bootc/kargs.d/20-nexus-splash.toml
---> Using cache 22dc5193e5630ec63fc69d7f978aa71fdffb4800703ab09dfc54dc4a53aa507f
---> 22dc5193e56
-[4/6] STEP 9/12: COPY --from=artwork /wallpapers/ /usr/share/wallpapers/
---> Using cache 035fe39e11375156bd84e29116cfb952b31be18fc9a9cf3b8576bd124be01379
---> 035fe39e113
-[4/6] STEP 10/12: COPY image/wallpaper/apply-wallpaper /usr/libexec/nexus/apply-wallpaper
---> Using cache 3012656e262547f8c8970ea937303c670b5352f1de66d6288c0bf3f03c085b20
---> 3012656e262
-[4/6] STEP 11/12: COPY image/wallpaper/nexus-wallpaper.desktop      /etc/xdg/autostart/nexus-wallpaper.desktop
---> Using cache cdd3db5011f777302f1ca862690a77d8f3968966189b54c6f5b54bf4eace27c1
---> cdd3db5011f
-[4/6] STEP 12/12: RUN set -eu;     chmod 0755 /usr/libexec/nexus/apply-wallpaper;     login="$(ls /usr/share/wallpapers/nexus-base/contents/images/*.jpg | head -n 1)";     test -f "${login}";     if ! command -v plasma-apply-wallpaperimage > /dev/null; then         echo "No Plasma in this profile; wallpapers are in the image";         echo "but nothing will apply them at login.";     fi;     themed=0;     if [ -f /usr/share/sddm/themes/breeze/theme.conf ]; then         mkdir -p /etc/sddm.conf.d;         printf '[Theme]\nCurrent=breeze\n' > /etc/sddm.conf.d/10-nexus.conf;         echo "Login theme: breeze";     fi;     for theme in /usr/share/sddm/themes/*/; do         if grep -q '^background=' "${theme}theme.conf" 2>/dev/null; then             printf '[General]\nbackground=%s\n' "${login}"                 > "${theme}theme.conf.user";             echo "Login background: ${theme}";             themed=1;         fi;     done;     if [ "${themed}" -eq 0 ]; then         echo "No SDDM theme with a background setting; the login";         echo "screen keeps its own.";     fi
---> Using cache 38467b03ad6edbb37413ad58206b5c18d8f190e3792431501cb4869bf4420e42
---> 38467b03ad6
-[6/6] STEP 1/13: FROM 38467b03ad6edbb37413ad58206b5c18d8f190e3792431501cb4869bf4420e42 AS desktop
-[6/6] STEP 2/13: ARG NEXUS_VERSION
---> Using cache 0aeb18621f0073cd350c1b6705102399ef6c02e17fca3e7a67a7ca3c0aef16d3
---> 0aeb18621f0
-[6/6] STEP 3/13: ARG NEXUS_PROFILE
---> Using cache 2a726298ae456dd9f5deb61a7858a6268a6ad58aa440cad08fc64cad55a2c4ed
---> 2a726298ae4
-[6/6] STEP 4/13: COPY --from=builder /build/cli/nexus /usr/bin/nexus
---> ef1bf3d1c7e
-[6/6] STEP 5/13: COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
---> 00de3da684f
-[6/6] STEP 6/13: COPY image/first-boot/nexus-first-boot.service      /usr/lib/systemd/system/nexus-first-boot.service
---> 61bccfbb5e3
-[6/6] STEP 7/13: COPY components/profiles/base.profile      components/profiles/basic.profile      components/profiles/development.profile      components/profiles/gaming.profile      components/profiles/minimalism.profile      components/profiles/school.profile      components/profiles/security.profile      components/profiles/showcase.profile      components/profiles/vpn.profile      /usr/share/nexus/profiles/
---> bc96d08bb4a
-[6/6] STEP 8/13: COPY components/aliases /usr/share/nexus/aliases
---> 72d6a18fadc
-[6/6] STEP 9/13: COPY image/identity.sh /usr/libexec/nexus/identity
---> 5050ef876d0
-[6/6] STEP 10/13: RUN NEXUS_VERSION="${NEXUS_VERSION}" NEXUS_PROFILE="${NEXUS_PROFILE}"     sh /usr/libexec/nexus/identity
-Created symlink '/etc/systemd/system/multi-user.target.wants/nexus-first-boot.service' → '/usr/lib/systemd/system/nexus-first-boot.service'.
-Identity: Nexus-CORE 0.1.5 (minimalism) on Fedora Linux 44 (Forty Four)
---> 4390564d658
-[6/6] STEP 11/13: ENV NEXUS_PROFILES=/usr/share/nexus/profiles
---> 43bfb8050b5
-[6/6] STEP 12/13: ENV NEXUS_ALIASES=/usr/share/nexus/aliases
---> 7171b5c2708
-[6/6] STEP 13/13: RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
+[4/6] STEP 7/12: RUN set -eu;     extra="";     if rpm -q sddm > /dev/null 2>&1; then extra="sddm-breeze"; fi;     dnf install -y         --exclude=rootfiles         --setopt=install_weak_deps=False         plymouth         plymouth-scripts         plymouth-theme-spinner         glibc-langpack-en         pciutils         pulseaudio-utils         ${extra};     dnf clean all;     if rpm -q fedora-logos > /dev/null 2>&1; then         echo "fedora-logos came back with the splash or login theme." >&2;         rpm -q --whatrequires fedora-logos >&2 || true;         exit 1;     fi
 Updating and loading repositories:
- RPM Fusion for Fedora 44 - Nonfree - U 100% | 925.0   B/s |  46.0 KiB |  00m51s
- RPM Fusion for Fedora 44 - Nonfree     100% |   1.8 KiB/s |  97.2 KiB |  00m53s
- RPM Fusion for Fedora 44 - Free - Upda 100% |   1.4 KiB/s |  77.7 KiB |  00m55s
- Fedora 44 - x86_64 - Updates           100% | 243.7 KiB/s |  13.8 MiB |  00m58s
- RPM Fusion for Fedora 44 - Free        100% |   2.6 KiB/s | 151.9 KiB |  00m58s
- Fedora 44 openh264 (From Cisco) - x86_ 100% |  92.0   B/s |   5.3 KiB |  00m59s
- Fedora 44 - x86_64                     100% | 462.4 KiB/s |  36.4 MiB |  01m21s
- Fedora 44 - x86_64 - Updates Archive   100% | 384.2 KiB/s |  39.5 MiB |  01m45s
+ RPM Fusion for Fedora 44 - Nonfree - U 100% |   2.1 KiB/s |  46.0 KiB |  00m22s
+ Fedora 44 - x86_64 - Updates           100% | 733.4 KiB/s |  16.9 MiB |  00m24s
+ RPM Fusion for Fedora 44 - Nonfree     100% |   3.8 KiB/s |  97.2 KiB |  00m26s
+ RPM Fusion for Fedora 44 - Free - Upda 100% |   3.1 KiB/s |  77.7 KiB |  00m25s
+ Fedora 44 openh264 (From Cisco) - x86_ 100% | 196.0   B/s |   5.3 KiB |  00m27s
+ RPM Fusion for Fedora 44 - Free        100% |   5.5 KiB/s | 152.1 KiB |  00m28s
+ Fedora 44 - x86_64 - Updates Archive   100% |   1.2 MiB/s |  39.5 MiB |  00m34s
+ Fedora 44 - x86_64                     100% | 673.2 KiB/s |  36.4 MiB |  00m55s
+Repositories loaded.
+Package                   Arch   Version             Repository      Size
+Installing:
+ glibc-langpack-en        x86_64 0:2.43-8.fc44       updates      5.7 MiB
+ pciutils                 x86_64 0:3.15.0-1.fc44     updates    300.5 KiB
+ plymouth                 x86_64 0:24.004.60-24.fc44 fedora     334.2 KiB
+ plymouth-scripts         x86_64 0:24.004.60-24.fc44 fedora      30.5 KiB
+ plymouth-theme-spinner   x86_64 0:24.004.60-24.fc44 fedora     194.5 KiB
+ pulseaudio-utils         x86_64 0:17.0-9.fc44       fedora     262.4 KiB
+ sddm-breeze              noarch 0:6.7.5-1.fc44      updates      1.1 MiB
+Installing dependencies:
+ abattis-cantarell-fonts  noarch 0:0.301-17.fc44     fedora     525.7 KiB
+ kde-settings-sddm        noarch 0:44.0-1.fc44       updates    128.0   B
+ plymouth-core-libs       x86_64 0:24.004.60-24.fc44 fedora     366.5 KiB
+ plymouth-graphics-libs   x86_64 0:24.004.60-24.fc44 fedora     171.9 KiB
+ plymouth-plugin-label    x86_64 0:24.004.60-24.fc44 fedora      51.0 KiB
+ plymouth-plugin-two-step x86_64 0:24.004.60-24.fc44 fedora      75.9 KiB
+
+Transaction Summary:
+ Installing:        13 packages
+
+Total size of inbound packages is 3 MiB. Need to download 3 MiB.
+After this operation, 9 MiB extra will be used (install 9 MiB, remove 0 B).
+[ 1/13] plymouth-scripts-0:24.004.60-24 100% |  22.8 KiB/s |  18.1 KiB |  00m01s
+[ 2/13] plymouth-0:24.004.60-24.fc44.x8 100% | 111.0 KiB/s | 127.7 KiB |  00m01s
+[ 3/13] plymouth-theme-spinner-0:24.004 100% | 142.1 KiB/s | 188.9 KiB |  00m01s
+[ 4/13] pulseaudio-utils-0:17.0-9.fc44. 100% | 148.2 KiB/s |  90.8 KiB |  00m01s
+[ 5/13] plymouth-core-libs-0:24.004.60- 100% | 220.4 KiB/s | 125.0 KiB |  00m01s
+[ 6/13] abattis-cantarell-fonts-0:0.301 100% | 558.8 KiB/s | 269.9 KiB |  00m00s
+[ 7/13] plymouth-plugin-two-step-0:24.0 100% |  67.0 KiB/s |  33.3 KiB |  00m00s
+[ 8/13] plymouth-graphics-libs-0:24.004 100% | 240.3 KiB/s |  64.4 KiB |  00m00s
+[ 9/13] plymouth-plugin-label-0:24.004. 100% | 118.1 KiB/s |  26.1 KiB |  00m00s
+[10/13] pciutils-0:3.15.0-1.fc44.x86_64 100% |  89.4 KiB/s | 128.9 KiB |  00m01s
+[11/13] glibc-langpack-en-0:2.43-8.fc44 100% | 357.2 KiB/s | 629.7 KiB |  00m02s
+[12/13] kde-settings-sddm-0:44.0-1.fc44 100% |  24.5 KiB/s |   9.7 KiB |  00m00s
+[13/13] sddm-breeze-0:6.7.5-1.fc44.noar 100% | 571.9 KiB/s |   1.1 MiB |  00m02s
+--------------------------------------------------------------------------------
+[13/13] Total                           100% | 709.8 KiB/s |   2.7 MiB |  00m04s
+Running transaction
+[ 1/15] Verify package files            100% | 866.0   B/s |  13.0   B |  00m00s
+[ 2/15] Prepare transaction             100% |  78.0   B/s |  13.0   B |  00m00s
+[ 3/15] Installing plymouth-core-libs-0 100% |  40.0 MiB/s | 368.6 KiB |  00m00s
+[ 4/15] Installing plymouth-0:24.004.60 100% |   5.7 MiB/s | 352.4 KiB |  00m00s
+[ 5/15] Installing plymouth-scripts-0:2 100% |   2.3 MiB/s |  31.2 KiB |  00m00s
+[ 6/15] Installing plymouth-graphics-li 100% |  42.4 MiB/s | 173.5 KiB |  00m00s
+[ 7/15] Installing plymouth-plugin-labe 100% |  17.0 MiB/s |  52.1 KiB |  00m00s
+[ 8/15] Installing plymouth-plugin-two- 100% |  37.4 MiB/s |  76.6 KiB |  00m00s
+[ 9/15] Installing kde-settings-sddm-0: 100% | 199.2 KiB/s | 408.0   B |  00m00s
+[10/15] Installing abattis-cantarell-fo 100% |  73.7 MiB/s | 528.1 KiB |  00m00s
+[11/15] Installing plymouth-theme-spinn 100% |   8.1 MiB/s | 207.0 KiB |  00m00s
+[12/15] Installing sddm-breeze-0:6.7.5- 100% | 271.5 MiB/s |   1.1 MiB |  00m00s
+[13/15] Installing pciutils-0:3.15.0-1. 100% |  13.5 MiB/s | 303.3 KiB |  00m00s
+[14/15] Installing glibc-langpack-en-0: 100% | 113.6 MiB/s |   5.8 MiB |  00m00s
+[15/15] Installing pulseaudio-utils-0:1 100% | 260.5 KiB/s | 268.3 KiB |  00m01s
+Complete!
+Removed 45 files, 26 directories (total of 160 MiB). 0 errors occurred.
+--> bba358a9eb2
+[4/6] STEP 8/12: RUN set -eu;     plymouth-set-default-theme bgrt;     kver="$(ls /usr/lib/modules)";     if [ "$(printf '%s\n' "${kver}" | wc -l)" -ne 1 ]; then         echo "Expected one kernel in /usr/lib/modules, found:" >&2;         echo "${kver}" >&2;         exit 1;     fi;     dracut --no-hostonly --reproducible --force         --kver "${kver}" --add "ostree plymouth"         "/usr/lib/modules/${kver}/initramfs.img";     chmod 0600 "/usr/lib/modules/${kver}/initramfs.img";     contents="$(lsinitrd "/usr/lib/modules/${kver}/initramfs.img")";     for needed in plymouthd systemd-cryptsetup ostree-prepare-root; do         if ! printf '%s\n' "${contents}" | grep -q "${needed}"; then             echo "The rebuilt initramfs has no ${needed}; refusing it." >&2;             echo "Without it this image would not boot an encrypted disk." >&2;             exit 1;         fi;     done;     echo "Splash: bgrt, in the initramfs for ${kver}";     mkdir -p /usr/lib/bootc/kargs.d;     printf '%s\n'         '# Boot splash instead of scrolling log lines. See image/Containerfile.'         'kargs = ["rhgb", "quiet"]'         > /usr/lib/bootc/kargs.d/20-nexus-splash.toml
+dracut[E]: No '/dev/log' or 'logger' included for syslog logging
+dracut-install: ERROR: installing '/root'
+dracut[E]: FAILED: /usr/lib/dracut/dracut-install -D /var/tmp/dracut.dUU9Ij0/initramfs -f /root
+Splash: bgrt, in the initramfs for 7.2.7-200.fc44.x86_64
+--> 8185d557ebd
+[4/6] STEP 9/12: COPY --from=artwork /wallpapers/ /usr/share/wallpapers/
+--> 0c4a2876000
+[4/6] STEP 10/12: COPY image/wallpaper/apply-wallpaper /usr/libexec/nexus/apply-wallpaper
+--> fc3173726d9
+[4/6] STEP 11/12: COPY image/wallpaper/nexus-wallpaper.desktop      /etc/xdg/autostart/nexus-wallpaper.desktop
+--> 3d96ffba791
+[4/6] STEP 12/12: RUN set -eu;     chmod 0755 /usr/libexec/nexus/apply-wallpaper;     login="$(ls /usr/share/wallpapers/nexus-base/contents/images/*.jpg | head -n 1)";     test -f "${login}";     if ! command -v plasma-apply-wallpaperimage > /dev/null; then         echo "No Plasma in this profile; wallpapers are in the image";         echo "but nothing will apply them at login.";     fi;     themed=0;     if [ -f /usr/share/sddm/themes/breeze/theme.conf ]; then         mkdir -p /etc/sddm.conf.d;         printf '[Theme]\nCurrent=breeze\n' > /etc/sddm.conf.d/10-nexus.conf;         echo "Login theme: breeze";     fi;     for theme in /usr/share/sddm/themes/*/; do         if grep -q '^background=' "${theme}theme.conf" 2>/dev/null; then             printf '[General]\nbackground=%s\n' "${login}"                 > "${theme}theme.conf.user";             echo "Login background: ${theme}";             themed=1;         fi;     done;     if [ "${themed}" -eq 0 ]; then         echo "No SDDM theme with a background setting; the login";         echo "screen keeps its own.";     fi
+Login theme: breeze
+Login background: /usr/share/sddm/themes/01-breeze-fedora/
+Login background: /usr/share/sddm/themes/breeze/
+--> 0619d72efc8
+[5/6] STEP 1/13: FROM 96a5afba279328ed2cf8050fe1f15fc9f69edf7cd50932f9215dee631b1b91f1 AS base
+[5/6] STEP 2/13: ARG NEXUS_VERSION
+--> Using cache aeb2d052975882685d4547aeddc34c9804e0c30f54d360973bd14cba6ec82d5d
+--> aeb2d052975
+[5/6] STEP 3/13: ARG NEXUS_PROFILE
+--> Using cache 78c45becc18ef6f9778585ef220db70c5ec5724da6d2ed65e09fcaf0f8a80bb8
+--> 78c45becc18
+[5/6] STEP 4/13: COPY --from=builder /build/cli/nexus /usr/bin/nexus
+--> 5551b09be15
+[5/6] STEP 5/13: COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
+--> 84df0762fa7
+[5/6] STEP 6/13: COPY image/first-boot/nexus-first-boot.service      /usr/lib/systemd/system/nexus-first-boot.service
+--> a623d09be8a
+[5/6] STEP 7/13: COPY components/profiles /usr/share/nexus/profiles
+--> 5edcbf08674
+[5/6] STEP 8/13: COPY components/aliases /usr/share/nexus/aliases
+--> 2f5110e70ec
+[5/6] STEP 9/13: COPY image/identity.sh /usr/libexec/nexus/identity
+--> 93efc9ffc8e
+[5/6] STEP 10/13: RUN NEXUS_VERSION="${NEXUS_VERSION}" NEXUS_PROFILE="${NEXUS_PROFILE}"     sh /usr/libexec/nexus/identity
+Created symlink '/etc/systemd/system/multi-user.target.wants/nexus-first-boot.service' → '/usr/lib/systemd/system/nexus-first-boot.service'.
+Identity: Nexus-CORE 0.1.6 (minimalism) on Fedora Linux 44 (Forty Four)
+--> f51e5c1b51e
+[5/6] STEP 11/13: ENV NEXUS_PROFILES=/usr/share/nexus/profiles
+--> 652718277d2
+[5/6] STEP 12/13: ENV NEXUS_ALIASES=/usr/share/nexus/aliases
+--> ab9d484616c
+[5/6] STEP 13/13: RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
+Updating and loading repositories:
+ RPM Fusion for Fedora 44 - Nonfree - U 100% |   2.2 KiB/s |  46.0 KiB |  00m21s
+ RPM Fusion for Fedora 44 - Nonfree     100% |   4.3 KiB/s |  97.2 KiB |  00m23s
+ RPM Fusion for Fedora 44 - Free - Upda 100% |   3.4 KiB/s |  78.2 KiB |  00m23s
+ Fedora 44 - x86_64 - Updates           100% | 547.6 KiB/s |  13.0 MiB |  00m24s
+ RPM Fusion for Fedora 44 - Free        100% |   6.3 KiB/s | 152.1 KiB |  00m24s
+ Fedora 44 openh264 (From Cisco) - x86_ 100% | 220.0   B/s |   5.3 KiB |  00m25s
+ Fedora 44 - x86_64 - Updates Archive   100% | 566.4 KiB/s |  39.5 MiB |  01m11s
+ Fedora 44 - x86_64                     100% | 518.4 KiB/s |  36.4 MiB |  01m12s
 Repositories loaded.
 Package                              Arch   Version        Repository      Size
 Reinstalling:
@@ -252,17 +258,75 @@ Transaction Summary:
 
 Total size of inbound packages is 7 MiB. Need to download 7 MiB.
 After this operation, 0 B extra will be used (install 19 MiB, remove 19 MiB).
-[1/1] selinux-policy-targeted-0:44.10-1 100% | 687.9 KiB/s |   6.8 MiB |  00m10s
+[1/1] selinux-policy-targeted-0:44.10-1 100% |   1.4 MiB/s |   6.8 MiB |  00m05s
 --------------------------------------------------------------------------------
-[1/1] Total                             100% | 687.9 KiB/s |   6.8 MiB |  00m10s
+[1/1] Total                             100% |   1.4 MiB/s |   6.8 MiB |  00m05s
 Running transaction
-[1/4] Verify package files              100% |  58.0   B/s |   1.0   B |  00m00s
+[1/4] Verify package files              100% |  26.0   B/s |   1.0   B |  00m00s
 [2/4] Prepare transaction               100% |  23.0   B/s |   2.0   B |  00m00s
-[3/4] Reinstalling selinux-policy-targe 100% | 112.9 MiB/s |  14.9 MiB |  00m00s
-[4/4] Removing selinux-policy-targeted- 100% |  10.2 KiB/s |   1.7 KiB |  00m00s
+[3/4] Reinstalling selinux-policy-targe 100% |  74.2 MiB/s |  14.9 MiB |  00m00s
+[4/4] Removing selinux-policy-targeted- 100% | 208.0   B/s |   1.7 KiB |  00m08s
+Complete!
+Removed 45 files, 25 directories (total of 160 MiB). 0 errors occurred.
+--> c17232b522b
+[6/6] STEP 1/13: FROM 0619d72efc81a0ca24ad1dd3a3ef64c75956543d477a623c18604e2bbb0de8b7 AS desktop
+[6/6] STEP 2/13: ARG NEXUS_VERSION
+--> d8573707630
+[6/6] STEP 3/13: ARG NEXUS_PROFILE
+--> bb132b15863
+[6/6] STEP 4/13: COPY --from=builder /build/cli/nexus /usr/bin/nexus
+--> 46f21d1d6a6
+[6/6] STEP 5/13: COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
+--> 831b7b13c99
+[6/6] STEP 6/13: COPY image/first-boot/nexus-first-boot.service      /usr/lib/systemd/system/nexus-first-boot.service
+--> 92119c8e7cc
+[6/6] STEP 7/13: COPY components/profiles/base.profile      components/profiles/basic.profile      components/profiles/development.profile      components/profiles/gaming.profile      components/profiles/minimalism.profile      components/profiles/school.profile      components/profiles/security.profile      components/profiles/showcase.profile      components/profiles/vpn.profile      /usr/share/nexus/profiles/
+--> 26403d42f4d
+[6/6] STEP 8/13: COPY components/aliases /usr/share/nexus/aliases
+--> 8f8c02630a2
+[6/6] STEP 9/13: COPY image/identity.sh /usr/libexec/nexus/identity
+--> e473d1f4e96
+[6/6] STEP 10/13: RUN NEXUS_VERSION="${NEXUS_VERSION}" NEXUS_PROFILE="${NEXUS_PROFILE}"     sh /usr/libexec/nexus/identity
+Created symlink '/etc/systemd/system/multi-user.target.wants/nexus-first-boot.service' → '/usr/lib/systemd/system/nexus-first-boot.service'.
+Identity: Nexus-CORE 0.1.6 (minimalism) on Fedora Linux 44 (Forty Four)
+--> a927cb6003e
+[6/6] STEP 11/13: ENV NEXUS_PROFILES=/usr/share/nexus/profiles
+--> 4e38ad38a2d
+[6/6] STEP 12/13: ENV NEXUS_ALIASES=/usr/share/nexus/aliases
+--> 3d4b938d4c7
+[6/6] STEP 13/13: RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
+Updating and loading repositories:
+ Fedora 44 - x86_64 - Updates           100% |   1.4 MiB/s |  12.6 MiB |  00m09s
+ RPM Fusion for Fedora 44 - Nonfree - U 100% |   4.5 KiB/s |  46.0 KiB |  00m10s
+ RPM Fusion for Fedora 44 - Nonfree     100% |   8.0 KiB/s |  97.2 KiB |  00m12s
+ RPM Fusion for Fedora 44 - Free - Upda 100% |   6.3 KiB/s |  78.2 KiB |  00m12s
+ RPM Fusion for Fedora 44 - Free        100% |  10.5 KiB/s | 152.1 KiB |  00m14s
+ Fedora 44 openh264 (From Cisco) - x86_ 100% | 358.0   B/s |   5.3 KiB |  00m15s
+ Fedora 44 - x86_64 - Updates Archive   100% |   1.6 MiB/s |  39.5 MiB |  00m25s
+ Fedora 44 - x86_64                     100% |   1.0 MiB/s |  36.5 MiB |  00m37s
+Repositories loaded.
+Total size of inbound packages is 7 MiB. Need to download 7 MiB.
+After this operation, 0 B extra will be used (install 19 MiB, remove 19 MiB).
+Package                              Arch   Version        Repository      Size
+Reinstalling:
+ selinux-policy-targeted             noarch 0:44.10-1.fc44 updates     18.6 MiB
+   replacing selinux-policy-targeted noarch 0:44.10-1.fc44 <unknown>   18.6 MiB
+
+Transaction Summary:
+ Reinstalling:       1 package
+ Replacing:          1 package
+
+[1/1] selinux-policy-targeted-0:44.10-1 100% |   2.0 MiB/s |   6.8 MiB |  00m03s
+--------------------------------------------------------------------------------
+[1/1] Total                             100% |   2.0 MiB/s |   6.8 MiB |  00m03s
+Running transaction
+[1/4] Verify package files              100% |  29.0   B/s |   1.0   B |  00m00s
+[2/4] Prepare transaction               100% |  16.0   B/s |   2.0   B |  00m00s
+[3/4] Reinstalling selinux-policy-targe 100% |  67.4 MiB/s |  14.9 MiB |  00m00s
+[4/4] Removing selinux-policy-targeted- 100% |   5.5 KiB/s |   1.7 KiB |  00m00s
 Complete!
 Removed 45 files, 25 directories (total of 160 MiB). 0 errors occurred.
 [6/6] COMMIT localhost/nexus-os:minimalism
---> 2c6ad9b401d
+--> 8c3379ae3cb
 Successfully tagged localhost/nexus-os:minimalism
-2c6ad9b401daaf20c632d32f9e06b2edc8914552bed8b9d88e31d7322a38dc02
+8c3379ae3cbb744d1cd02852a87c3ef4ad1436a9a60cf6fd65c18cdfce2ef1d2
