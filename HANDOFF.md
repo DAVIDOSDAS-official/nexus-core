@@ -255,7 +255,15 @@ test fail.
   --mutate-in-place --enforce-container-sigpolicy`, image name filled in
   by `build-installer.sh` (left out for localhost images). Tested with
   fakes: signs+verifies; refuses cosign 3; sign failure says "PUSHED BUT
-  NOT SIGNED". **Not yet tested for real.** Existing machines switch
+  NOT SIGNED". **0.1.9 signed and verified for real, 25 Sept**
+  (`sha256:0e9a1c9b…`).
+- **Patch 24 (0.1.10):** policy default becomes `reject`, with an
+  explicit accept-anything rule per transport — same effect for every
+  other registry, but ostree's container code refuses signed pulls while
+  the *top-level* default is `insecureAcceptAnything`. Existing machines
+  therefore switch in two steps: `rpm-ostree upgrade` + reboot (gets the
+  new policy into /etc), *then* `rpm-ostree rebase ostree-image-signed:…`
+  + reboot. Existing machines switch
   once: `sudo rpm-ostree rebase
   ostree-image-signed:docker://ghcr.io/davidosdas-official/nexus-core-testing:minimalism`.
   Negative test: push an image with a different digest and no
