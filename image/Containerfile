@@ -369,6 +369,19 @@ RUN if rpm -q fedora-logos > /dev/null 2>&1; then \
 # lines and asked for the disk passphrase as a line of text, where
 # Pop!_OS and Fedora show a splash with a password box.
 #
+# Three more found by running Steam on the Asus, 25 September, and
+# none of them Steam's alone:
+#
+#   glibc-langpack-en  the base ships only the minimal langpack, so
+#                      en_US.UTF-8 -- the locale the installer sets --
+#                      did not exist. Every program asking for it fell
+#                      back to plain ASCII; Steam tried to build it
+#                      itself and failed.
+#   pciutils           lspci. Steam, and anyone reporting a hardware
+#                      problem, expects it.
+#   pulseaudio-utils   pactl, which talks to PipeWire's PulseAudio
+#                      side. Steam uses it to find audio devices.
+#
 # Here, below the wallpapers and above Nexus, rather than in the
 # package list: a Nexus change must not rebuild these, and adding them
 # here does not rebuild the few hundred packages above.
@@ -381,6 +394,9 @@ RUN set -eu; \
         plymouth \
         plymouth-scripts \
         plymouth-theme-spinner \
+        glibc-langpack-en \
+        pciutils \
+        pulseaudio-utils \
         ${extra}; \
     dnf clean all; \
     if rpm -q fedora-logos > /dev/null 2>&1; then \
