@@ -162,27 +162,41 @@ if [ ! -f "${COSIGN_KEY}" ] || [ ! -f "${PUBLIC_KEY}" ]; then
     exit 1
 fi
 
+# Sign an image that was pushed but not signed, without pushing it
+# again: SIGN_ONLY=sha256:... NAME=... ./image/publish.sh
+if [ -n "${SIGN_ONLY:-}" ]; then
+    SKIP_PUSH=1
+    DIGEST="${SIGN_ONLY}"
+else
+    SKIP_PUSH=0
+fi
+
 # An image built as localhost/ cannot be updated from: bootc records
 # where it was pulled from, and localhost is not somewhere a machine
 # can reach. So it is retagged before pushing, and the ISO has to be
 # built from the remote name for updates to work at all.
-podman tag "${LOCAL}" "${REMOTE}"
-podman tag "${LOCAL}" "${REGISTRY}/${NAME}:${PROFILE}-${VERSION}"
+if [ "${SKIP_PUSH}" -eq 0 ]; then
+    podman tag "${LOCAL}" "${REMOTE}"
+    podman tag "${LOCAL}" "${REGISTRY}/${NAME}:${PROFILE}-${VERSION}"
 
-echo "Pushing. This takes a while: it is a few gigabytes."
-echo
+    echo "Pushing. This takes a while: it is a few gigabytes."
+    echo
 
-DIGESTFILE="$(mktemp)"
+    DIGESTFILE="$(mktemp)"
 
-if ! podman push --digestfile "${DIGESTFILE}" "${REMOTE}"; then
-    echo >&2
-    echo "Push failed; see podman's message above." >&2
-    echo "  401 or 403 while requesting a token: the login -- check with" >&2
-    echo "      podman login --get-login ${REGISTRY%%/*}" >&2
-    exit 1
+    if ! podman push --digestfile "${DIGESTFILE}" "${REMOTE}"; then
+        echo >&2
+        echo "Push failed; see podman's message above." >&2
+        echo "  401 or 403 while requesting a token: the login -- check with" >&2
+        echo "      podman login --get-login ${REGISTRY%%/*}" >&2
+        exit 1
+    fi
+
+    podman push "${REGISTRY}/${NAME}:${PROFILE}-${VERSION}" || true
+
+    DIGEST="$(cat "${DIGESTFILE}")"
+    rm -f "${DIGESTFILE}"
 fi
-
-podman push "${REGISTRY}/${NAME}:${PROFILE}-${VERSION}" || true
 
 # Sign what was pushed, by digest -- the one image, whatever tags point
 # at it. cosign reads podman's own login, so there is nothing more to
@@ -191,8 +205,6 @@ podman push "${REGISTRY}/${NAME}:${PROFILE}-${VERSION}" || true
 # --tlog-upload=false: the machines check the key, not a public
 # transparency log, and nothing about this build needs to be published
 # to one.
-DIGEST="$(cat "${DIGESTFILE}")"
-rm -f "${DIGESTFILE}"
 SIGNED_REF="${REGISTRY}/${NAME}@${DIGEST}"
 
 AUTHDIR="$(mktemp -d)"
@@ -202,13 +214,27 @@ ln -s "${REGISTRY_AUTH_FILE:-${XDG_RUNTIME_DIR}/containers/auth.json}" \
 echo
 echo "Signing ${SIGNED_REF}"
 
-if ! DOCKER_CONFIG="${AUTHDIR}" cosign sign --yes --tlog-upload=false \
-        --key "${COSIGN_KEY}" "${SIGNED_REF}"; then
+# Retried: signing is a second trip to the registry right after a long
+# push, and on a slow connection it timed out once (25 September) with
+# the image already pushed.
+signed=0
+for attempt in 1 2 3; do
+    if DOCKER_CONFIG="${AUTHDIR}" cosign sign --yes --tlog-upload=false \
+            --key "${COSIGN_KEY}" "${SIGNED_REF}"; then
+        signed=1
+        break
+    fi
+    echo "Signing attempt ${attempt} failed; trying again in 10 seconds." >&2
+    sleep 10
+done
+
+if [ "${signed}" -ne 1 ]; then
     rm -rf "${AUTHDIR}"
     echo >&2
     echo "PUSHED BUT NOT SIGNED. Machines with signing will refuse it." >&2
-    echo "Fix the problem above and sign by hand:" >&2
-    echo "    cosign sign --tlog-upload=false --key ${COSIGN_KEY} ${SIGNED_REF}" >&2
+    echo "When the connection is better, sign it without pushing again:" >&2
+    echo >&2
+    echo "    SIGN_ONLY=${DIGEST} NAME=${NAME} ./image/publish.sh" >&2
     exit 1
 fi
 
