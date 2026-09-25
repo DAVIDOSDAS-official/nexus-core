@@ -7,11 +7,11 @@ and `CAPABILITIES.md`.
 **Machines**
 - **Acer** (Pop!_OS 22.04, podman 3.4) — builds. Repo at
   `~/Documents/nexus-core`.
-- **Asus** — the test machine. 3.6 GB RAM, QCA9377 wifi, Secure Boot
-  enforcing. Upgraded to Nexus **0.1.3** from GHCR (confirm),
+- **Asus** — the test machine. 3.6 GB RAM, Intel UHD 600, QCA9377
+  wifi, Secure Boot enforcing. Nexus **0.1.6** from GHCR,
   encrypted (LUKS), with aircrack-ng, gamemode, gobuster, john, nmap
-  and radare2 layered (plus whatever `nexus setup gaming` added on 24
-  Sept — see Steam below).
+  and radare2 layered, plus mesa-vulkan-drivers and steam (25 Sept);
+  `rhgb quiet` added by hand.
 - **No NVIDIA hardware anywhere.** Matters for the NVIDIA plan.
 - **VM** — qemu on the Acer, for anything that does not need hardware.
 
@@ -19,9 +19,8 @@ and `CAPABILITIES.md`.
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–24 September 2026. Head `5581cea` (0.1.3,
-patches 1–16). 0.1.5 (patches 17–18) published and on the Asus;
-patch 19 (0.1.6) delivered. **509 tests** (506 pass, 3 skipped).
+**Last session:** 21–25 September 2026. **0.1.6** (patches 1–20)
+published and running on the Asus. **509 tests** (506 pass, 3 skipped).
 
 ---
 
@@ -197,9 +196,30 @@ test fail.
   and *could not be asked* still stop. When asked to confirm, the
   person sees the manager's list. Tested with a fake apt: differs →
   applies; requested missing → refuses; answer n → nothing changed.
-- **Steam, part 3 — open:** installed by hand (`rpm-ostree install
-  steam`) it starts and fails on the Asus. Need its error: run `steam`
-  in Konsole. Check the 32-bit Mesa drivers are present.
+- **Steam, part 3 — works.** First launch took 10–15 minutes (Steam
+  downloads and unpacks itself); that was not a failure. Its log showed
+  three gaps in the image, fixed in patch 20 and verified on the Asus
+  (`locale`, `lspci`, `pactl info` all clean): `glibc-langpack-en` (the
+  base had no en_US.UTF-8 at all), `pciutils`, `pulseaudio-utils`.
+  Other languages still missing — needs the installer's language
+  choice (later: install the chosen langpack, or all-langpacks).
+- **Time zone, language, keyboard — patch 21 (0.1.7), not yet built.**
+  The installer kickstart forced `lang en_US`, a US keyboard and
+  `timezone UTC`: every clock was hours off (Asus 13:15 at 15:15 in
+  Skopje). Now the installer asks all three (Localization and Timezone
+  Anaconda modules enabled). `glibc-all-langpacks` replaces the English
+  one, since the installer can't add packages. **`nexus-timezone`**:
+  set by hand, look up once, or `sudo nexus-timezone auto on|off` —
+  **off by default** (David: nothing forced on). Auto uses a
+  NetworkManager dispatcher hook and Fedora's GeoIP service; tested with
+  fakes (bad names, hostile answer, offline, on/off, hook off/on).
+  **Needs a VM install from a new ISO** to confirm Anaconda shows the
+  three screens. Unknown: whether Anaconda's own IP-based preselect runs
+  (can't be switched off from our config — bootc-image-builder has no
+  ISO kernel-argument option). If the VM preselects your real zone, it
+  ran. Asus fixed by hand: `sudo timedatectl set-timezone Europe/Skopje`.
+- First boot should warn that Steam's first start takes minutes.
+
 - **Splash: works** on the Asus (password box confirmed, 25 Sept), but
   only after adding kargs by hand: **`rpm-ostree upgrade` does not
   apply new kargs.d files** — only fresh installs get them. Upgraded

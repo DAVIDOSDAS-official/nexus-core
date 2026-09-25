@@ -1,0 +1,14 @@
+#!/bin/sh
+#
+# NetworkManager runs this whenever a connection changes. It does
+# nothing unless `sudo nexus-timezone auto on` was run -- see
+# /usr/bin/nexus-timezone for what the lookup sends.
+
+[ -e /etc/nexus/auto-timezone ] || exit 0
+
+case "$2" in
+    up|connectivity-change) ;;
+    *) exit 0 ;;
+esac
+
+exec /usr/bin/nexus-timezone now --quiet

@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # the image reads it from the binary (image/identity.sh), and
 # publish.sh reads it from the image. Change it here, commit, build.
 project(NexusCore
-    VERSION 0.1.6
+    VERSION 0.1.7
     DESCRIPTION "A modular Linux operating system platform"
     LANGUAGES CXX
 )

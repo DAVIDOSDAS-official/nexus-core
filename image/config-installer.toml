@@ -12,6 +12,8 @@ enable = [
     "org.fedoraproject.Anaconda.Modules.Users",
     "org.fedoraproject.Anaconda.Modules.Storage",
     "org.fedoraproject.Anaconda.Modules.Network",
+    "org.fedoraproject.Anaconda.Modules.Localization",
+    "org.fedoraproject.Anaconda.Modules.Timezone",
 ]
 
 # The kickstart, written here rather than left to the builder.
@@ -44,17 +46,21 @@ enable = [
 # same class of mistake as the branding in os-release, in the one
 # place a person actually reads it.
 #
-# The keyboard is named explicitly for both the console and the
-# desktop. The one-word form `keyboard us` left the kernel command
-# line with an empty `vconsole.keymap=` on a VM installed on 22
-# September. The console keymap is what the disk passphrase prompt
-# uses, so it matters more than it looks: a passphrase typed on a
-# layout other than the one it was set on is a "wrong passphrase"
-# that is not wrong.
+# Language, keyboard and time zone are not here: the installer asks.
+#
+# They used to be answered on everybody's behalf -- US English, a US
+# keyboard, UTC -- so every machine's clock was hours off anywhere but
+# UTC (the Asus showed 13:15 at 15:15 in Skopje), and anyone whose
+# keyboard is not a US one set a disk passphrase on the wrong layout:
+# the passphrase prompt uses the console keymap, and a passphrase
+# typed on another layout is a "wrong passphrase" that is not wrong.
+# Choose the keyboard before the disk in the installer for that reason.
+#
+# The installer may preselect a guess from the IP address (Fedora's
+# GeoIP service). It is only a preselection on a screen the person
+# confirms. After installing, automatic lookups are off unless turned
+# on: see /usr/bin/nexus-timezone.
 contents = """
-lang en_US.UTF-8
-keyboard --vckeymap=us --xlayouts=us
-timezone UTC --utc
 
 network --hostname=nexus
 

@@ -372,11 +372,13 @@ RUN if rpm -q fedora-logos > /dev/null 2>&1; then \
 # Three more found by running Steam on the Asus, 25 September, and
 # none of them Steam's alone:
 #
-#   glibc-langpack-en  the base ships only the minimal langpack, so
-#                      en_US.UTF-8 -- the locale the installer sets --
-#                      did not exist. Every program asking for it fell
-#                      back to plain ASCII; Steam tried to build it
-#                      itself and failed.
+#   glibc-all-langpacks  the base ships only the minimal langpack, so
+#                      en_US.UTF-8 did not exist. Every program asking
+#                      for it fell back to plain ASCII; Steam tried to
+#                      build it itself and failed. All languages rather
+#                      than English: the installer now asks which one,
+#                      and it cannot add packages to an image, so
+#                      whatever somebody picks has to be here already.
 #   pciutils           lspci. Steam, and anyone reporting a hardware
 #                      problem, expects it.
 #   pulseaudio-utils   pactl, which talks to PipeWire's PulseAudio
@@ -394,7 +396,7 @@ RUN set -eu; \
         plymouth \
         plymouth-scripts \
         plymouth-theme-spinner \
-        glibc-langpack-en \
+        glibc-all-langpacks \
         pciutils \
         pulseaudio-utils \
         ${extra}; \
@@ -450,6 +452,19 @@ RUN set -eu; \
         '# Boot splash instead of scrolling log lines. See image/Containerfile.' \
         'kargs = ["rhgb", "quiet"]' \
         > /usr/lib/bootc/kargs.d/20-nexus-splash.toml
+
+# The time zone: chosen in the installer, and automatic only if asked.
+#
+# nexus-timezone sets it by hand, looks it up once, or turns automatic
+# lookups on and off. Automatic is off unless somebody runs
+# `sudo nexus-timezone auto on`: a lookup asks a server where this IP
+# address is, and that is the user's decision, not the image's. The
+# NetworkManager hook does nothing until then.
+COPY image/timezone/nexus-timezone /usr/bin/nexus-timezone
+COPY image/timezone/90-nexus-timezone \
+     /usr/lib/NetworkManager/dispatcher.d/90-nexus-timezone
+RUN chmod 0755 /usr/bin/nexus-timezone \
+        /usr/lib/NetworkManager/dispatcher.d/90-nexus-timezone
 
 # The wallpapers: one per profile, all of them in the picker.
 #

@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+#
+# nexus-timezone -- the time zone, set by hand or following the network.
+#
+#     nexus-timezone                     what it is, and whether auto is on
+#     sudo nexus-timezone Europe/Skopje  set it
+#     sudo nexus-timezone now            look it up once from your IP address
+#     sudo nexus-timezone auto on        look it up whenever a network connects
+#     sudo nexus-timezone auto off       stop
+#
+# Off unless somebody turns it on. Looking a time zone up means asking a
+# server where this IP address is, and a distribution that collects
+# nothing does not do that on its own. What is sent, and to whom, is
+# said here and printed when it runs: one HTTPS request to Fedora's
+# GeoIP service -- the same one Fedora's installer uses. It sees the IP
+# address, like any website. Nothing else is sent; no GPS, no wifi
+# scanning. The answer is used for the time zone and not kept.
+
+set -uo pipefail
+
+SERVICE="https://geoip.fedoraproject.org/city"
+STATE=/etc/nexus/auto-timezone
+ZONES=/usr/share/zoneinfo
+
+current() {
+    timedatectl show --property=Timezone --value 2>/dev/null || echo unknown
+}
+
+need_root() {
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "This changes the system; run it with sudo." >&2
+        exit 1
+    fi
+}
+
+valid_zone() {
+    # A name, then a file that exists. The name check keeps anything
+    # path-like out of the second.
+    case "$1" in
+        ""|*..*|/*) return 1 ;;
+    esac
+    printf '%s' "$1" | grep -Eq '^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$' \
+        && [ -f "${ZONES}/$1" ]
+}
+
+set_zone() {
+    if ! valid_zone "$1"; then
+        echo "'$1' is not a time zone. Examples: Europe/Skopje, UTC." >&2
+        echo "All of them: timedatectl list-timezones" >&2
+        return 1
+    fi
+
+    timedatectl set-timezone "$1" && echo "Time zone: $1"
+}
+
+lookup() {
+    local quiet="${1:-}"
+
+    [ -n "${quiet}" ] || echo "Asking ${SERVICE} (it sees this IP address)..."
+
+    local zone
+    zone="$(curl -fsS --max-time 10 "${SERVICE}" 2>/dev/null \
+        | grep -o '"time_zone": *"[^"]*"' \
+        | sed 's/.*"\([^"]*\)"$/\1/')"
+
+    if [ -z "${zone}" ]; then
+        [ -n "${quiet}" ] || echo "No answer; the time zone is unchanged." >&2
+        return 1
+    fi
+
+    if [ "${zone}" = "$(current)" ]; then
+        [ -n "${quiet}" ] || echo "Already ${zone}."
+        return 0
+    fi
+
+    set_zone "${zone}"
+}
+
+case "${1:-}" in
+    ""|status)
+        echo "Time zone: $(current)"
+        if [ -e "${STATE}" ]; then
+            echo "Automatic: on (looked up whenever a network connects)"
+        else
+            echo "Automatic: off"
+        fi
+        ;;
+    now)
+        need_root
+        lookup "${2:-}"
+        ;;
+    auto)
+        need_root
+        case "${2:-}" in
+            on)
+                mkdir -p "$(dirname "${STATE}")"
+                touch "${STATE}"
+                echo "Automatic time zone: on."
+                echo "Each time a network connects, one request goes to"
+                echo "${SERVICE}, which sees this IP address."
+                lookup || true
+                ;;
+            off)
+                rm -f "${STATE}"
+                echo "Automatic time zone: off. Nothing is looked up."
+                ;;
+            *)
+                echo "Usage: sudo nexus-timezone auto on|off" >&2
+                exit 2
+                ;;
+        esac
+        ;;
+    -h|--help|help)
+        sed -n '3,10p' "$0" | sed 's/^# \{0,1\}//'
+        ;;
+    *)
+        need_root
+        set_zone "$1"
+        ;;
+esac
