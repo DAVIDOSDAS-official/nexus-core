@@ -19,8 +19,8 @@ and `CAPABILITIES.md`.
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–25 September 2026. **0.1.6** (patches 1–20)
-published and running on the Asus. **509 tests** (506 pass, 3 skipped).
+**Last session:** 21–25 September 2026. **0.1.10** (patches 1–25)
+published, signed, and running on the Asus with signed updates enforced. **509 tests** (506 pass, 3 skipped).
 
 ---
 
@@ -263,7 +263,16 @@ test fail.
   the *top-level* default is `insecureAcceptAnything`. Existing machines
   therefore switch in two steps: `rpm-ostree upgrade` + reboot (gets the
   new policy into /etc), *then* `rpm-ostree rebase ostree-image-signed:…`
-  + reboot. Existing machines switch
+  + reboot.
+- **Signed updates verified end to end (Asus, 25 Sept):** 0.1.10 signed
+  (`sha256:4ce8e0c1…`), Asus switched in two steps and shows
+  `ostree-image-signed:docker://…`. An unsigned image with a different
+  digest (`:unsigned-test`) was **refused**: "A signature was required,
+  but no signature exists." Delete the `unsigned-test` version on GitHub.
+- **Patch 25:** `publish.sh` retries signing 3×; `SIGN_ONLY=sha256:…
+  NAME=… ./image/publish.sh` signs without pushing (used once, when a
+  slow connection timed out). Cosmetic: sign-only still prints
+  "Pushed…" and the after-push text. Existing machines switch
   once: `sudo rpm-ostree rebase
   ostree-image-signed:docker://ghcr.io/davidosdas-official/nexus-core-testing:minimalism`.
   Negative test: push an image with a different digest and no
