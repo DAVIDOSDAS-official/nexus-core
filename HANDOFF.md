@@ -20,8 +20,8 @@ and `CAPABILITIES.md`.
 first push is the actual release.
 
 **Last session:** 21–24 September 2026. Head `5581cea` (0.1.3,
-patches 1–16). Patch 17 (0.1.4, splash) built, not published; patch 18
-(0.1.5, Steam) delivered. **509 tests** (506 pass, 3 skipped).
+patches 1–16). 0.1.5 (patches 17–18) published and on the Asus;
+patch 19 (0.1.6) delivered. **509 tests** (506 pass, 3 skipped).
 
 ---
 
@@ -187,22 +187,27 @@ test fail.
 ## Open, in order
 
 **Waiting on the Asus (24 Sept)**
-- **Steam did not appear** after `sudo nexus setup gaming --apply`
-  ("1 of 1 installed" — that was mesa-vulkan-drivers). Cause found:
-  Steam in RPM Fusion is i686-only, and Nexus applied Debian's rule
-  (an unqualified name means the requester's own architecture), so a
-  64-bit profile could not reach it. RPM names carry no architecture.
-  **Patch 18** marks every rpm package Multi-Arch foreign (any build
-  satisfies a name; native still preferred; sonames still pick the
-  right libraries). 4 tests, each seen failing without the fix.
-- **Wallpaper:** confirmed working — `wallpaper-applied` said
-  `minimalism`. `/etc/nexus/wallpaper` now says `gaming` on the Asus;
-  confirm the switch after logging out and in. (Also created by
-  accident on the Acer: `sudo rm -r /etc/nexus` there.)
-- **Patch 17:** build, publish, upgrade, reboot; expect the splash and
-  a passphrase box. Check `cat /proc/cmdline` for `rhgb quiet` — if
-  `rpm-ostree upgrade` does not apply new kargs.d, add them once with
-  `sudo rpm-ostree kargs --append=rhgb --append=quiet`.
+- **Steam, part 1 — found:** i686-only in RPM Fusion, unreachable under
+  Debian's architecture rule. Fixed in patch 18 (0.1.5): Nexus now plans
+  `[install] steam`.
+- **Steam, part 2 — patch 19 (0.1.6):** the apply then refused because
+  dnf's list differed from Nexus's. Now a plan that *differs* proceeds
+  (only one name is handed over; the package manager resolves it) as
+  long as the manager's list contains the requested package; *refused*
+  and *could not be asked* still stop. When asked to confirm, the
+  person sees the manager's list. Tested with a fake apt: differs →
+  applies; requested missing → refuses; answer n → nothing changed.
+- **Steam, part 3 — open:** installed by hand (`rpm-ostree install
+  steam`) it starts and fails on the Asus. Need its error: run `steam`
+  in Konsole. Check the 32-bit Mesa drivers are present.
+- **Splash: works** on the Asus (password box confirmed, 25 Sept), but
+  only after adding kargs by hand: **`rpm-ostree upgrade` does not
+  apply new kargs.d files** — only fresh installs get them. Upgraded
+  machines need `sudo rpm-ostree kargs --append=rhgb --append=quiet`.
+  Worth a first-boot or update-time check later (also affects
+  `rd.luks.options=tries=0` on machines installed before it existed).
+- **Wallpaper: works** — minimalism by default, gaming after choosing
+  it (Asus, 25 Sept). Remove the stray `/etc/nexus` on the Acer.
 
 **The bar for the first public release** (one stable, impressive
 release first; paid comes later)

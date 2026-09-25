@@ -1024,14 +1024,44 @@ int commandInstall(
             : 1;
     }
 
-    // The interlock. A plan the package manager will not agree to is
-    // not applied, whatever Nexus thinks of it.
-    if (!check.safeToApply()) {
+    // The interlock. A plan the package manager refuses, or could not
+    // be asked about, is not applied, whatever Nexus thinks of it.
+    //
+    // A plan that merely differs is. What gets handed over is one
+    // name -- `requested` -- and the package manager resolves it
+    // itself; Nexus's list of dependencies is a preview, never the
+    // thing installed. So a difference means the preview was wrong,
+    // not that the install is unsafe, and the package manager has
+    // just said it would do it.
+    //
+    // It used to refuse here too. Steam on 25 September: about a
+    // hundred 32-bit packages, dnf's set a little different from
+    // Nexus's -- Nexus cannot yet read rpm's rich dependencies -- and
+    // the gaming profile could not install the one thing it is for.
+    // The difference is still shown above, and when somebody is asked
+    // to confirm, they confirm the package manager's list: that is the
+    // one that will happen.
+    //
+    // Only when the package manager's own list contains what was asked
+    // for. A plan that differs by leaving out the requested package
+    // itself is not a preview that was slightly off; it is the package
+    // manager meaning something else by that name.
+    const bool differs =
+        check.agreement == nexus::system::PlanAgreement::Differs &&
+        check.theirs.count(requested) > 0;
+
+    if (!check.safeToApply() && !differs) {
         std::cout
             << "\nRefusing to apply an unverified plan.\n"
             << "Nothing has been changed.\n";
 
         return 1;
+    }
+
+    if (differs) {
+        std::cout
+            << "\n" << manager << " agrees to install " << requested
+            << "; its list is the one that\nwill be used, not Nexus's.\n";
     }
 
     if (!nexus::system::haveRootPrivileges()) {
@@ -1049,16 +1079,21 @@ int commandInstall(
     // The plan is shown before anything happens, and the person says
     // yes to that plan rather than to a question with no content.
     if (!assumeYes) {
+        // When the plans differ, the package manager's list: it is the
+        // one that will run.
+        const std::set<std::string>& willInstall =
+            differs ? check.theirs : expected;
+
         std::cout << "\nWould install:\n";
 
         std::size_t shown = 0;
 
-        for (const std::string& name : expected) {
+        for (const std::string& name : willInstall) {
             std::cout << "    " << name << "\n";
 
             if (++shown >= 20) {
                 std::cout
-                    << "    ... and " << (expected.size() - shown)
+                    << "    ... and " << (willInstall.size() - shown)
                     << " more\n";
                 break;
             }
