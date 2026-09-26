@@ -19,7 +19,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-PROFILE="${PROFILE:-minimalism}"
+PROFILE="${PROFILE:-kde}"
 
 # Defaulted rather than demanded.
 #

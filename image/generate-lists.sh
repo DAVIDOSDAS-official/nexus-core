@@ -17,7 +17,7 @@ IMAGE="${IMAGE:-localhost/nexus-os:base}"
 # Not every profile describes a whole machine. server and security add
 # things to one; generating an image from them alone would produce a
 # system with no way to log in.
-PROFILES="${PROFILES:-minimal minimalism showcase}"
+PROFILES="${PROFILES:-minimal kde showcase}"
 
 # Which image, and is it the one the Containerfile describes?
 #

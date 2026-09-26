@@ -87,7 +87,7 @@ ARG FEDORA_VERSION=44
 # NEXUS_VERSION=<VALUE>" three times on every build -- advice to bring
 # back the second source of truth this exists to remove.
 ARG NEXUS_VERSION=
-ARG NEXUS_PROFILE=minimalism
+ARG NEXUS_PROFILE=kde
 
 # ------------------------------------------------------------- builder
 # Compiling happens here and stays here. The shipped image gets the
@@ -660,14 +660,17 @@ COPY image/first-boot/nexus-first-boot.service \
 # A profile added to components/profiles is not offered here until it
 # is added to this list. That is deliberate: it is the moment to ask
 # whether it belongs on this desktop.
+#
+# kde is not offered either: it is this image, and listing it only
+# ever said "already satisfied". showcase and the minimalism look come
+# back once they exist; image/check-add-ons.sh checks that everything
+# listed here can really be installed.
 COPY components/profiles/base.profile \
-     components/profiles/basic.profile \
      components/profiles/development.profile \
      components/profiles/gaming.profile \
-     components/profiles/minimalism.profile \
+     components/profiles/media.profile \
      components/profiles/school.profile \
      components/profiles/security.profile \
-     components/profiles/showcase.profile \
      components/profiles/vpn.profile \
      /usr/share/nexus/profiles/
 COPY components/aliases /usr/share/nexus/aliases

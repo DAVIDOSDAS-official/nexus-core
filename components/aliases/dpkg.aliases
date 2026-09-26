@@ -179,3 +179,31 @@ Resolves-To: network-manager
 
 Capability: wifi-supplicant
 Resolves-To: wpasupplicant | iwd
+
+# The add-ons of 26 September: media, school and vpn.
+
+Capability: music-player
+Resolves-To: elisa | rhythmbox
+
+# Debian's Firefox decodes H.264 through ffmpeg; the extra build
+# carries the codecs the default one leaves out.
+Capability: browser-h264
+Resolves-To: libavcodec-extra
+
+Capability: presentation
+Resolves-To: libreoffice-impress
+
+Capability: mail-client
+Resolves-To: thunderbird | evolution
+
+Capability: pdf-annotator
+Resolves-To: xournalpp
+
+Capability: typing-tutor
+Resolves-To: ktouch
+
+Capability: spell-check-english
+Resolves-To: hunspell-en-us
+
+Capability: openvpn-client
+Resolves-To: network-manager-openvpn

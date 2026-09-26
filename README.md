@@ -59,7 +59,7 @@ $ nexus doctor
 **Describes a machine as intent, not as a package list.**
 
 ```
-Profile: minimalism
+Profile: kde
 Requires: desktop-session, display-manager, terminal-emulator,
  file-manager, text-editor, web-browser, audio-server, ...
 Prefers: desktop-session=plasma-desktop, terminal-emulator=konsole
@@ -166,10 +166,10 @@ catches a wrong answer nobody thought to assert.
 A working tool, and one bootable image built from a profile.
 
 The image is a Fedora bootc build whose package list is generated from
-the `minimalism` profile. It boots through UEFI, reaches KDE, and asks
+the `kde` profile. It boots through UEFI, reaches KDE, and asks
 on first boot what the machine should be — then reports that it
 already is what it was built to be, because the same profile produced
-both. `minimal` and `minimalism` build from the same Containerfile
+both. `minimal` and `kde` build from the same Containerfile
 with one argument changed, at 2.88 GB and 3.91 GB.
 
 `./image/build-installer.sh` produces an installer ISO, which has

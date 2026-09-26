@@ -54,7 +54,7 @@ jobs:
 
     env:
       IMAGE_NAME: ${{ vars.IMAGE_NAME || 'nexus-core-testing' }}
-      PROFILE: minimalism
+      PROFILE: kde
 
     steps:
       - uses: actions/checkout@v5
@@ -140,6 +140,11 @@ jobs:
               -f image/Containerfile . 2>&1 | tee build.log
           test "${PIPESTATUS[0]}" -eq 0
           grep -E "Redistribution|Signing:|Splash|Identity" build.log
+
+      # Before anything is published: every add-on first boot offers
+      # has to be installable from the repositories machines use.
+      - name: Check the add-ons
+        run: bash image/check-add-ons.sh "localhost/nexus-os:${PROFILE}"
 
       - name: Log in to GitHub Container Registry
         run: |

@@ -7,7 +7,7 @@
 # which is the single most destructive thing a program can get wrong
 # and is already solved.
 #
-#     ./image/build-installer.sh                 minimalism, an ISO
+#     ./image/build-installer.sh                 kde, an ISO
 #     PROFILE=minimal ./image/build-installer.sh a lighter one
 #     TYPE=qcow2 ./image/build-installer.sh      a disk to boot in a VM
 
@@ -15,7 +15,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-PROFILE="${PROFILE:-minimalism}"
+PROFILE="${PROFILE:-kde}"
 TYPE="${TYPE:-anaconda-iso}"
 # A locally-built image cannot be updated from: bootc records where
 # it was pulled, and localhost is nowhere a machine can reach. Pass

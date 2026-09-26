@@ -1,5 +1,9 @@
-Profile: minimalism
-Description: A full desktop kept simple: one tool per job, nothing duplicated
+Profile: kde
+Description: The KDE Plasma desktop, kept simple: one tool per job, nothing duplicated
+# The desktop every Nexus-CORE image is built from. It was called
+# minimalism until 26 September; that name now belongs to an add-on
+# (a look, not a package set), and a machine's edition should say what
+# it is: KDE.
 Requires: desktop-session,
  display-manager,
  terminal-emulator,

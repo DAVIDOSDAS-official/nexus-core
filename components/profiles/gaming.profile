@@ -7,6 +7,8 @@ Requires: steam,
  opengl,
  audio-server,
  gamemode,
+ mangohud,
+ gamescope,
  gpu-vendor-amd | gpu-vendor-intel | gpu-vendor-nvidia
 Prefers: audio-server=pipewire
 # Steam from Flathub, not from RPM Fusion. As an rpm layered on an

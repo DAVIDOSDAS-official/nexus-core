@@ -179,3 +179,33 @@ Resolves-To: NetworkManager-wifi
 
 Capability: wifi-supplicant
 Resolves-To: wpa_supplicant | iwd
+
+# The add-ons of 26 September: media, school and vpn.
+
+Capability: music-player
+Resolves-To: elisa-player | rhythmbox
+
+# Cisco's H.264 decoder for Firefox. From Cisco's own repository
+# (fedora-cisco-openh264), which is the only way it may be shipped.
+Capability: browser-h264
+Resolves-To: mozilla-openh264
+
+Capability: presentation
+Resolves-To: libreoffice-impress
+
+Capability: mail-client
+Resolves-To: thunderbird | evolution
+
+Capability: pdf-annotator
+Resolves-To: xournalpp
+
+Capability: typing-tutor
+Resolves-To: ktouch
+
+Capability: spell-check-english
+Resolves-To: hunspell-en | hunspell-en-US
+
+# The desktop's OpenVPN plugin first: it pulls NetworkManager-openvpn
+# and adds the import dialog to the network settings.
+Capability: openvpn-client
+Resolves-To: plasma-nm-openvpn | NetworkManager-openvpn-gnome | NetworkManager-openvpn

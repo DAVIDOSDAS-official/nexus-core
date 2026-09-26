@@ -27,6 +27,21 @@ enable = [
 # anybody can download must not carry a login that is written down in
 # a public repository.
 #
+# The disk. This used to say `clearpart --all`, which erases every disk
+# the installer can see -- including a USB backup drive somebody left
+# plugged in, and the Windows disk in a desktop with two. Now a %pre
+# looks at the machine first:
+#
+#   - exactly one internal disk (not USB, not removable, not read-only,
+#     20 GiB or more): that disk is erased and encrypted, as before;
+#   - none, or more than one: nothing is decided, and the installer's
+#     Installation Destination screen asks the person which disk, and
+#     whether to encrypt it.
+#
+# Python rather than shell, and chr(10) rather than a backslash, because
+# this whole kickstart sits in a TOML string, where a backslash is an
+# escape. What it decided is in /tmp/nexus-disk.log during the install.
+#
 # There is no `reboot` and no `text`: this is an installer a person
 # sits in front of, not an unattended one.
 #
@@ -74,9 +89,63 @@ contents = """
 
 network --hostname=nexus
 
-zerombr
-clearpart --all --initlabel
-autopart --type=lvm --encrypted --luks-version=luks2
+# Which disk: decided by the %pre below, at install time, on the
+# machine itself. See the comment above [customizations...kickstart].
+%include /tmp/nexus-storage.ks
+
+%pre --interpreter=/usr/bin/python3 --log=/tmp/nexus-disk.log
+import shlex
+import subprocess
+
+SMALLEST = 20 * 1024 ** 3
+
+listing = subprocess.run(
+    ["lsblk", "-d", "-b", "-n", "-P", "-o", "NAME,TYPE,TRAN,RM,RO,SIZE"],
+    capture_output=True, text=True).stdout
+
+disks = []
+
+for line in listing.splitlines():
+    fields = dict(t.split("=", 1) for t in shlex.split(line) if "=" in t)
+    name = fields.get("NAME", "")
+    size = int(fields.get("SIZE") or 0)
+    why = ""
+
+    if fields.get("TYPE") != "disk":
+        why = "not a disk"
+    elif fields.get("TRAN") == "usb":
+        why = "USB: the installer stick or somebody's backup"
+    elif fields.get("RM") == "1":
+        why = "removable"
+    elif fields.get("RO") == "1":
+        why = "read-only"
+    elif name.startswith(("zram", "loop", "sr", "fd", "nbd", "ram")) or "boot" in name:
+        why = "not somewhere to install"
+    elif size < SMALLEST:
+        why = "smaller than 20 GiB"
+
+    print(name, size, "skipped: " + why if why else "internal disk")
+
+    if not why:
+        disks.append(name)
+
+lines = ["# Written by the Nexus %pre at install time; see /tmp/nexus-disk.log."]
+
+if len(disks) == 1:
+    disk = disks[0]
+    lines += [
+        "ignoredisk --only-use=" + disk,
+        "zerombr",
+        "clearpart --all --initlabel --drives=" + disk,
+        "autopart --type=lvm --encrypted --luks-version=luks2",
+    ]
+    print("Installing to the only internal disk:", disk)
+else:
+    print(len(disks), "internal disks: the installer asks which one.")
+
+with open("/tmp/nexus-storage.ks", "w") as out:
+    out.write(chr(10).join(lines) + chr(10))
+%end
 
 %post --erroronfail
 bootc switch --mutate-in-place --enforce-container-sigpolicy --transport registry @NEXUS_IMAGE@

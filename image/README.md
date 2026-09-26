@@ -20,7 +20,7 @@ Four stages, built separately so a failure names the layer:
 | Stage | Contains |
 |---|---|
 | `base` | Fedora bootc plus the `nexus` binary and profiles |
-| `desktop` | KDE on Wayland, from `image/generated/minimalism.rpm.list` |
+| `desktop` | KDE on Wayland, from `image/generated/kde.rpm.list` |
 | `gaming` | 32-bit stack, Steam, Gamescope, GameMode, MangoHud, controllers |
 | `final` | Labels, and `bootc container lint` |
 
@@ -43,7 +43,7 @@ So the ISO has to be built from a published name rather than from
 
 ```
 ./image/publish.sh
-IMAGE=ghcr.io/davidosdas-official/nexus-core:minimalism \
+IMAGE=ghcr.io/davidosdas-official/nexus-core:kde \
     ./image/build-installer.sh
 ```
 
@@ -59,7 +59,7 @@ that has logged out:
 
 ```
 podman logout ghcr.io
-podman pull ghcr.io/davidosdas-official/nexus-core:minimalism
+podman pull ghcr.io/davidosdas-official/nexus-core:kde
 ```
 
 **Check what the installed machine thinks it came from**, rather than
@@ -93,7 +93,7 @@ machine that cannot is a fact about it worth knowing.
 ## Something you can install
 
 ```
-./image/build-installer.sh                  # minimalism, an ISO
+./image/build-installer.sh                  # kde, an ISO
 PROFILE=minimal ./image/build-installer.sh  # a lighter one
 TYPE=qcow2 ./image/build-installer.sh       # a disk to boot in a VM
 ```
@@ -122,7 +122,7 @@ podman build --target desktop --build-arg NEXUS_PROFILE=minimal \
 ```
 
 `minimal` produces a light system for hardware that cannot afford a
-full desktop; `minimalism` produces the KDE one; `showcase` adds the
+full desktop; `kde` produces the KDE one; `showcase` adds the
 effects. Same Containerfile, same pipeline, different machines --
 which is the claim the design rests on, and hardcoding one profile
 would have left it untested.
@@ -221,7 +221,7 @@ answers legal questions, not one the Containerfile can settle.
 
 ## The package list is generated
 
-The desktop stage installs what the `minimalism` profile resolves to,
+The desktop stage installs what the `kde` profile resolves to,
 not a list somebody typed. Regenerate it inside the image, where the
 Fedora repositories are:
 
