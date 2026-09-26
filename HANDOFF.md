@@ -351,7 +351,20 @@ test fail.
   Meta+Alt+K and the indicator instead. In a VM, Super goes to the host
   (Pop!_OS switched its own layout). Installer still needs a warning: the keyboard active
   when the disk password is set is the one used at every boot.
-- **Must:** rebuild the image every week or two (fresh Fedora pull):
+- **Automatic weekly images — patch 30:** `.github/workflows/weekly-image.yml`
+  runs Mondays 03:00 UTC (and by hand from the Actions tab): tests →
+  fresh Fedora pull + build with REFRESH → push + sign via
+  `image/publish.sh` → verify. Needs, once: repo secrets
+  `COSIGN_PRIVATE_KEY` (contents of cosign.key) and `COSIGN_PASSWORD`;
+  the package's "Manage Actions access" granting the repo Write; the
+  code pushed to GitHub (a push of `.github/workflows/` needs a token
+  with the `workflow` scope). Optional repo variable `IMAGE_NAME`
+  (default nexus-core-testing; set to nexus-core at release). YAML
+  checked; **never run yet** — first run by hand and read the log.
+  Still manual: the Fedora version bump, about once a year.
+  Decided 26 Sept (David): keep the image design, automate it; he does
+  not want to rebuild by hand.
+- (Was:) rebuild the image every week or two (fresh Fedora pull):
   layered packages hit the same version wall, and it is the only way
   security fixes reach users. First update after a fresh install
   re-downloads ~2.3 GB (ISO copy vs registry digest).

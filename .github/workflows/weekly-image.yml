@@ -1,0 +1,124 @@
+# Build, sign and publish the Nexus-CORE image every week -- with
+# nobody at a keyboard.
+#
+# Why this exists: Nexus is image-based. A machine's operating system
+# (kernel, desktop, Firefox, every library) arrives only as a whole
+# image, so Fedora's fixes reach users only when a new image is
+# published. Flatpak apps update on their own; the system does not.
+# This job is what makes "users update whenever they like" true without
+# a person rebuilding by hand.
+#
+# What it does, in order, and stops at the first failure:
+#   1. runs the test suite
+#   2. pulls the newest Fedora base and builds the image with fresh
+#      packages (REFRESH changes every run)
+#   3. pushes it and signs it with the Nexus key (image/publish.sh --
+#      the same script used by hand), then verifies the signature
+#
+# A failed run changes nothing for users: nothing is pushed unless the
+# build and tests pass, and an image that could not be signed is
+# refused by every installed machine. GitHub emails the repository
+# owner when a scheduled run fails.
+#
+# One-time setup (HANDOFF, "Automatic weekly images"):
+#   - secrets COSIGN_PRIVATE_KEY (the contents of cosign.key) and
+#     COSIGN_PASSWORD
+#   - the package gives this repository write access
+#     (package settings -> Manage Actions access)
+#   - optional variable IMAGE_NAME; defaults to nexus-core-testing
+#
+# Not automatic: moving to the next Fedora release (FEDORA_VERSION in
+# image/Containerfile), about once a year. See image/README.md.
+
+name: Weekly image
+
+on:
+  schedule:
+    # Mondays 03:00 UTC.
+    - cron: "0 3 * * 1"
+  # And by hand, from the Actions tab.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: weekly-image
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+
+    env:
+      IMAGE_NAME: ${{ vars.IMAGE_NAME || 'nexus-core-testing' }}
+      PROFILE: minimalism
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # One login file for podman and cosign alike, in the job's own
+      # temporary directory (the runner context is not available at
+      # job level, so it is set here).
+      - name: Where the login goes
+        run: echo "REGISTRY_AUTH_FILE=${RUNNER_TEMP}/auth.json" >> "${GITHUB_ENV}"
+
+      - name: Tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libgtest-dev
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+          ctest --test-dir build --output-on-failure
+
+      # The runner starts with about 14 GB free; the image and its
+      # build stages need more. These are toolchains this job never
+      # uses.
+      - name: Make room
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android \
+              /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune --all --force > /dev/null || true
+          df -h /
+
+      - name: Build
+        run: |
+          FEDORA="$(sed -n 's/^ARG FEDORA_VERSION=//p' image/Containerfile)"
+          podman pull "quay.io/fedora/fedora-bootc:${FEDORA}"
+          podman build --target desktop \
+              --build-arg NEXUS_PROFILE="${PROFILE}" \
+              --build-arg NEXUS_COMMIT="$(git rev-parse --short HEAD)" \
+              --build-arg REFRESH="$(date -u +%Y%m%d)" \
+              -t "localhost/nexus-os:${PROFILE}" \
+              -f image/Containerfile . 2>&1 | tee build.log
+          test "${PIPESTATUS[0]}" -eq 0
+          grep -E "Redistribution|Signing:|Splash|Identity" build.log
+
+      - name: Log in to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io \
+              --username "${{ github.actor }}" --password-stdin
+
+      # cosign 2.x, as image/publish.sh requires: cosign 3 writes
+      # signatures the machines cannot read yet.
+      - uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.4.1"
+
+      - name: Publish and sign
+        env:
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+        run: |
+          umask 077
+          KEYFILE="${RUNNER_TEMP}/cosign.key"
+          printf '%s\n' "${COSIGN_PRIVATE_KEY}" > "${KEYFILE}"
+          COSIGN_KEY="${KEYFILE}" NAME="${IMAGE_NAME}" \
+              PROFILE="${PROFILE}" ./image/publish.sh
+          rm -f "${KEYFILE}"
+
+      - name: Forget the key
+        if: always()
+        run: rm -f "${RUNNER_TEMP}/cosign.key" "${REGISTRY_AUTH_FILE}"
