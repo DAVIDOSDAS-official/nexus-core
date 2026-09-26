@@ -361,7 +361,12 @@ test fail.
   with the `workflow` scope). Optional repo variable `IMAGE_NAME`
   (default nexus-core-testing; set to nexus-core at release). YAML
   checked; **never run yet** — first run by hand and read the log.
-  Still manual: the Fedora version bump, about once a year.
+  Still manual: the Fedora version bump, about once a year — **patch
+  31** adds `.github/workflows/fedora-version-check.yml` (monthly):
+  when quay.io has fedora-bootc N+1 it opens an issue "Fedora N+1 is
+  available", when N+2 exists "URGENT: Fedora N is near end of life";
+  GitHub emails the owner. One issue per title. Tested with fakes.
+  (fedora-bootc:45 may already exist, so the first run may open one.)
   Decided 26 Sept (David): keep the image design, automate it; he does
   not want to rebuild by hand.
 - (Was:) rebuild the image every week or two (fresh Fedora pull):

@@ -1,0 +1,36 @@
+# Tell the maintainer when it is time to move to the next Fedora.
+#
+# The weekly image keeps Fedora N up to date by itself, but moving to
+# N+1 is a decision, not a refresh: FEDORA_VERSION in image/Containerfile
+# changes, the package lists are regenerated, and the result is tested
+# on a machine (image/README.md, "Fedora bump order"). Nothing does that
+# alone. What this does is make sure it is not forgotten: once a month
+# it asks the registry whether newer Fedora bootc images exist, and if
+# they do it opens an issue -- which GitHub emails to the repository
+# owner. One issue per version: an open one is not opened again.
+#
+# Fedora N stops getting updates about four weeks after N+2 is
+# released, so N+2 existing is urgent, and says so.
+
+name: Fedora version check
+
+on:
+  schedule:
+    # The 1st of each month, 06:00 UTC.
+    - cron: "0 6 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Look for newer Fedora
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/fedora-version-check.sh
