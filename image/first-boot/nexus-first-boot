@@ -109,8 +109,15 @@ restore_printk() {
 # swapped, symbols elsewhere -- and on 26 September that left a person
 # unable to type commands, with no way back to a US layout short of
 # finding the setting in a language they had only chosen for testing.
-# With two layouts the desktop shows which is active and switches with
-# Super+Space (and KDE's own Meta+Alt+K).
+# With two layouts the desktop shows which is active by the clock, and
+# switches with a click there or KDE's own Meta+Alt+K -- both checked
+# on hardware on 26 September.
+#
+# No switching shortcut is set here. One was (Super+Space, as an XKB
+# option through localectl), and KDE took the layouts from localectl
+# but not the option: the keys fell through to whatever window had
+# focus, and Konsole printed a list of hostnames. The machine's
+# existing XKB options are passed back unchanged.
 #
 # Only the desktop's layouts change. --no-convert leaves the console
 # keymap alone, and that is the one the disk passphrase is typed on:
@@ -137,17 +144,10 @@ add_english_layout() {
         variants="${variants},"
     done
 
-    local switch="Super+Space"
-    case ",${options}," in
-        *,grp:*) switch="your existing layout shortcut, or Meta+Alt+K" ;;
-        ,,) options="grp:win_space_toggle" ;;
-        *) options="${options},grp:win_space_toggle" ;;
-    esac
-
     if localectl --no-convert set-x11-keymap "${layouts},us" \
             "${model}" "${variants}," "${options}" 2>/dev/null; then
         echo "Keyboard: added English (US) alongside ${layouts}." \
-            "Switch with ${switch}."
+            "Switch with Meta+Alt+K or the indicator by the clock."
     fi
 }
 

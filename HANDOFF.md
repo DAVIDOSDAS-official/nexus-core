@@ -344,8 +344,12 @@ test fail.
   way back to US. First boot now adds English (US) as a second layout
   when missing (`localectl --no-convert set-x11-keymap`, switch with
   Super+Space) — the console keymap, which the disk passphrase uses, is
-  untouched. Tested for ba, rs+latin, de with and without options, and
-  us (no change). Installer still needs a warning: the keyboard active
+  untouched. **Hardware test (26 Sept, Serbian install):** "en/rs"
+  indicator present; clicking it and Meta+Alt+K both switch. Super+Space
+  did not (KDE ignores the XKB option given through localectl; Konsole
+  printed hostnames) — **patch 29 (0.1.14)** removes the option and names
+  Meta+Alt+K and the indicator instead. In a VM, Super goes to the host
+  (Pop!_OS switched its own layout). Installer still needs a warning: the keyboard active
   when the disk password is set is the one used at every boot.
 - **Must:** rebuild the image every week or two (fresh Fedora pull):
   layered packages hit the same version wall, and it is the only way
