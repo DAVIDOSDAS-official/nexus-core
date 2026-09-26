@@ -1,13 +1,13 @@
-time="2026-09-26T17:54:56+02:00" level=warning msg="missing \"NEXUS_VERSION\" build argument. Try adding \"--build-arg NEXUS_VERSION=<VALUE>\" to the command line"
-time="2026-09-26T17:54:56+02:00" level=warning msg="missing \"NEXUS_VERSION\" build argument. Try adding \"--build-arg NEXUS_VERSION=<VALUE>\" to the command line"
+time="2026-09-26T18:17:10+02:00" level=warning msg="missing \"NEXUS_VERSION\" build argument. Try adding \"--build-arg NEXUS_VERSION=<VALUE>\" to the command line"
+time="2026-09-26T18:17:10+02:00" level=warning msg="missing \"NEXUS_VERSION\" build argument. Try adding \"--build-arg NEXUS_VERSION=<VALUE>\" to the command line"
 [1/6] STEP 1/5: FROM quay.io/fedora/fedora-bootc:44 AS builder
 [1/6] STEP 2/5: RUN dnf install -y         cmake         gcc-c++         make     && dnf clean all
 --> Using cache a177ad1780f485916a52a202cc8e59c6eab7f5d64f727df9bf1f08c34ac86756
 --> a177ad1780f
 [1/6] STEP 3/5: COPY . /src
---> be614c85164
+--> 356c011c146
 [1/6] STEP 4/5: ARG NEXUS_COMMIT=unknown
---> 234033238a3
+--> 6a04bc77385
 [1/6] STEP 5/5: RUN cmake -S /src -B /build         -DCMAKE_BUILD_TYPE=Release         -DNEXUS_BUILD_TESTS=OFF         -DNEXUS_COMMIT_OVERRIDE="${NEXUS_COMMIT}"     && cmake --build /build --parallel
 -- The CXX compiler identification is GNU 16.2.1
 -- Detecting CXX compiler ABI info
@@ -18,60 +18,60 @@ time="2026-09-26T17:54:56+02:00" level=warning msg="missing \"NEXUS_VERSION\" bu
 -- Configuring done (0.3s)
 -- Generating done (0.0s)
 -- Build files have been written to: /build
-[  5%] Building CXX object core/CMakeFiles/nexus_core.dir/src/constraint.cpp.o
-[  5%] Building CXX object core/CMakeFiles/nexus_core.dir/src/removal.cpp.o
-[  7%] Building CXX object core/CMakeFiles/nexus_core.dir/src/source.cpp.o
-[  8%] Building CXX object core/CMakeFiles/nexus_core.dir/src/requirement.cpp.o
-[  5%] Building CXX object core/CMakeFiles/nexus_core.dir/src/architecture.cpp.o
-[ 10%] Building CXX object core/CMakeFiles/nexus_core.dir/src/profile_check.cpp.o
-[ 14%] Building CXX object core/CMakeFiles/nexus_core.dir/src/core.cpp.o
-[ 14%] Building CXX object core/CMakeFiles/nexus_core.dir/src/transaction.cpp.o
-[ 16%] Building CXX object core/CMakeFiles/nexus_core.dir/src/options.cpp.o
-[ 17%] Building CXX object core/CMakeFiles/nexus_core.dir/src/alias.cpp.o
-[ 21%] Building CXX object core/CMakeFiles/nexus_core.dir/src/solver.cpp.o
-[ 21%] Building CXX object core/CMakeFiles/nexus_core.dir/src/component.cpp.o
-[ 23%] Building CXX object core/CMakeFiles/nexus_core.dir/src/diagnosis.cpp.o
+[  1%] Reading build version from git
+[  3%] Building CXX object core/CMakeFiles/nexus_core.dir/src/architecture.cpp.o
+[  5%] Building CXX object core/CMakeFiles/nexus_core.dir/src/profile_check.cpp.o
+[  7%] Building CXX object core/CMakeFiles/nexus_core.dir/src/removal.cpp.o
+[ 10%] Building CXX object core/CMakeFiles/nexus_core.dir/src/source.cpp.o
+[ 10%] Building CXX object core/CMakeFiles/nexus_core.dir/src/constraint.cpp.o
+[ 12%] Building CXX object core/CMakeFiles/nexus_core.dir/src/requirement.cpp.o
+[ 14%] Building CXX object core/CMakeFiles/nexus_core.dir/src/component.cpp.o
+[ 16%] Building CXX object core/CMakeFiles/nexus_core.dir/src/core.cpp.o
+[ 17%] Building CXX object core/CMakeFiles/nexus_core.dir/src/transaction.cpp.o
+[ 19%] Building CXX object core/CMakeFiles/nexus_core.dir/src/solver.cpp.o
+[ 21%] Building CXX object core/CMakeFiles/nexus_core.dir/src/options.cpp.o
+[ 23%] Building CXX object core/CMakeFiles/nexus_core.dir/src/conflict_detector.cpp.o
+[ 25%] Building CXX object core/CMakeFiles/nexus_core.dir/src/dependency_graph.cpp.o
 [ 26%] Building CXX object core/CMakeFiles/nexus_core.dir/src/composition.cpp.o
-[ 26%] Building CXX object core/CMakeFiles/nexus_core.dir/src/capability.cpp.o
-[ 28%] Reading build version from git
-[ 30%] Building CXX object core/CMakeFiles/nexus_core.dir/src/dependency_graph.cpp.o
-[ 32%] Building CXX object core/CMakeFiles/nexus_core.dir/src/conflict_detector.cpp.o
-[ 33%] Building CXX object core/CMakeFiles/nexus_core.dir/src/resolver.cpp.o
+[ 28%] Building CXX object core/CMakeFiles/nexus_core.dir/src/resolver.cpp.o
+[ 30%] Building CXX object core/CMakeFiles/nexus_core.dir/src/alias.cpp.o
+[ 32%] Building CXX object core/CMakeFiles/nexus_core.dir/src/capability.cpp.o
+[ 33%] Building CXX object core/CMakeFiles/nexus_core.dir/src/diagnosis.cpp.o
 [ 33%] Built target nexus_version_header
 [ 35%] Linking CXX static library libnexus_core.a
 [ 35%] Built target nexus_core
-[ 37%] Building CXX object system/CMakeFiles/nexus_system.dir/src/profile_file.cpp.o
-[ 39%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/secure_boot.cpp.o
-[ 41%] Building CXX object system/CMakeFiles/nexus_system.dir/src/control_file.cpp.o
-[ 42%] Building CXX object system/CMakeFiles/nexus_system.dir/src/version.cpp.o
-[ 44%] Building CXX object system/CMakeFiles/nexus_system.dir/src/container.cpp.o
-[ 46%] Building CXX object system/CMakeFiles/nexus_system.dir/src/nix_source.cpp.o
-[ 48%] Building CXX object system/CMakeFiles/nexus_system.dir/src/dpkg_source.cpp.o
-[ 50%] Building CXX object system/CMakeFiles/nexus_system.dir/src/protection.cpp.o
-[ 53%] Building CXX object system/CMakeFiles/nexus_system.dir/src/identity.cpp.o
-[ 55%] Building CXX object system/CMakeFiles/nexus_system.dir/src/flatpak_source.cpp.o
-[ 51%] Building CXX object system/CMakeFiles/nexus_system.dir/src/dependency_expression.cpp.o
-[ 57%] Building CXX object system/CMakeFiles/nexus_system.dir/src/portage_source.cpp.o
-[ 58%] Building CXX object system/CMakeFiles/nexus_system.dir/src/services.cpp.o
-[ 60%] Building CXX object system/CMakeFiles/nexus_system.dir/src/auto_installed.cpp.o
-[ 62%] Building CXX object system/CMakeFiles/nexus_system.dir/src/process.cpp.o
-[ 64%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/encryption.cpp.o
-[ 66%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/hardware.cpp.o
-[ 67%] Building CXX object system/CMakeFiles/nexus_system.dir/src/plan_apply.cpp.o
-[ 69%] Building CXX object system/CMakeFiles/nexus_system.dir/src/pacman_source.cpp.o
-[ 71%] Building CXX object system/CMakeFiles/nexus_system.dir/src/vpn.cpp.o
-[ 73%] Building CXX object system/CMakeFiles/nexus_system.dir/src/plan_check.cpp.o
-[ 75%] Building CXX object system/CMakeFiles/nexus_system.dir/src/snap_source.cpp.o
-[ 76%] Building CXX object system/CMakeFiles/nexus_system.dir/src/apt_source.cpp.o
-[ 78%] Building CXX object system/CMakeFiles/nexus_system.dir/src/transaction_log.cpp.o
-[ 80%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_version.cpp.o
-[ 82%] Building CXX object system/CMakeFiles/nexus_system.dir/src/source_build.cpp.o
-[ 83%] Building CXX object system/CMakeFiles/nexus_system.dir/src/xml.cpp.o
-[ 85%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_database.cpp.o
-[ 87%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_source.cpp.o
+[ 39%] Building CXX object system/CMakeFiles/nexus_system.dir/src/profile_file.cpp.o
+[ 39%] Building CXX object system/CMakeFiles/nexus_system.dir/src/apt_source.cpp.o
+[ 41%] Building CXX object system/CMakeFiles/nexus_system.dir/src/version.cpp.o
+[ 42%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/secure_boot.cpp.o
+[ 44%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/hardware.cpp.o
+[ 46%] Building CXX object system/CMakeFiles/nexus_system.dir/src/auto_installed.cpp.o
+[ 48%] Building CXX object system/CMakeFiles/nexus_system.dir/src/dependency_expression.cpp.o
+[ 50%] Building CXX object system/CMakeFiles/nexus_system.dir/src/dpkg_source.cpp.o
+[ 51%] Building CXX object system/CMakeFiles/nexus_system.dir/src/identity.cpp.o
+[ 53%] Building CXX object hardware/CMakeFiles/nexus_hardware.dir/src/encryption.cpp.o
+[ 55%] Building CXX object system/CMakeFiles/nexus_system.dir/src/plan_apply.cpp.o
+[ 57%] Building CXX object system/CMakeFiles/nexus_system.dir/src/control_file.cpp.o
+[ 58%] Building CXX object system/CMakeFiles/nexus_system.dir/src/pacman_source.cpp.o
+[ 60%] Building CXX object system/CMakeFiles/nexus_system.dir/src/transaction_log.cpp.o
+[ 62%] Building CXX object system/CMakeFiles/nexus_system.dir/src/plan_check.cpp.o
+[ 64%] Building CXX object system/CMakeFiles/nexus_system.dir/src/flatpak_source.cpp.o
+[ 66%] Building CXX object system/CMakeFiles/nexus_system.dir/src/protection.cpp.o
+[ 67%] Building CXX object system/CMakeFiles/nexus_system.dir/src/source_build.cpp.o
+[ 69%] Building CXX object system/CMakeFiles/nexus_system.dir/src/container.cpp.o
+[ 71%] Building CXX object system/CMakeFiles/nexus_system.dir/src/process.cpp.o
+[ 73%] Building CXX object system/CMakeFiles/nexus_system.dir/src/snap_source.cpp.o
+[ 75%] Building CXX object system/CMakeFiles/nexus_system.dir/src/services.cpp.o
+[ 76%] Building CXX object system/CMakeFiles/nexus_system.dir/src/nix_source.cpp.o
+[ 78%] Building CXX object system/CMakeFiles/nexus_system.dir/src/vpn.cpp.o
+[ 80%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_database.cpp.o
+[ 83%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_repo.cpp.o
+[ 83%] Building CXX object system/CMakeFiles/nexus_system.dir/src/portage_source.cpp.o
+[ 87%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_version.cpp.o
 [ 89%] Building CXX object system/CMakeFiles/nexus_system.dir/src/compression.cpp.o
-[ 91%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_repo.cpp.o
+[ 91%] Building CXX object system/CMakeFiles/nexus_system.dir/src/rpm_source.cpp.o
 [ 92%] Building CXX object system/CMakeFiles/nexus_system.dir/src/alias_file.cpp.o
+[ 92%] Building CXX object system/CMakeFiles/nexus_system.dir/src/xml.cpp.o
 [ 94%] Linking CXX static library libnexus_hardware.a
 [ 94%] Built target nexus_hardware
 [ 96%] Linking CXX static library libnexus_system.a
@@ -79,7 +79,7 @@ time="2026-09-26T17:54:56+02:00" level=warning msg="missing \"NEXUS_VERSION\" bu
 [ 98%] Building CXX object cli/CMakeFiles/nexus.dir/src/main.cpp.o
 [100%] Linking CXX executable nexus
 [100%] Built target nexus
---> a6479b17b79
+--> f721e3e7e99
 [2/6] STEP 1/7: FROM quay.io/fedora/fedora-bootc:44 AS artwork
 [2/6] STEP 2/7: RUN dnf install -y python3-pillow google-noto-sans-fonts && dnf clean all
 --> Using cache 287718a6c2f64531bd5590e5de74d046152bafc2ee5ef9de88724324ed4404da
@@ -184,119 +184,29 @@ time="2026-09-26T17:54:56+02:00" level=warning msg="missing \"NEXUS_VERSION\" bu
 --> Using cache d214203c96d054f593dac421673c3f603e75a5916ffe4428ecef8c6075e5180e
 --> d214203c96d
 [5/6] STEP 4/13: COPY --from=builder /build/cli/nexus /usr/bin/nexus
---> 063b2f0b5c9
+--> 63c883aca26
 [5/6] STEP 5/13: COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
---> ff68943fb78
+--> c8e6ba7c008
 [5/6] STEP 6/13: COPY image/first-boot/nexus-first-boot.service      /usr/lib/systemd/system/nexus-first-boot.service
---> e3c2679b44c
+--> b56a2807591
 [5/6] STEP 7/13: COPY components/profiles /usr/share/nexus/profiles
---> 640a44c9c17
+--> d0e153e0466
 [5/6] STEP 8/13: COPY components/aliases /usr/share/nexus/aliases
---> d6590cf327b
+--> 0c7bd7cabaf
 [5/6] STEP 9/13: COPY image/identity.sh /usr/libexec/nexus/identity
---> b7e8b4c38e5
+--> 184137b2033
 [5/6] STEP 10/13: RUN NEXUS_VERSION="${NEXUS_VERSION}" NEXUS_PROFILE="${NEXUS_PROFILE}"     sh /usr/libexec/nexus/identity
 Created symlink '/etc/systemd/system/multi-user.target.wants/nexus-first-boot.service' → '/usr/lib/systemd/system/nexus-first-boot.service'.
 Identity: Nexus-CORE 0.1.14 (minimalism) on Fedora Linux 44 (Forty Four)
---> 0a942f42855
+--> 3a4ade5835f
 [5/6] STEP 11/13: ENV NEXUS_PROFILES=/usr/share/nexus/profiles
---> d2740dcc2c6
+--> 62acee0bd78
 [5/6] STEP 12/13: ENV NEXUS_ALIASES=/usr/share/nexus/aliases
---> f64e59be9fc
+--> 7be688a9016
 [5/6] STEP 13/13: RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
 Updating and loading repositories:
- RPM Fusion for Fedora 44 - Nonfree - U 100% |   6.2 KiB/s |  49.4 KiB |  00m08s
- RPM Fusion for Fedora 44 - Nonfree     100% |  12.1 KiB/s | 100.3 KiB |  00m08s
- RPM Fusion for Fedora 44 - Free - Upda 100% |   9.2 KiB/s |  83.2 KiB |  00m09s
- RPM Fusion for Fedora 44 - Free        100% |  16.7 KiB/s | 157.6 KiB |  00m09s
- Fedora 44 - x86_64 - Updates           100% |   1.2 MiB/s |  12.6 MiB |  00m10s
- Fedora 44 openh264 (From Cisco) - x86_ 100% | 538.0   B/s |   5.3 KiB |  00m10s
->>> Curl error (35): SSL connect error for https://codecs.fedoraproject.org/openh264/44/x86_64/repodata/repomd.xml [Recv failure: Connection reset by peer] - https://codecs.fedoraproject.org/openh264/44/x86_64/repodata/repomd.xml
- Fedora 44 - x86_64                     100% |   1.5 MiB/s |  36.4 MiB |  00m24s
- Fedora 44 - x86_64 - Updates Archive   100% |   1.4 MiB/s |  39.5 MiB |  00m28s
-Repositories loaded.
-Package                              Arch   Version        Repository      Size
-Reinstalling:
- selinux-policy-targeted             noarch 0:44.10-1.fc44 updates     18.6 MiB
-   replacing selinux-policy-targeted noarch 0:44.10-1.fc44 <unknown>   18.6 MiB
-
-Transaction Summary:
- Reinstalling:       1 package
- Replacing:          1 package
-
-Total size of inbound packages is 7 MiB. Need to download 7 MiB.
-After this operation, 0 B extra will be used (install 19 MiB, remove 19 MiB).
-[1/1] selinux-policy-targeted-0:44.10-1 100% |   3.7 MiB/s |   6.8 MiB |  00m02s
---------------------------------------------------------------------------------
-[1/1] Total                             100% |   3.7 MiB/s |   6.8 MiB |  00m02s
-Running transaction
-[1/4] Verify package files              100% |  35.0   B/s |   1.0   B |  00m00s
-[2/4] Prepare transaction               100% |  27.0   B/s |   2.0   B |  00m00s
-[3/4] Reinstalling selinux-policy-targe 100% | 104.2 MiB/s |  14.9 MiB |  00m00s
-[4/4] Removing selinux-policy-targeted- 100% | 304.0   B/s |   1.7 KiB |  00m06s
-Complete!
-Removed 45 files, 25 directories (total of 160 MiB). 0 errors occurred.
---> 4d9cfc070fa
-[6/6] STEP 1/13: FROM 4dc99438507cb94458ba9b3735b9fa38243b81d78889afdecc97e30a608b3185 AS desktop
-[6/6] STEP 2/13: ARG NEXUS_VERSION
---> Using cache e9c2db7c01a327d398333c20a37d9f8280f610f4af1ea1fadfcd227c6ffa1c4a
---> e9c2db7c01a
-[6/6] STEP 3/13: ARG NEXUS_PROFILE
---> Using cache 8ae92a1e3428cf8fd9c8fccedc03787a22e908f181470ae24afa1e0ffac88f16
---> 8ae92a1e342
-[6/6] STEP 4/13: COPY --from=builder /build/cli/nexus /usr/bin/nexus
---> 012df253e67
-[6/6] STEP 5/13: COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
---> e12badd2bbc
-[6/6] STEP 6/13: COPY image/first-boot/nexus-first-boot.service      /usr/lib/systemd/system/nexus-first-boot.service
---> e4d225adedb
-[6/6] STEP 7/13: COPY components/profiles/base.profile      components/profiles/basic.profile      components/profiles/development.profile      components/profiles/gaming.profile      components/profiles/minimalism.profile      components/profiles/school.profile      components/profiles/security.profile      components/profiles/showcase.profile      components/profiles/vpn.profile      /usr/share/nexus/profiles/
---> aabaa9452ae
-[6/6] STEP 8/13: COPY components/aliases /usr/share/nexus/aliases
---> 537cbe3a599
-[6/6] STEP 9/13: COPY image/identity.sh /usr/libexec/nexus/identity
---> e05f44bfd06
-[6/6] STEP 10/13: RUN NEXUS_VERSION="${NEXUS_VERSION}" NEXUS_PROFILE="${NEXUS_PROFILE}"     sh /usr/libexec/nexus/identity
-Created symlink '/etc/systemd/system/multi-user.target.wants/nexus-first-boot.service' → '/usr/lib/systemd/system/nexus-first-boot.service'.
-Identity: Nexus-CORE 0.1.14 (minimalism) on Fedora Linux 44 (Forty Four)
---> 53c2f4074db
-[6/6] STEP 11/13: ENV NEXUS_PROFILES=/usr/share/nexus/profiles
---> 2be5783602e
-[6/6] STEP 12/13: ENV NEXUS_ALIASES=/usr/share/nexus/aliases
---> a63df1f015d
-[6/6] STEP 13/13: RUN dnf reinstall -y selinux-policy-targeted && dnf clean all
-Updating and loading repositories:
- RPM Fusion for Fedora 44 - Nonfree - U 100% |   6.8 KiB/s |  49.4 KiB |  00m07s
- Fedora 44 - x86_64 - Updates           100% |   1.4 MiB/s |  12.7 MiB |  00m09s
- RPM Fusion for Fedora 44 - Nonfree     100% |  11.0 KiB/s | 100.3 KiB |  00m09s
- RPM Fusion for Fedora 44 - Free - Upda 100% |  16.8 KiB/s | 150.2 KiB |  00m09s
- RPM Fusion for Fedora 44 - Free        100% |  17.4 KiB/s | 157.6 KiB |  00m09s
- Fedora 44 openh264 (From Cisco) - x86_ 100% | 536.0   B/s |   5.3 KiB |  00m10s
- Fedora 44 - x86_64 - Updates Archive   100% |   1.6 MiB/s |  39.5 MiB |  00m25s
- Fedora 44 - x86_64                     100% |   1.2 MiB/s |  36.7 MiB |  00m32s
-Repositories loaded.
-Package                              Arch   Version        Repository      Size
-Reinstalling:
- selinux-policy-targeted             noarch 0:44.10-1.fc44 updates     18.6 MiB
-   replacing selinux-policy-targeted noarch 0:44.10-1.fc44 <unknown>   18.6 MiB
-
-Transaction Summary:
- Reinstalling:       1 package
- Replacing:          1 package
-
-Total size of inbound packages is 7 MiB. Need to download 7 MiB.
-After this operation, 0 B extra will be used (install 19 MiB, remove 19 MiB).
-[1/1] selinux-policy-targeted-0:44.10-1 100% |   4.1 MiB/s |   6.8 MiB |  00m02s
---------------------------------------------------------------------------------
-[1/1] Total                             100% |   4.1 MiB/s |   6.8 MiB |  00m02s
-Running transaction
-[1/4] Verify package files              100% |  55.0   B/s |   1.0   B |  00m00s
-[2/4] Prepare transaction               100% |  24.0   B/s |   2.0   B |  00m00s
-[3/4] Reinstalling selinux-policy-targe 100% | 113.8 MiB/s |  14.9 MiB |  00m00s
-[4/4] Removing selinux-policy-targeted- 100% |  10.2 KiB/s |   1.7 KiB |  00m00s
-Complete!
-Removed 45 files, 25 directories (total of 160 MiB). 0 errors occurred.
-[6/6] COMMIT localhost/nexus-os:minimalism
---> bd827961fe9
-Successfully tagged localhost/nexus-os:minimalism
-bd827961fe97d34b63a4968652d1accd6bc611da7b2d192268d495f15ae6b8c8
+ Fedora 44 - x86_64 - Updates           100% | 297.3 KiB/s |  16.7 MiB |  00m58s
+>>> Curl error (28): Timeout was reached for https://mirror.i3d.net/pub/fedora/linux/updates/44/Everything/x86_64/repodata/428f73c5d75733eb35e72bbc48a1edc3a93550b1dc9159b47e2fbf1fb737cda4-updateinfo.xml.zck [Operation too slow. Less than 1000 bytes/sec transferred the last 30 seconds] - https://mirror.i3d.net/pub/fedora/linux/updates/44/Everything/x86_64/repodata/428f73c5d75733eb35e72bbc48a1edc3a93550b1dc9159b47e2fbf1fb737cda4-updateinfo.xml.zck
+>>> Curl error (56): Failure when receiving data from the peer for https://mirror.i3d.net/pub/fedora/linux/updates/44/Everything/x86_64/repodata/af324f4718ac9d4cbfe81f0056bbed3835d50d626c12b6d5dcbbcf0dad498bcb-primary.xml.zck [Recv failure: Connection reset by peer] - https://mirror.i3d.net/pub/fedora/linux/updates/44/Everything/x86_64/repodata/af324f4718ac9d4cbfe81f0056bbed3835d50d626c12b6d5dcbbcf0dad498bcb-primary.xml.zck
+ RPM Fusion for Fedora 44 - Nonfree - U 100% | 858.0   B/s |  49.4 KiB |  00m59s
+ RPM Fusion for Fedora 44 - Nonfree     100% |   1.7 KiB/s | 100.3 KiB |  00m59s
