@@ -57,7 +57,7 @@ jobs:
       PROFILE: minimalism
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # One login file for podman and cosign alike, in the job's own
       # temporary directory (the runner context is not available at
