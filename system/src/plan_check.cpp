@@ -38,7 +38,7 @@ PlanCheck checkPlanWithApt(
         "apt-get install --dry-run --no-install-recommends '" +
         requested + "' 2>" + errors;
 
-    std::FILE* pipe = popen(command.c_str(), "r");
+    std::FILE* pipe = popen(inPlainLocale(command).c_str(), "r");
 
     if (pipe == nullptr) {
         check.agreement = PlanAgreement::Unavailable;
@@ -186,7 +186,7 @@ PlanCheck checkPlanWithDnf(
         "dnf install --assumeno --setopt=install_weak_deps=False '" +
         requested + "' 2>" + errors;
 
-    std::FILE* pipe = popen(command.c_str(), "r");
+    std::FILE* pipe = popen(inPlainLocale(command).c_str(), "r");
 
     if (pipe == nullptr) {
         check.agreement = PlanAgreement::Unavailable;

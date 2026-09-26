@@ -43,6 +43,7 @@ add_executable(component_test
     unit/rpm_source_test.cpp
     unit/rpm_repo_test.cpp
     unit/rpm_database_test.cpp
+    unit/plan_check_test.cpp
 )
 
 target_link_libraries(component_test

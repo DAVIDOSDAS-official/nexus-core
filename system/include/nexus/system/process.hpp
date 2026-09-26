@@ -38,6 +38,21 @@ ProcessResult runCommand(
     bool splitLines = true
 );
 
+// The command, run in the plain C locale.
+//
+// Nexus reads what other tools print -- dnf's transaction table, apt's
+// "Inst" lines, rpm-ostree's status -- and those are translated. On a
+// machine installed in Serbian, dnf's table came back in Cyrillic, the
+// parser found no packages in it, and every plan looked like a
+// refusal: the first boot of that machine could install nothing
+// (26 September). The tools' words are for people; to be read by a
+// program they have to be in the one language it was written for.
+//
+// An exported assignment rather than a prefix, so it covers every
+// command in a pipeline or a sequence, not only the first. LANGUAGE is
+// cleared because gettext consults it before LC_ALL.
+std::string inPlainLocale(const std::string& command);
+
 // Whether a command exists at all.
 bool commandExists(const std::string& name);
 

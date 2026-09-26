@@ -20,7 +20,7 @@ and `CAPABILITIES.md`.
 first push is the actual release.
 
 **Last session:** 21–25 September 2026. **0.1.10** (patches 1–25)
-published, signed, and running on the Asus with signed updates enforced. **509 tests** (506 pass, 3 skipped).
+published, signed, and running on the Asus with signed updates enforced. **511 tests** (508 pass, 3 skipped).
 
 ---
 
@@ -307,6 +307,21 @@ test fail.
   embedded copy, so the first `rpm-ostree upgrade` may re-download the
   layers even with no new version.
 
+- **VM install from the 0.1.11 ISO in Serbian (26 Sept):** installer
+  branding shows the Nexus N (patch 26 works); installer, time zone
+  (Europe/Belgrade), keyboard (us + Serbian) and the login screen's date
+  all in Serbian; graphical passphrase box on a fresh install;
+  wallpaper followed the first add-on (security). ISO sha256
+  `7249aff1…`.
+- **Found: in any non-English language, first boot installed
+  nothing.** Nexus parses dnf's table; dnf printed it in Serbian; every
+  plan looked like a refusal. **Patch 27 (0.1.12):** every command Nexus
+  reads runs with `LC_ALL=C.UTF-8`, `LANGUAGE=` (`inPlainLocale()` in
+  process.cpp, used by `runCommand` and both plan checks). Two tests,
+  both seen failing without the fix. **511 tests** (508 pass, 3 skipped).
+  Also expected in a VM: gaming reports `gpu-vendor-*` missing (virtual
+  GPU).
+
 **The bar for the first public release** (one stable, impressive
 release first; paid comes later)
 1. **Every offered profile focused and tested.** Each strictly about its
@@ -374,7 +389,7 @@ release first; paid comes later)
 
 ```bash
 cd ~/Documents/nexus-core
-cmake --build build && ctest --test-dir build        # 509 (3 skipped)
+cmake --build build && ctest --test-dir build        # 511 (3 skipped)
 ./build/cli/nexus --version
 ```
 

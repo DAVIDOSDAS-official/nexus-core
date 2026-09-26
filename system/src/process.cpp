@@ -12,6 +12,10 @@ bool commandExists(const std::string& name) {
         ("command -v '" + name + "' > /dev/null 2>&1").c_str()) == 0;
 }
 
+std::string inPlainLocale(const std::string& command) {
+    return "LC_ALL=C.UTF-8; LANGUAGE=; export LC_ALL LANGUAGE; " + command;
+}
+
 ProcessResult runCommand(
     const std::string& command,
     bool captureErrors,
@@ -19,8 +23,8 @@ ProcessResult runCommand(
 ) {
     ProcessResult result;
 
-    const std::string full =
-        captureErrors ? command + " 2>&1" : command;
+    const std::string full = inPlainLocale(
+        captureErrors ? command + " 2>&1" : command);
 
     std::FILE* pipe = popen(full.c_str(), "r");
 

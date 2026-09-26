@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <cstdlib>
+
 #include <nexus/system/process.hpp>
 
 using nexus::system::commandExists;
@@ -84,4 +86,28 @@ TEST(ProcessTest, EmptyOutputIsNotAFailure) {
 TEST(ProcessTest, KnowsWhetherACommandExists) {
     EXPECT_TRUE(commandExists("sh"));
     EXPECT_FALSE(commandExists("nexus-nothing-by-this-name"));
+}
+
+// Commands are read in the plain C locale, whatever the machine's
+// language. A machine installed in Serbian had dnf print its
+// transaction table in Cyrillic, and nothing that read it could.
+TEST(ProcessTest, CommandsRunInThePlainLocale) {
+    const char* oldAll = std::getenv("LC_ALL");
+    const char* oldLanguage = std::getenv("LANGUAGE");
+    const std::string savedAll = oldAll ? oldAll : "";
+    const std::string savedLanguage = oldLanguage ? oldLanguage : "";
+
+    ::setenv("LC_ALL", "sr_RS.UTF-8", 1);
+    ::setenv("LANGUAGE", "sr", 1);
+
+    // A sequence, so the setting has to reach past the first command.
+    const auto result = runCommand("true; echo \"$LC_ALL/$LANGUAGE\"");
+
+    if (oldAll) { ::setenv("LC_ALL", savedAll.c_str(), 1); }
+    else { ::unsetenv("LC_ALL"); }
+    if (oldLanguage) { ::setenv("LANGUAGE", savedLanguage.c_str(), 1); }
+    else { ::unsetenv("LANGUAGE"); }
+
+    ASSERT_EQ(result.lines.size(), 1u);
+    EXPECT_EQ(result.lines[0], "C.UTF-8/");
 }
