@@ -284,6 +284,29 @@ test fail.
   testers (feedback on the website instead), NVIDIA on the open driver,
   paid version not before ~6 months — all free until then.
 
+- **VM install from the 0.1.10 ISO (26 Sept) — passed:** installer
+  asked language, keyboard and time zone (preselected New York: no IP
+  lookup happened); installed machine came up `ostree-image-signed`
+  straight from the installer; `VC Keymap: us` (the empty keymap bug
+  is gone); first boot layered showcase+security+vpn and **waited for
+  Enter before the login screen on a real first boot**; wallpaper was
+  showcase's (first add-on chosen). Not tested: a non-English choice.
+- **Installer still showed Fedora's logo** (sidebar). Title already
+  said "NEXUS-CORE 44" (from os-release). **Patch 26 (0.1.11):** the
+  artwork stage draws sidebar/topbar pixmaps
+  (`image/installer-branding.py`, node-graph N in orange + name) and
+  packs them as a gzip cpio `product.img`, carried in the image at
+  `/usr/share/nexus/installer/product.img`; `build-installer.sh` adds it
+  to the ISO as `images/product.img` (merging any existing one), with
+  `xorriso -boot_image any replay`, same volume label, `implantisomd5`,
+  and writes `install.iso.sha256`. Tested on a small bootable test ISO:
+  merge, no-merge, El Torito kept, label kept, media check PASS. Needs
+  host tools: `sudo apt install xorriso cpio isomd5sum`. Also: "Handing
+  the plan to rpm-ostree" on image-based systems (said dnf).
+- Minor: after a fresh install the deployment digest is the ISO's
+  embedded copy, so the first `rpm-ostree upgrade` may re-download the
+  layers even with no new version.
+
 **The bar for the first public release** (one stable, impressive
 release first; paid comes later)
 1. **Every offered profile focused and tested.** Each strictly about its

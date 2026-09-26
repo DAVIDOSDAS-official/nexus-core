@@ -1182,7 +1182,11 @@ int commandInstall(
         }
     }
 
-    std::cout << "\nHanding the plan to " << manager << ".\n\n";
+    // Named for what actually runs: on an image-based system dnf only
+    // checked the plan, and rpm-ostree carries it out.
+    std::cout << "\nHanding the plan to "
+              << (useRpmOstree ? std::string("rpm-ostree") : manager)
+              << ".\n\n";
 
     // Three appliers, one shape: verify, hand over, record what
     // happened. An image-based system layers into a new deployment

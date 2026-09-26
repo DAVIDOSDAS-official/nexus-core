@@ -132,12 +132,18 @@ RUN cmake -S /src -B /build \
 
 FROM quay.io/fedora/fedora-bootc:${FEDORA_VERSION} AS artwork
 
-RUN dnf install -y python3-pillow && dnf clean all
+RUN dnf install -y python3-pillow google-noto-sans-fonts && dnf clean all
 
 COPY image/wallpaper/make-wallpapers.py /usr/local/bin/make-wallpapers
 COPY image/artwork/wallpapers /artwork/wallpapers
 
 RUN python3 /usr/local/bin/make-wallpapers /artwork/wallpapers /wallpapers
+
+# The installer's branding, drawn here and carried in the image so that
+# image/build-installer.sh takes it from the very image it installs.
+# See image/installer-branding.py.
+COPY image/installer-branding.py /usr/local/bin/installer-branding
+RUN python3 /usr/local/bin/installer-branding /installer
 
 # ------------------------------------------------------------------- os
 # Fedora plus the things that almost never change. Not a target:
@@ -533,6 +539,7 @@ RUN set -eu; \
 # in, so there is no one's choice to follow, and /usr cannot be
 # changed on a running machine to follow it anyway.
 COPY --from=artwork /wallpapers/ /usr/share/wallpapers/
+COPY --from=artwork /installer/product.img /usr/share/nexus/installer/product.img
 COPY image/wallpaper/apply-wallpaper /usr/libexec/nexus/apply-wallpaper
 COPY image/wallpaper/nexus-wallpaper.desktop \
      /etc/xdg/autostart/nexus-wallpaper.desktop

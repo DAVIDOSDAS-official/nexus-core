@@ -53,6 +53,20 @@ if [ -n "${available}" ] && [ "${available}" -lt "${NEEDED_GB}" ]; then
     exit 1
 fi
 
+# Tools for putting Nexus branding into the ISO, checked before a build
+# that takes a quarter of an hour rather than after it.
+if [ "${TYPE}" = "anaconda-iso" ]; then
+    missing=""
+    for tool in xorriso cpio implantisomd5; do
+        command -v "${tool}" > /dev/null 2>&1 || missing="${missing} ${tool}"
+    done
+    if [ -n "${missing}" ]; then
+        echo "Missing:${missing}. Install them once:" >&2
+        echo "    sudo apt install xorriso cpio isomd5sum" >&2
+        exit 1
+    fi
+fi
+
 if ! podman image exists "${IMAGE}"; then
     echo "No image ${IMAGE}. Build it first:" >&2
     echo "    podman build --target desktop \\" >&2
@@ -126,6 +140,75 @@ if [ "${STATUS}" -ne 0 ]; then
     exit "${STATUS}"
 fi
 
+# Nexus branding in the installer.
+#
+# bootc-image-builder assembles the installer from Fedora's packages,
+# so every screen of it showed Fedora's logo -- on an ISO that is not
+# Fedora, which Fedora's trademark guidelines do not allow. Anaconda
+# has a mechanism made for this: images/product.img on the ISO is laid
+# over the installer's files when it starts. The pictures come from the
+# image being installed (image/installer-branding.py draws them), so
+# the ISO and the system cannot disagree.
+#
+# If the ISO already has a product.img it is merged, not replaced.
+# The boot setup is replayed as it was, the volume label is kept (the
+# installer finds itself by that label), and the media checksum is
+# written again so the installer's own media check still passes.
+if [ "${TYPE}" = "anaconda-iso" ]; then
+    ISO="${OUTPUT}/bootiso/install.iso"
+    WORK="$(mktemp -d)"
+    mkdir -p "${WORK}/root"
+
+    echo
+    echo "Branding the installer."
+
+    if ! podman run --rm --entrypoint cat "${IMAGE}" \
+            /usr/share/nexus/installer/product.img > "${WORK}/ours.img" \
+       || ! gzip -t "${WORK}/ours.img" 2> /dev/null; then
+        echo "The image carries no installer branding" >&2
+        echo "(/usr/share/nexus/installer/product.img). The ISO is built" >&2
+        echo "but still shows Fedora's logo: do not publish it." >&2
+        exit 1
+    fi
+
+    if xorriso -osirrox on -indev "${ISO}" \
+            -extract /images/product.img "${WORK}/theirs.img" \
+            > /dev/null 2>&1 && [ -s "${WORK}/theirs.img" ]; then
+        if ! gzip -t "${WORK}/theirs.img" 2> /dev/null; then
+            echo "The ISO has a product.img that is not a gzip cpio" >&2
+            echo "archive; not merging blindly. The ISO still shows" >&2
+            echo "Fedora's logo: do not publish it." >&2
+            exit 1
+        fi
+        echo "Merging with the product.img the builder made."
+        (cd "${WORK}/root" && gzip -dc ../theirs.img | cpio -idm --quiet)
+    fi
+
+    (cd "${WORK}/root" && gzip -dc ../ours.img | cpio -idmu --quiet)
+    (cd "${WORK}/root" && find . | cpio -o -H newc --quiet | gzip -9) \
+        > "${WORK}/product.img"
+
+    if ! xorriso -indev "${ISO}" -outdev "${ISO}.branded" \
+            -map "${WORK}/product.img" /images/product.img \
+            -boot_image any replay > "${WORK}/xorriso.log" 2>&1; then
+        cat "${WORK}/xorriso.log" >&2
+        rm -f "${ISO}.branded"
+        echo "Could not write the branded ISO. The unbranded one is" >&2
+        echo "still there, and still shows Fedora's logo." >&2
+        exit 1
+    fi
+
+    implantisomd5 --force "${ISO}.branded" > /dev/null
+    mv "${ISO}.branded" "${ISO}"
+    rm -rf "${WORK}"
+    echo "Installer branded: images/product.img"
+fi
+
+# A checksum to publish next to the download.
+if [ -f "${OUTPUT}/bootiso/install.iso" ]; then
+    (cd "${OUTPUT}/bootiso" && sha256sum install.iso > install.iso.sha256)
+fi
+
 echo
 echo "Done:"
 find "${OUTPUT}" -type f \( -name '*.iso' -o -name '*.qcow2' \) \
@@ -158,6 +241,9 @@ MANIFEST="${OUTPUT}/nexus-build.txt"
     echo "builder:        ${BUILDER}"
     echo "builder digest: $(sudo podman image inspect \
         --format '{{.Digest}}' "${BUILDER}" 2>/dev/null || echo unknown)"
+    if [ -f "${OUTPUT}/bootiso/install.iso.sha256" ]; then
+        echo "iso sha256:     $(cut -d' ' -f1 "${OUTPUT}/bootiso/install.iso.sha256")"
+    fi
 } > "${MANIFEST}"
 
 echo
