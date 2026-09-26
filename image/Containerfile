@@ -425,6 +425,7 @@ RUN set -eu; \
         glibc-all-langpacks \
         pciutils \
         pulseaudio-utils \
+        flatpak \
         ${extra}; \
     dnf clean all; \
     if rpm -q fedora-logos > /dev/null 2>&1; then \
@@ -445,6 +446,22 @@ RUN set -eu; \
         exit 1; \
     fi; \
     echo "Redistribution: Fedora packages only"
+
+# Flathub's remote definition, carried in the image.
+#
+# The gaming profile takes Steam from Flathub (see its Flatpak: line),
+# and nexus setup adds the remote from this file. Fetched here, when the
+# image is built, so the signing key Flathub's packages are checked
+# against arrives with the system -- signed along with it -- rather
+# than from whatever answers on a user's network. Not enabled until a
+# profile needs it: an image that adds remotes nobody asked for is
+# making choices for people.
+RUN set -eu; \
+    mkdir -p /usr/share/nexus; \
+    curl -fsSL --retry 3 -o /usr/share/nexus/flathub.flatpakrepo \
+        https://dl.flathub.org/repo/flathub.flatpakrepo; \
+    grep -q '^GPGKey=' /usr/share/nexus/flathub.flatpakrepo; \
+    echo "Flathub remote definition: /usr/share/nexus/flathub.flatpakrepo"
 
 # The splash has to be inside the initramfs, because the passphrase is
 # asked for before the real system is mounted. The initramfs in a

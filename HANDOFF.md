@@ -20,7 +20,7 @@ and `CAPABILITIES.md`.
 first push is the actual release.
 
 **Last session:** 21–25 September 2026. **0.1.10** (patches 1–25)
-published, signed, and running on the Asus with signed updates enforced. **511 tests** (508 pass, 3 skipped).
+published, signed, and running on the Asus with signed updates enforced. **513 tests** (510 pass, 3 skipped).
 
 ---
 
@@ -318,9 +318,39 @@ test fail.
   plan looked like a refusal. **Patch 27 (0.1.12):** every command Nexus
   reads runs with `LC_ALL=C.UTF-8`, `LANGUAGE=` (`inPlainLocale()` in
   process.cpp, used by `runCommand` and both plan checks). Two tests,
-  both seen failing without the fix. **511 tests** (508 pass, 3 skipped).
+  both seen failing without the fix. **513 tests** (510 pass, 3 skipped).
   Also expected in a VM: gaming reports `gpu-vendor-*` missing (virtual
   GPU).
+
+- **VM install in Bosnian (0.1.12, 26 Sept):** patch 27 confirmed —
+  first boot verified and installed school/vpn/development in a
+  non-English locale. Desktop in Bosnian. Nexus's own text is English
+  only (not translated yet). **Steam failed**: 32-bit (i686) packages
+  must match the image's x86_64 versions exactly, and Fedora had
+  updated libheif, gtk3, SDL3, glycin, gdk-pixbuf2 since the image was
+  built, so the matching i686 builds no longer existed on the mirrors.
+  Worked on the Asus the day before only by timing.
+- **Decided: Steam as a Flatpak (David, 26 Sept).** **Patch 28
+  (0.1.13):** profiles gain `Flatpak: capability=app-id` (parsed,
+  composed, tested); gaming maps `steam=com.valvesoftware.Steam`;
+  `nexus setup` shows it as "(Flatpak, from Flathub)", adds Flathub from
+  `/usr/share/nexus/flathub.flatpakrepo` (fetched at image build, key
+  verified by presence) and runs `flatpak install --system`; an
+  installed rpm Steam or Flatpak Steam counts as satisfied. Image adds
+  the `flatpak` package. Tested with a fake flatpak: preview, apply,
+  then "already is what you asked for". **513 tests** (510 pass, 3
+  skipped).
+- **Keyboard:** the Bosnian layout (Y/Z swapped, symbols moved) had no
+  way back to US. First boot now adds English (US) as a second layout
+  when missing (`localectl --no-convert set-x11-keymap`, switch with
+  Super+Space) — the console keymap, which the disk passphrase uses, is
+  untouched. Tested for ba, rs+latin, de with and without options, and
+  us (no change). Installer still needs a warning: the keyboard active
+  when the disk password is set is the one used at every boot.
+- **Must:** rebuild the image every week or two (fresh Fedora pull):
+  layered packages hit the same version wall, and it is the only way
+  security fixes reach users. First update after a fresh install
+  re-downloads ~2.3 GB (ISO copy vs registry digest).
 
 **The bar for the first public release** (one stable, impressive
 release first; paid comes later)
@@ -389,7 +419,7 @@ release first; paid comes later)
 
 ```bash
 cd ~/Documents/nexus-core
-cmake --build build && ctest --test-dir build        # 511 (3 skipped)
+cmake --build build && ctest --test-dir build        # 513 (3 skipped)
 ./build/cli/nexus --version
 ```
 

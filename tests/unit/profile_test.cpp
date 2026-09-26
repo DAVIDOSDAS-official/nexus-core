@@ -359,3 +359,18 @@ TEST(ProfileFileTest, ProfilesAreCombinableByDefault) {
     ASSERT_EQ(result.profiles.size(), 1u);
     EXPECT_FALSE(result.profiles[0].exclusive);
 }
+
+TEST(ProfileFileTest, ReadsFlatpakMappings) {
+    const auto result = parse(
+        "Profile: gaming\n"
+        "Description: Games\n"
+        "Requires: steam\n"
+        "Flatpak: steam=com.valvesoftware.Steam\n"
+    );
+
+    ASSERT_EQ(result.profiles.size(), 1u);
+    ASSERT_EQ(result.profiles[0].flatpak.count("steam"), 1u);
+    EXPECT_EQ(result.profiles[0].flatpak.at("steam"),
+              "com.valvesoftware.Steam");
+    EXPECT_TRUE(result.problems.empty());
+}

@@ -60,6 +60,19 @@ struct Profile {
     // Applied only when their condition is satisfied.
     std::vector<ConditionalPreference> conditionalPreferences;
 
+    // capability -> Flatpak application id, for what is better taken
+    // from Flathub than from the distribution.
+    //
+    // Steam is the case that made it necessary. Layered as an rpm on
+    // an image-based system it needs 32-bit copies of dozens of
+    // libraries at exactly the versions in the image, and the mirrors
+    // keep only the newest -- so every Fedora update to one of them
+    // broke `nexus setup gaming` until the next image build (26
+    // September). The Flatpak carries its own libraries and cannot
+    // drift. A requirement already met by an installed package stays
+    // met; this only decides how a missing one is filled.
+    std::map<std::string, std::string> flatpak;
+
     bool empty() const {
         return requirements.empty();
     }

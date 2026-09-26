@@ -155,6 +155,11 @@ Composition compose(
             composition.profile.required[capability] = component;
         }
 
+        // First profile named wins, as for preferences.
+        for (const auto& [capability, application] : profile.flatpak) {
+            composition.profile.flatpak.emplace(capability, application);
+        }
+
         for (const ConditionalPreference& conditional :
              profile.conditionalPreferences) {
 

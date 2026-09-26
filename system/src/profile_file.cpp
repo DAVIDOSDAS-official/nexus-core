@@ -177,6 +177,15 @@ Profile fromStanza(
         profile.conditionalPreferences.push_back(conditional);
     }
 
+    // Flatpak: <capability>=<application id>, ...
+    readMapping(
+        "Flatpak",
+        stanza.value("flatpak"),
+        profile.name,
+        profile.flatpak,
+        problems
+    );
+
     readMapping(
         "Requires-Exactly",
         stanza.value("requires-exactly"),

@@ -215,3 +215,16 @@ TEST(CompositionTest, AnExclusiveProfileAloneIsFine) {
     EXPECT_FALSE(composed.refused);
     EXPECT_EQ(composed.profile.requirements.size(), 1u);
 }
+
+// A Flatpak mapping survives composition: gaming,school must still take
+// Steam from Flathub.
+TEST(CompositionTest, KeepsFlatpakMappings) {
+    auto gaming = profileOf("gaming", {"steam"});
+    gaming.flatpak["steam"] = "com.valvesoftware.Steam";
+
+    const auto composed =
+        compose({gaming, profileOf("school", {"word-processor"})});
+
+    ASSERT_EQ(composed.profile.flatpak.count("steam"), 1u);
+    EXPECT_EQ(composed.profile.flatpak.at("steam"), "com.valvesoftware.Steam");
+}

@@ -103,6 +103,56 @@ restore_printk() {
 # console somebody else owns is a prompt nobody sees. Finding that out
 # here costs nothing; finding it out after the scan costs a quarter of
 # a gigabyte and a marker that says this machine was asked.
+# English (US) as a second keyboard layout, whatever the first is.
+#
+# Somebody who installs in Bosnian gets a Bosnian keyboard -- Y and Z
+# swapped, symbols elsewhere -- and on 26 September that left a person
+# unable to type commands, with no way back to a US layout short of
+# finding the setting in a language they had only chosen for testing.
+# With two layouts the desktop shows which is active and switches with
+# Super+Space (and KDE's own Meta+Alt+K).
+#
+# Only the desktop's layouts change. --no-convert leaves the console
+# keymap alone, and that is the one the disk passphrase is typed on:
+# changing it would change what the passphrase has to be typed as.
+# Remove the second layout in System Settings -> Keyboard if unwanted.
+add_english_layout() {
+    command -v localectl > /dev/null 2>&1 || return 0
+
+    local status layouts model variants options
+    status="$(LC_ALL=C.UTF-8 localectl status 2>/dev/null)" || return 0
+    layouts="$(printf '%s\n' "${status}" | sed -n 's/^ *X11 Layout: *//p')"
+    model="$(printf '%s\n' "${status}" | sed -n 's/^ *X11 Model: *//p')"
+    variants="$(printf '%s\n' "${status}" | sed -n 's/^ *X11 Variant: *//p')"
+    options="$(printf '%s\n' "${status}" | sed -n 's/^ *X11 Options: *//p')"
+
+    case ",${layouts}," in
+        ,,|*,us,*) return 0 ;;
+    esac
+
+    # One variant per layout, so the new one needs an empty slot.
+    local count
+    count="$(printf '%s' "${layouts}" | tr -cd ',' | wc -c)"
+    while [ "$(printf '%s' "${variants}" | tr -cd ',' | wc -c)" -lt "${count}" ]; do
+        variants="${variants},"
+    done
+
+    local switch="Super+Space"
+    case ",${options}," in
+        *,grp:*) switch="your existing layout shortcut, or Meta+Alt+K" ;;
+        ,,) options="grp:win_space_toggle" ;;
+        *) options="${options},grp:win_space_toggle" ;;
+    esac
+
+    if localectl --no-convert set-x11-keymap "${layouts},us" \
+            "${model}" "${variants}," "${options}" 2>/dev/null; then
+        echo "Keyboard: added English (US) alongside ${layouts}." \
+            "Switch with ${switch}."
+    fi
+}
+
+add_english_layout
+
 if [ ! -t 0 ]; then
     echo "nexus-first-boot has no terminal to ask on; not asking." >&2
     echo "The machine is usable. Run 'nexus setup' to choose." >&2

@@ -3317,18 +3317,69 @@ int commandSetup(
     const auto possible = nexus::checkProfile(
         profile, buildSolver(universe), aliases);
 
+    // Requirements this profile fills from Flathub rather than the
+    // distribution (Profile::flatpak), by position. Empty for the rest.
+    std::vector<std::string> flatpakFor(here.items.size());
+
+    for (std::size_t index = 0;
+         index < profile.requirements.size() && index < flatpakFor.size();
+         ++index) {
+        const auto& alternatives = profile.requirements[index].alternatives;
+
+        if (alternatives.size() != 1) {
+            continue;
+        }
+
+        const auto found = profile.flatpak.find(alternatives[0].capability);
+
+        if (found != profile.flatpak.end()) {
+            flatpakFor[index] = found->second;
+        }
+    }
+
+    const auto flatpakInstalled = [](const std::string& application) {
+        return nexus::system::commandExists("flatpak") &&
+               nexus::system::runCommand(
+                   "flatpak info --system '" + application +
+                   "' > /dev/null 2>&1", false).ok;
+    };
+
+    std::size_t satisfied = here.satisfied;
+
+    for (std::size_t index = 0; index < here.items.size(); ++index) {
+        if (!here.items[index].satisfied && !flatpakFor[index].empty() &&
+            flatpakInstalled(flatpakFor[index])) {
+            satisfied += 1;
+        }
+    }
+
     std::cout
         << "Chosen:      " << chosen << "\n"
-        << "Satisfied:   " << here.satisfied << " of "
+        << "Satisfied:   " << satisfied << " of "
         << here.items.size() << "\n\n";
 
     std::vector<std::string> wanted;
+    std::vector<std::string> wantedFlatpaks;
     std::size_t unavailable = 0;
 
     for (std::size_t index = 0; index < here.items.size(); ++index) {
         const auto& item = here.items[index];
 
         if (item.satisfied) {
+            continue;
+        }
+
+        if (!flatpakFor[index].empty()) {
+            if (flatpakInstalled(flatpakFor[index])) {
+                continue;
+            }
+
+            std::cout
+                << "  [install] " << item.requirement
+                << "\n            " << flatpakFor[index]
+                << "  (Flatpak, from Flathub)\n";
+
+            wantedFlatpaks.push_back(flatpakFor[index]);
             continue;
         }
 
@@ -3369,7 +3420,9 @@ int commandSetup(
         wanted.push_back(name);
     }
 
-    if (wanted.empty()) {
+    const std::size_t total = wanted.size() + wantedFlatpaks.size();
+
+    if (total == 0) {
         // Nothing to install is two different situations, and calling
         // both of them success told somebody their machine was
         // already what they asked for while six requirements went
@@ -3404,6 +3457,12 @@ int commandSetup(
                 << name << "\n";
         }
 
+        for (const std::string& application : wantedFlatpaks) {
+            std::cout
+                << "    sudo flatpak install --system flathub "
+                << application << "\n";
+        }
+
         std::cout
             << "\nOne at a time on purpose: if the fourth fails the "
             << "first three\nstill happened, and you can see which.\n";
@@ -3413,7 +3472,7 @@ int commandSetup(
 
     if (!apply) {
         std::cout
-            << "\n" << wanted.size()
+            << "\n" << total
             << " thing(s) would be installed.\n"
             << "Use --apply to do it, or --commands to see what it "
             << "would run.\n";
@@ -3435,7 +3494,7 @@ int commandSetup(
 
     if (!assumeYes) {
         std::cout
-            << "\nInstall " << wanted.size()
+            << "\nInstall " << total
             << " thing(s)? [y/N] ";
 
         std::string answer;
@@ -3468,8 +3527,51 @@ int commandSetup(
         }
     }
 
+    // Flatpaks after the packages: a system-wide Flatpak goes into
+    // /var, not into the deployment, so it is usable straight away
+    // rather than after the reboot the packages wait for.
+    //
+    // Flathub is added from the copy the image carries
+    // (/usr/share/nexus/flathub.flatpakrepo, fetched when the image is
+    // built), so the key it is verified with came with the system
+    // rather than from whatever answered on the network today.
+    for (const std::string& application : wantedFlatpaks) {
+        std::cout << "\n=== " << application << " (Flatpak) ===\n";
+
+        if (!nexus::system::commandExists("flatpak")) {
+            std::cout << "flatpak is not installed on this system.\n";
+            failed.push_back(application);
+            continue;
+        }
+
+        const std::string remote =
+            std::filesystem::exists("/usr/share/nexus/flathub.flatpakrepo")
+                ? "/usr/share/nexus/flathub.flatpakrepo"
+                : "https://dl.flathub.org/repo/flathub.flatpakrepo";
+
+        nexus::system::runCommand(
+            "flatpak remote-add --system --if-not-exists flathub '" +
+            remote + "'");
+
+        // Not captured: the first Flatpak brings its runtime, a
+        // download of a gigabyte or more, and minutes with nothing on
+        // screen look like a hang.
+        std::cout << std::flush;
+
+        const int status = std::system(nexus::system::inPlainLocale(
+            "flatpak install --system --noninteractive flathub '" +
+            application + "'").c_str());
+
+        if (status == 0) {
+            done += 1;
+        } else {
+            std::cout << "\nflatpak did not complete.\n";
+            failed.push_back(application);
+        }
+    }
+
     std::cout
-        << "\n" << done << " of " << wanted.size()
+        << "\n" << done << " of " << total
         << " installed.\n";
 
     if (!failed.empty()) {
