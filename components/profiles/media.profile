@@ -11,11 +11,14 @@ Description: Play any video or music file
 # own codecs, and its runtime brings hardware video decoding with it.
 # A VLC already installed as a package still counts.
 #
-# The OpenH264 plugin is Cisco's H.264 decoder for Firefox. It is only
-# licensed when it comes from Cisco, which is why the image never
-# carries it: the machine downloads it from Cisco's repository (on in
-# Fedora by default) when this add-on is chosen.
+# No H.264 plugin for Firefox here. Cisco's OpenH264 cannot be shipped
+# in the image, so the image carries Fedora's stand-in, noopenh264, and
+# the real one replaces it -- which on an image-based system is an
+# override (rpm-ostree override remove noopenh264 --install openh264
+# --install mozilla-openh264), not an addition. Asking for it as an
+# addition failed the whole transaction on the Asus (26 September),
+# Elisa included. Until Nexus can do replacements, the website gives the
+# one command; VLC plays H.264 regardless.
 Requires: vlc,
- music-player,
- browser-h264
+ music-player
 Flatpak: vlc=org.videolan.VLC

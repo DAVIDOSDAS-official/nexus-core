@@ -15,12 +15,13 @@ and `CAPABILITIES.md`.
 - **No NVIDIA hardware anywhere.** Matters for the NVIDIA plan.
 - **VM** — qemu on the Acer, for anything that does not need hardware.
 
-**Registry:** `ghcr.io/davidosdas-official/nexus-core-testing:minimalism`
+**Registry:** `ghcr.io/davidosdas-official/nexus-core-testing:kde`
+(was `:minimalism` until patch 33)
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–25 September 2026. **0.1.10** (patches 1–25)
-published, signed, and running on the Asus with signed updates enforced. **513 tests** (510 pass, 3 skipped).
+**Last session:** 21–26 September 2026. **0.1.16** (patches 1–34); weekly signed builds from GitHub Actions.
+Signed updates enforced on the Asus. **513 tests** (510 pass, 3 skipped).
 
 ---
 
@@ -33,6 +34,75 @@ manager, and hands the work over. **Nexus decides and explains; apt,
 dnf and rpm-ostree do the work.** There is also a distribution built
 from it: a Fedora 44 bootc image whose package list is generated from a
 profile, installed from an ISO, updated from GHCR.
+
+---
+
+## 26 September, evening — patch 33 (0.1.15)
+
+- **Weekly pipeline green** (run #4, 14m46s): key check, tests, build,
+  publish, sign. Asus upgraded from it and still shows
+  `ostree-image-signed`. The key secret is uploaded with
+  `gh secret set COSIGN_PRIVATE_KEY -R DAVIDOSDAS-official/nexus-core
+  < ~/.config/nexus-signing/cosign.key` (never pasted by hand).
+- **Website** rewritten (Preview download, checksum, release notes,
+  known limits, Netlify feedback form). One `RELEASE` block at the top
+  holds link / size / sha256 / date. David hosts it on Netlify.
+- **Decisions:** minimalism = KDE made to feel like Hyprland (later);
+  ship the Preview now; the graphical Nexus app, minimalism look and
+  showcase tour arrive as the first big update. David's doctor
+  dashboard picture is the target for `nexus doctor` (real values only).
+- **Patch 33:**
+  - The image's own profile `minimalism` is now **`kde`**: tag `:kde`,
+    `VARIANT_ID=kde`, `image/generated/kde.rpm.list`. `minimalism` is
+    free for the future look add-on. Existing machines must switch once
+    (`bootc switch --enforce-container-sigpolicy ...:kde`).
+  - First boot offers **media, development, gaming, school, security,
+    vpn**. `basic` is gone (became media); kde and showcase not listed.
+  - media: VLC **Flatpak** (codecs + hardware decoding inside, no RPM
+    Fusion layering and so no version drift), Elisa, Cisco's
+    mozilla-openh264. school: LibreOffice Writer/Calc/Impress,
+    Thunderbird, Xournal++, KTouch, hunspell-en, GeoGebra (Flatpak).
+    development: + cmake, ninja, python3-pip, distrobox. vpn: +
+    plasma-nm-openvpn. gaming: + mangohud, gamescope.
+  - **`image/check-add-ons.sh`**, run by the weekly build before
+    publishing: inside the built image, with the machines' repos, every
+    offered add-on must resolve (`nexus setup X --with-available`, no
+    `[missing]` except gpu-vendor). A retired package name now fails
+    the build instead of a stranger's first boot.
+  - **Installer disk:** `clearpart --all` erased every disk, USB backup
+    drives included. A Python `%pre` now picks the disk: exactly one
+    internal disk (not USB/removable/read-only, >= 20 GiB) -> erased and
+    encrypted as before; none or several -> the installer asks (and
+    encryption is the "Encrypt my data" box). Log: /tmp/nexus-disk.log.
+    Tested against six simulated machines; kickstart passes ksvalidator.
+  - Wallpapers: David renames `basic.png` -> `media.png` and
+    `minimalism.png` -> `kde.png` in image/artwork/wallpapers.
+- **Still before release:** VM test of the new installer (one disk, two
+  disks, USB disk attached), publish under `nexus-core` (public repo,
+  `IMAGE_NAME` variable), release ISO hosted on SourceForge (GitHub
+  limits files to 2 GB), fill the website's RELEASE block.
+
+---
+
+## Patch 34 (0.1.16) — media without OpenH264
+
+- Patch 33 reached the Asus (after a detour: Firefox saves downloads to
+  ~/Documents, so the patch file was never in ~/Downloads and the
+  first `git apply --check && ...` line skipped the apply while the
+  commit went ahead). Asus now on `nexus-core-testing:kde`.
+- `nexus setup media --apply` failed on the Asus: `mozilla-openh264`
+  needs `openh264`, which conflicts with the image's `noopenh264`.
+  On an image system that is an override, not an addition, and it
+  failed the whole rpm-ostree transaction (Elisa too). media now asks
+  for VLC (Flatpak) and a music player only; the website gives the one
+  override command for H.264 in Firefox.
+- The add-on check could not see this: the name existed. It now also
+  hands each add-on's resolved packages to `dnf install --assumeno`
+  inside the image and fails on a conflict.
+- Later: let Nexus do replacements (`Replaces: noopenh264 ->
+  openh264`), then put H.264 back in media.
+- Workflow rule from now on: `git apply --check` is its own step and
+  must print PATCH OK before anything is committed.
 
 ---
 

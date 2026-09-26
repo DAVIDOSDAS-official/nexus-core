@@ -67,10 +67,35 @@ for file in /usr/share/nexus/profiles/*.profile; do
     missing="$(printf '%s\n' "${out}" \
         | sed -n 's/^ *\[missing\] //p' | grep -v 'gpu-vendor')"
 
+    # Names that exist can still be impossible to add: one that
+    # conflicts with a package the image already has (mozilla-openh264
+    # against the image's noopenh264, 26 September) resolves here and
+    # fails on the machine. So the packages Nexus picked are handed to
+    # dnf as one transaction and answered "no": resolved or refused,
+    # nothing is downloaded or installed.
+    packages="$(printf '%s\n' "${out}" \
+        | awk '/^ *\[install\]/ {getline; if ($0 !~ /Flatpak/) print $1}' \
+        | tr '\n' ' ')"
+    refused=""
+
+    if [ -n "${packages// /}" ]; then
+        # shellcheck disable=SC2086
+        answer="$(dnf install --assumeno ${packages} 2>&1)"
+        if printf '%s\n' "${answer}" \
+            | grep -qiE '^ *Problem|conflict|nothing provides|cannot install|No match for argument'; then
+            refused="$(printf '%s\n' "${answer}" \
+                | grep -iE 'Problem|conflict|nothing provides|cannot install|No match' | head -n 6)"
+        fi
+    fi
+
     if [ -n "${missing}" ]; then
         problems=$((problems + 1))
         echo "PROBLEM: ${name} cannot be installed. Nothing provides:"
         printf '%s\n' "${missing}" | sed 's/^/    /'
+    elif [ -n "${refused}" ]; then
+        problems=$((problems + 1))
+        echo "PROBLEM: ${name} cannot be added to this image. dnf says:"
+        printf '%s\n' "${refused}" | sed 's/^/    /'
     else
         echo "ok: ${name}"
         printf '%s\n' "${out}" | sed -n 's/^ \{12\}\([^ ].*\)$/        \1/p' \
