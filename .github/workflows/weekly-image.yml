@@ -65,6 +65,51 @@ jobs:
       - name: Where the login goes
         run: echo "REGISTRY_AUTH_FILE=${RUNNER_TEMP}/auth.json" >> "${GITHUB_ENV}"
 
+      # cosign 2.x, as image/publish.sh requires: cosign 3 writes
+      # signatures the machines cannot read yet.
+      - uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.4.1"
+
+      # The key is checked first, before anything is built or pushed.
+      #
+      # The first run (26 September) pushed the image and then could not
+      # sign it -- "invalid pem block", a secret pasted wrongly -- which
+      # left the newest image unsigned, so every machine with signed
+      # updates refused it until it was fixed. Proving the key and its
+      # password produce the public key in the repository costs seconds,
+      # and a mistake here now stops the run with nothing published.
+      - name: Check the signing key
+        env:
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+        run: |
+          umask 077
+          KEYFILE="${RUNNER_TEMP}/cosign.key"
+          # Pasting through a browser can add carriage returns and
+          # indentation, and PEM allows neither; both are removed.
+          printf '%s\n' "${COSIGN_PRIVATE_KEY}" | tr -d '\r' \
+              | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | sed '/^$/d' \
+              > "${KEYFILE}"
+          if ! grep -q 'BEGIN ENCRYPTED SIGSTORE PRIVATE KEY' "${KEYFILE}" ||
+             ! grep -q 'END ENCRYPTED SIGSTORE PRIVATE KEY' "${KEYFILE}"; then
+            echo "COSIGN_PRIVATE_KEY is not a whole cosign key: it must run"
+            echo "from the BEGIN line to the END line, exactly as in cosign.key."
+            exit 1
+          fi
+          if ! cosign public-key --key "${KEYFILE}" > "${RUNNER_TEMP}/derived.pub"; then
+            echo "The key could not be opened: COSIGN_PASSWORD is wrong,"
+            echo "or COSIGN_PRIVATE_KEY was changed while pasting."
+            exit 1
+          fi
+          if ! diff -q <(tr -d '[:space:]' < "${RUNNER_TEMP}/derived.pub") \
+                       <(tr -d '[:space:]' < image/signing/cosign.pub) > /dev/null; then
+            echo "The key works but is not the partner of image/signing/cosign.pub."
+            echo "Machines would refuse what it signs."
+            exit 1
+          fi
+          echo "Signing key and password match image/signing/cosign.pub."
+
       - name: Tests
         run: |
           sudo apt-get update
@@ -101,23 +146,12 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io \
               --username "${{ github.actor }}" --password-stdin
 
-      # cosign 2.x, as image/publish.sh requires: cosign 3 writes
-      # signatures the machines cannot read yet.
-      - uses: sigstore/cosign-installer@v3
-        with:
-          cosign-release: "v2.4.1"
-
       - name: Publish and sign
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
-          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
         run: |
-          umask 077
-          KEYFILE="${RUNNER_TEMP}/cosign.key"
-          printf '%s\n' "${COSIGN_PRIVATE_KEY}" > "${KEYFILE}"
-          COSIGN_KEY="${KEYFILE}" NAME="${IMAGE_NAME}" \
+          COSIGN_KEY="${RUNNER_TEMP}/cosign.key" NAME="${IMAGE_NAME}" \
               PROFILE="${PROFILE}" ./image/publish.sh
-          rm -f "${KEYFILE}"
 
       - name: Forget the key
         if: always()

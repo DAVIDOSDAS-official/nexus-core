@@ -367,6 +367,20 @@ test fail.
   available", when N+2 exists "URGENT: Fedora N is near end of life";
   GitHub emails the owner. One issue per title. Tested with fakes.
   (fedora-bootc:45 may already exist, so the first run may open one.)
+- **First weekly run (26 Sept) failed at signing:** "invalid pem block"
+  — the COSIGN_PRIVATE_KEY secret was pasted with damage (indentation
+  reproduces exactly this error). Tests and build passed (~15 min). It
+  had already pushed, so `:minimalism` briefly pointed at an unsigned
+  image that signed machines refuse. **Patch 32:** cosign is installed
+  and the key checked *first* — whitespace/CR stripped, BEGIN/END
+  present, decrypts with COSIGN_PASSWORD, derives exactly
+  image/signing/cosign.pub — so a bad secret stops the run with nothing
+  built or pushed. Tested with real cosign 2.4.1: good, CRLF, indented,
+  blank lines pass; wrong password, partial, other key, mangled fail
+  with a named cause.
+- Repo root junk (17 empty files named like commit hashes, plus
+  `Using`, a 27 MB `heaptrack.nexus.*.zst`) — removed with `git rm`
+  (26 Sept).
   Decided 26 Sept (David): keep the image design, automate it; he does
   not want to rebuild by hand.
 - (Was:) rebuild the image every week or two (fresh Fedora pull):
