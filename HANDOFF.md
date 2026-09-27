@@ -20,7 +20,7 @@ and `CAPABILITIES.md`.
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–26 September 2026. **0.1.16** (patches 1–34); weekly signed builds from GitHub Actions.
+**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.16** (patches 1–34); weekly signed builds from GitHub Actions.
 Signed updates enforced on the Asus. **513 tests** (510 pass, 3 skipped).
 
 ---
@@ -81,6 +81,33 @@ profile, installed from an ISO, updated from GHCR.
   disks, USB disk attached), publish under `nexus-core` (public repo,
   `IMAGE_NAME` variable), release ISO hosted on SourceForge (GitHub
   limits files to 2 GB), fill the website's RELEASE block.
+
+---
+
+## RELEASED — Nexus-CORE Preview 1 (27 September 2026)
+
+- **Image:** `ghcr.io/davidosdas-official/nexus-core:kde` (public, signed).
+  Weekly workflow publishes there (`IMAGE_NAME` variable = nexus-core).
+  `nexus-core-testing` is no longer updated. Asus is on nexus-core:kde.
+- **ISO:** `nexus-core-preview1.iso`, 3364749312 bytes, sha256
+  `93f0055b1912028d8161a0beff42bca581dc3628a8e4bd9940b2bff1486f123c`,
+  built from nexus-core:kde (0.1.16, 22f7ac8). Hosted on archive.org:
+  https://archive.org/details/nexus-core-preview1 (sha1 verified against
+  the local file). SourceForge failed: its phone check rejects MK numbers.
+- **Repo** DAVIDOSDAS-official/nexus-core is public (history checked: no
+  keys or tokens). Feedback: Netlify form + GitHub Issues.
+- **Website:** https://nexus-core-davidosdas.netlify.app, RELEASE block
+  filled (archive.org link, size, sha256, date).
+- **Verified before release:** VM install from the release ISO comes up
+  `ostree-image-signed:docker://ghcr.io/davidosdas-official/nexus-core:kde`;
+  one-disk + USB-disk install left the USB disk blank; two internal disks
+  -> installer asks (both disks pre-ticked: known weakness, website says
+  untick); media and development add-ons installed on the Asus.
+- **After release, in order:** watch feedback; installer: start with no
+  disk ticked when there are several; Nexus replacements (OpenH264 back
+  in media); `build-installer.sh` should say "pull" not "build" when the
+  image is missing; then the first big update (graphical Nexus app,
+  minimalism look, showcase), NVIDIA, greenboot.
 
 ---
 
