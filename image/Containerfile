@@ -595,11 +595,14 @@ RUN set -eu; \
         echo "the image but nothing will apply them at login."; \
     fi; \
     themed=0; \
-    if [ -f /usr/share/sddm/themes/breeze/theme.conf ]; then \
-        mkdir -p /etc/sddm.conf.d; \
-        printf '[Theme]\nCurrent=breeze\n' > /etc/sddm.conf.d/10-nexus.conf; \
-        echo "Login theme: breeze"; \
-    fi; \
+    for candidate in breeze maldives; do \
+        if [ -f "/usr/share/sddm/themes/${candidate}/theme.conf" ]; then \
+            mkdir -p /etc/sddm.conf.d; \
+            printf '[Theme]\nCurrent=%s\n' "${candidate}" > /etc/sddm.conf.d/10-nexus.conf; \
+            echo "Login theme: ${candidate}"; \
+            break; \
+        fi; \
+    done; \
     for theme in /usr/share/sddm/themes/*/; do \
         if grep -q '^background=' "${theme}theme.conf" 2>/dev/null; then \
             printf '[General]\nbackground=%s\n' "${login}" \

@@ -238,3 +238,24 @@ Resolves-To: lxqt-qtplugin
 
 Capability: desktop-theme
 Resolves-To: lxqt-themes
+
+Capability: application-menu-data
+Resolves-To: lxqt-menu-data
+
+Capability: battery-status
+Resolves-To: upower
+
+Capability: virtual-filesystem
+Resolves-To: gvfs
+
+Capability: user-folders
+Resolves-To: xdg-user-dirs
+
+Capability: admin-prompt
+Resolves-To: lxqt-sudo
+
+Capability: network-settings
+Resolves-To: nm-connection-editor
+
+Capability: login-themes
+Resolves-To: sddm-themes

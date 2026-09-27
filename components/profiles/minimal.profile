@@ -8,6 +8,16 @@ Description: A light, complete desktop for older computers: LXQt, and nothing it
 # like the KDE edition (so the Nexus app will look at home on both),
 # and Fedora maintains it.
 #
+# The last eight, added 27 September from Fedora's own LXQt group
+# (checked by David on Fedora 44): without upower there is no battery
+# level, without gvfs no trash and no USB sticks in the file manager,
+# without xdg-user-dirs no Documents or Downloads folder.
+#
+# labwc rather than Miriway, which Fedora's LXQt group defaults to:
+# both are in Fedora 44, but labwc takes keyboard layouts (several, with
+# a switch key) from XKB_DEFAULT_*, which first boot can set from the
+# installer's choice. Miriway's keymap is one setting in its own config.
+#
 # Named piece by piece, session and shortcuts and theme included,
 # because weak dependencies are off in image builds: nothing arrives
 # because it was merely recommended.
@@ -47,7 +57,15 @@ Requires: desktop-session,
  network-applet,
  volume-applet,
  desktop-portal,
- icon-theme
+ icon-theme,
+ cursor-theme,
+ application-menu-data,
+ battery-status,
+ virtual-filesystem,
+ user-folders,
+ admin-prompt,
+ network-settings,
+ login-themes
 # Stated for the same reason kde states its own: without them, building
 # from nothing picks the cheapest provider per capability, and a light
 # desktop ends up with KDE's file manager because nothing said
@@ -79,4 +97,12 @@ Prefers: desktop-session=lxqt-labwc-session,
  network-applet=network-manager-applet,
  volume-applet=pavucontrol-qt,
  desktop-portal=xdg-desktop-portal-lxqt,
- icon-theme=breeze-icon-theme
+ icon-theme=breeze-icon-theme,
+ cursor-theme=breeze-cursor-theme,
+ application-menu-data=lxqt-menu-data,
+ battery-status=upower,
+ virtual-filesystem=gvfs,
+ user-folders=xdg-user-dirs,
+ admin-prompt=lxqt-sudo,
+ network-settings=nm-connection-editor,
+ login-themes=sddm-themes

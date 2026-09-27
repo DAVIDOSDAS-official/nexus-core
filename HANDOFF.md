@@ -20,7 +20,7 @@ and `CAPABILITIES.md`.
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.17** (patches 1–35); weekly signed builds from GitHub Actions.
+**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.18** (patches 1–36); weekly signed builds from GitHub Actions.
 Signed updates enforced on the Asus. **513 tests** (510 pass, 3 skipped).
 
 ---
@@ -111,6 +111,14 @@ in the future (installer currently takes a whole disk). Proposal:
 - First boot writes XKB_DEFAULT_* to /etc/environment when labwc is
   present (labwc ignores localectl); Alt+Shift switches. **Unverified**
   until the VM test.
+- **Patch 36 (0.1.18):** every minimal package name verified against
+  Fedora 44 by David (`dnf repoquery` in the nexus-core:kde container).
+  Added from Fedora's own LXQt group: breeze-cursor-theme,
+  lxqt-menu-data, upower (battery), gvfs (trash, USB), xdg-user-dirs,
+  lxqt-sudo, nm-connection-editor, sddm-themes (login theme: maldives
+  when there is no Breeze). Fedora's LXQt defaults to the Miriway
+  compositor; we keep labwc because it takes several keyboard layouts
+  and a switch key from XKB_DEFAULT_*. Revisit if labwc disappoints.
 - **To test:** VM with 2 GB RAM: login, Wi-Fi/sound/browser, installer
   keyboard in the desktop, wallpaper, `free -m` after login (target
   < 600 MB used), then the Asus; then website second download.

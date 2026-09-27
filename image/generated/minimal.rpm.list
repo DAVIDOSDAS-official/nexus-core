@@ -6,10 +6,9 @@
 #
 # Written out by hand on 27 September from the profile's own Prefers
 # lines, because the generator needs Fedora's repositories and was not
-# run: every line here is the first preference for its capability. The
-# weekly build installs exactly this list, so a name Fedora does not
-# have fails the build with dnf's "No match for argument" -- loudly,
-# before anything is published.
+# run here. Every name was then checked against Fedora 44's repositories
+# (dnf repoquery, run by David on the Acer). The weekly build installs
+# exactly this list; a name Fedora drops fails the build loudly.
 #
 # Regenerate with:
 #     nexus image base,minimal --with-available
@@ -51,3 +50,11 @@ network-manager-applet          # network-applet
 pavucontrol-qt                  # volume-applet
 xdg-desktop-portal-lxqt         # desktop-portal
 breeze-icon-theme               # icon-theme
+breeze-cursor-theme             # cursor-theme
+lxqt-menu-data                  # application-menu-data
+upower                          # battery-status
+gvfs                            # virtual-filesystem
+xdg-user-dirs                   # user-folders
+lxqt-sudo                       # admin-prompt
+nm-connection-editor            # network-settings
+sddm-themes                     # login-themes
