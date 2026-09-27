@@ -3,6 +3,6 @@ Type=Application
 Name=Nexus wallpaper
 Comment=Sets the Nexus-CORE wallpaper for the chosen profile, once
 Exec=/usr/libexec/nexus/apply-wallpaper
-OnlyShowIn=KDE;
+OnlyShowIn=KDE;LXQt;
 NoDisplay=true
 X-KDE-autostart-phase=2

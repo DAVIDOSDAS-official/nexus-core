@@ -146,12 +146,60 @@ add_english_layout() {
 
     if localectl --no-convert set-x11-keymap "${layouts},us" \
             "${model}" "${variants}," "${options}" 2>/dev/null; then
-        echo "Keyboard: added English (US) alongside ${layouts}." \
+        # The minimal edition says its own shortcut, below.
+        [ -x /usr/bin/labwc ] || echo "Keyboard: added English (US) alongside ${layouts}." \
             "Switch with Meta+Alt+K or the indicator by the clock."
     fi
 }
 
 add_english_layout
+
+# The minimal edition's desktop (labwc) does not read localectl.
+#
+# KDE takes the layouts from localectl; labwc, like every wlroots
+# compositor, takes them from XKB_DEFAULT_* in its environment. Without
+# this, a Serbian keyboard chosen in the installer -- the one the disk
+# password was typed on -- is US again the moment the desktop starts.
+# /etc/environment is read at login (pam_env), so the session inherits
+# it. Two or more layouts get Alt+Shift to switch, unless the installer
+# already set a switching option.
+sync_labwc_keyboard() {
+    [ -x /usr/bin/labwc ] || return 0
+    command -v localectl > /dev/null 2>&1 || return 0
+
+    local status layouts variants options
+    status="$(LC_ALL=C.UTF-8 localectl status 2>/dev/null)" || return 0
+    layouts="$(printf '%s\n' "${status}" | sed -n 's/^ *X11 Layout: *//p')"
+    variants="$(printf '%s\n' "${status}" | sed -n 's/^ *X11 Variant: *//p')"
+    options="$(printf '%s\n' "${status}" | sed -n 's/^ *X11 Options: *//p')"
+
+    [ -n "${layouts}" ] || return 0
+
+    case "${layouts}" in
+        *,*)
+            case "${options}" in
+                *grp:*) ;;
+                "") options="grp:alt_shift_toggle" ;;
+                *) options="${options},grp:alt_shift_toggle" ;;
+            esac
+            ;;
+    esac
+
+    local file=/etc/environment
+    touch "${file}"
+    sed -i '/^XKB_DEFAULT_\(LAYOUT\|VARIANT\|OPTIONS\)=/d' "${file}"
+    {
+        printf 'XKB_DEFAULT_LAYOUT=%s\n' "${layouts}"
+        [ -n "${variants}" ] && printf 'XKB_DEFAULT_VARIANT=%s\n' "${variants}"
+        [ -n "${options}" ] && printf 'XKB_DEFAULT_OPTIONS=%s\n' "${options}"
+    } >> "${file}"
+
+    case "${layouts}" in
+        *,*) echo "Keyboard (desktop): ${layouts}. Switch with Alt+Shift." ;;
+    esac
+}
+
+sync_labwc_keyboard
 
 if [ ! -t 0 ]; then
     echo "nexus-first-boot has no terminal to ask on; not asking." >&2

@@ -1,4 +1,4 @@
-# Build, sign and publish the Nexus-CORE image every week -- with
+# Build, sign and publish the Nexus-CORE images every week -- with
 # nobody at a keyboard.
 #
 # Why this exists: Nexus is image-based. A machine's operating system
@@ -52,9 +52,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 150
 
+    # One job per edition, side by side on separate runners. fail-fast
+    # off: a broken minimal build must not stop the KDE edition from
+    # getting its weekly fixes, and the other way round.
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [kde, minimal]
+
     env:
       IMAGE_NAME: ${{ vars.IMAGE_NAME || 'nexus-core-testing' }}
-      PROFILE: kde
+      PROFILE: ${{ matrix.profile }}
 
     steps:
       - uses: actions/checkout@v5

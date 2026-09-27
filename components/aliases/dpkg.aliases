@@ -8,19 +8,19 @@ Capability: web-browser
 Resolves-To: firefox | firefox-esr | chromium | epiphany-browser
 
 Capability: terminal-emulator
-Resolves-To: foot | alacritty | kitty | wezterm | x-terminal-emulator | konsole | gnome-terminal | xterm
+Resolves-To: foot | alacritty | kitty | wezterm | x-terminal-emulator | konsole | gnome-terminal | xterm | qterminal
 
 Capability: file-manager
-Resolves-To: dolphin | nautilus | thunar | pcmanfm
+Resolves-To: dolphin | nautilus | thunar | pcmanfm | pcmanfm-qt
 
 Capability: text-editor
-Resolves-To: editor | kate | gedit | nano
+Resolves-To: editor | kate | gedit | nano | featherpad
 
 Capability: document-viewer
-Resolves-To: evince | okular | atril
+Resolves-To: evince | okular | atril | qpdfview
 
 Capability: image-viewer
-Resolves-To: eog | gwenview | ristretto
+Resolves-To: eog | gwenview | ristretto | lximage-qt
 
 Capability: word-processor
 Resolves-To: libreoffice-writer | abiword
@@ -74,16 +74,16 @@ Capability: archiver
 Resolves-To: tar
 
 Capability: desktop-session
-Resolves-To: plasma-desktop | gnome-shell | xfce4-session
+Resolves-To: plasma-desktop | gnome-shell | xfce4-session | lxqt-wayland-session
 
 Capability: display-manager
 Resolves-To: sddm | gdm3 | lightdm
 
 Capability: archive-manager
-Resolves-To: ark | file-roller | xarchiver
+Resolves-To: ark | file-roller | xarchiver | lxqt-archiver
 
 Capability: system-settings
-Resolves-To: systemsettings | gnome-control-center
+Resolves-To: systemsettings | gnome-control-center | lxqt-config
 
 # gnome-shell is last on purpose. Since GNOME 42 the screenshot
 # tool is part of the shell rather than a package of its own, so
@@ -91,7 +91,7 @@ Resolves-To: systemsettings | gnome-control-center
 # installed. Aliases go stale this way: ecosystems absorb tools
 # into larger packages, and the alias still names the tool.
 Capability: screenshot-tool
-Resolves-To: kde-spectacle | spectacle | flameshot | gnome-screenshot | xfce4-screenshooter | gnome-shell
+Resolves-To: kde-spectacle | spectacle | flameshot | gnome-screenshot | xfce4-screenshooter | gnome-shell | screengrab
 
 Capability: lightweight-session
 Resolves-To: openbox | i3-wm | fluxbox | xfce4-session
@@ -112,22 +112,22 @@ Capability: network-applet
 Resolves-To: plasma-nm | network-manager-gnome | nm-tray
 
 Capability: volume-applet
-Resolves-To: plasma-pa | pavucontrol | pasystray
+Resolves-To: plasma-pa | pavucontrol | pasystray | pavucontrol-qt
 
 Capability: desktop-portal
-Resolves-To: xdg-desktop-portal-kde | xdg-desktop-portal-gnome | xdg-desktop-portal-gtk
+Resolves-To: xdg-desktop-portal-kde | xdg-desktop-portal-gnome | xdg-desktop-portal-gtk | xdg-desktop-portal-lxqt
 
 Capability: window-manager
-Resolves-To: sway | hyprland | i3-wm | bspwm | dwm | river
+Resolves-To: sway | hyprland | i3-wm | bspwm | dwm | river | labwc
 
 Capability: status-bar
 Resolves-To: waybar | polybar | i3status | lemonbar
 
 Capability: application-launcher
-Resolves-To: fuzzel | rofi | wofi | dmenu | bemenu
+Resolves-To: fuzzel | rofi | wofi | dmenu | bemenu | lxqt-runner
 
 Capability: notification-daemon
-Resolves-To: mako-notifier | dunst | notification-daemon
+Resolves-To: mako-notifier | dunst | notification-daemon | lxqt-notificationd
 
 Capability: screen-locker
 Resolves-To: swaylock | i3lock | xsecurelock | slock
@@ -207,3 +207,32 @@ Resolves-To: hunspell-en-us
 
 Capability: openvpn-client
 Resolves-To: network-manager-openvpn
+
+# The minimal edition (LXQt on labwc), 27 September.
+
+Capability: desktop-panel
+Resolves-To: lxqt-panel
+
+Capability: polkit-agent
+Resolves-To: lxqt-policykit
+
+Capability: power-manager
+Resolves-To: lxqt-powermanagement
+
+Capability: greeter-compositor
+Resolves-To: weston
+
+Capability: pulseaudio-compat
+Resolves-To: pipewire-pulse
+
+Capability: session-manager
+Resolves-To: lxqt-session
+
+Capability: global-shortcuts
+Resolves-To: lxqt-globalkeys
+
+Capability: qt-desktop-integration
+Resolves-To: lxqt-qtplugin
+
+Capability: desktop-theme
+Resolves-To: lxqt-themes

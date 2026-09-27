@@ -20,7 +20,7 @@ and `CAPABILITIES.md`.
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.16** (patches 1–34); weekly signed builds from GitHub Actions.
+**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.17** (patches 1–35); weekly signed builds from GitHub Actions.
 Signed updates enforced on the Asus. **513 tests** (510 pass, 3 skipped).
 
 ---
@@ -81,6 +81,39 @@ profile, installed from an ISO, updated from GHCR.
   disks, USB disk attached), publish under `nexus-core` (public repo,
   `IMAGE_NAME` variable), release ISO hosted on SourceForge (GitHub
   limits files to 2 GB), fill the website's RELEASE block.
+
+---
+
+## Patch 35 (0.1.17) — the minimal edition, first build
+
+Decided 27 Sept (David): minimal = **LXQt**, **Firefox**, add-ons media,
+school, development, vpn, security (**no gaming**). Dual boot is wanted
+in the future (installer currently takes a whole disk). Proposal:
+`minimal-edition.md`.
+
+- `minimal.profile`: LXQt on **labwc** (Wayland), SDDM with its greeter
+  on Weston (`sddm-wayland-generic`), lxqt-session/panel/runner/
+  policykit/notificationd/powermanagement/globalkeys/qtplugin/themes,
+  qterminal, pcmanfm-qt, featherpad, qpdfview, lximage-qt,
+  lxqt-archiver, lxqt-config, screengrab, pipewire + pipewire-pulseaudio,
+  network-manager-applet, pavucontrol-qt, xdg-desktop-portal-lxqt,
+  breeze icons, Firefox. Aliases added (rpm and dpkg).
+- `image/generated/minimal.rpm.list` **written by hand** from the
+  Prefers lines (the generator needs Fedora repos). Names not all
+  verified: lxqt-labwc-session is confirmed in F44; a wrong name fails
+  the minimal build with "No match for argument" and nothing publishes.
+- Weekly workflow is a **matrix** (kde, minimal), fail-fast off: a
+  broken minimal build does not stop the KDE edition.
+- Add-ons are picked per edition from `/usr/share/nexus/profile-pool`.
+- zram-generator-defaults in **both** editions. sddm-breeze only with
+  Plasma. X11 session entries hidden when there is no X server.
+- Wallpaper applier handles LXQt (`pcmanfm-qt --set-wallpaper`).
+- First boot writes XKB_DEFAULT_* to /etc/environment when labwc is
+  present (labwc ignores localectl); Alt+Shift switches. **Unverified**
+  until the VM test.
+- **To test:** VM with 2 GB RAM: login, Wi-Fi/sound/browser, installer
+  keyboard in the desktop, wallpaper, `free -m` after login (target
+  < 600 MB used), then the Asus; then website second download.
 
 ---
 

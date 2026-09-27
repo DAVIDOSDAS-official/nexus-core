@@ -349,6 +349,21 @@ RUN set -eu; \
         systemctl set-default multi-user.target; \
     fi
 
+# A session nobody can start is worse than none on the login screen.
+#
+# The minimal edition is Wayland only (labwc), but LXQt still ships its
+# X11 session entry; with no X server installed, choosing it would drop
+# back to the login screen with no explanation. So X11 entries go when
+# there is no X server to run them.
+RUN set -eu; \
+    if [ ! -x /usr/bin/Xorg ] && [ -d /usr/share/xsessions ]; then \
+        for entry in /usr/share/xsessions/*.desktop; do \
+            [ -e "${entry}" ] || continue; \
+            echo "No X server; hiding X11 session ${entry}"; \
+            printf '\nHidden=true\nNoDisplay=true\n' >> "${entry}"; \
+        done; \
+    fi
+
 # Fedora's artwork must still be gone.
 #
 # The os stage swapped it out, but that proves nothing about this
@@ -408,12 +423,20 @@ RUN if rpm -q fedora-logos > /dev/null 2>&1; then \
 #   pulseaudio-utils   pactl, which talks to PipeWire's PulseAudio
 #                      side. Steam uses it to find audio devices.
 #
+# And zram-generator-defaults (27 September): swap compressed in RAM,
+# as Fedora's own desktops have it. The biggest single help on a 2 GB
+# machine, and harmless on a big one.
+#
+# sddm-breeze only comes with Plasma. It is Plasma's own theme and
+# pulls Plasma's libraries in with it, which is the last thing the
+# minimal edition wants; that edition keeps SDDM's own theme.
+#
 # Here, below the wallpapers and above Nexus, rather than in the
 # package list: a Nexus change must not rebuild these, and adding them
 # here does not rebuild the few hundred packages above.
 RUN set -eu; \
     extra=""; \
-    if rpm -q sddm > /dev/null 2>&1; then extra="sddm-breeze"; fi; \
+    if rpm -q sddm plasma-workspace > /dev/null 2>&1; then extra="sddm-breeze"; fi; \
     dnf install -y \
         --exclude=rootfiles \
         --setopt=install_weak_deps=False \
@@ -426,6 +449,7 @@ RUN set -eu; \
         pciutils \
         pulseaudio-utils \
         flatpak \
+        zram-generator-defaults \
         ${extra}; \
     dnf clean all; \
     if rpm -q fedora-logos > /dev/null 2>&1; then \
@@ -565,9 +589,10 @@ RUN set -eu; \
     chmod 0755 /usr/libexec/nexus/apply-wallpaper; \
     login="$(ls /usr/share/wallpapers/nexus-base/contents/images/*.jpg | head -n 1)"; \
     test -f "${login}"; \
-    if ! command -v plasma-apply-wallpaperimage > /dev/null; then \
-        echo "No Plasma in this profile; wallpapers are in the image"; \
-        echo "but nothing will apply them at login."; \
+    if ! command -v plasma-apply-wallpaperimage > /dev/null && \
+       ! command -v pcmanfm-qt > /dev/null; then \
+        echo "Neither Plasma nor LXQt in this profile; wallpapers are in"; \
+        echo "the image but nothing will apply them at login."; \
     fi; \
     themed=0; \
     if [ -f /usr/share/sddm/themes/breeze/theme.conf ]; then \
@@ -665,6 +690,12 @@ COPY image/first-boot/nexus-first-boot.service \
 # ever said "already satisfied". showcase and the minimalism look come
 # back once they exist; image/check-add-ons.sh checks that everything
 # listed here can really be installed.
+#
+# Which add-ons depends on the edition, so they are copied to a pool
+# and the edition's own set is picked from it below. (Copied, not
+# deleted: removing a COPYed file in a RUN fails under rootless podman.)
+# The minimal edition does not offer gaming: Steam alone wants more
+# memory than a machine that edition is for has.
 COPY components/profiles/base.profile \
      components/profiles/development.profile \
      components/profiles/gaming.profile \
@@ -672,7 +703,17 @@ COPY components/profiles/base.profile \
      components/profiles/school.profile \
      components/profiles/security.profile \
      components/profiles/vpn.profile \
-     /usr/share/nexus/profiles/
+     /usr/share/nexus/profile-pool/
+RUN set -eu; \
+    mkdir -p /usr/share/nexus/profiles; \
+    case "${NEXUS_PROFILE}" in \
+        minimal) offered="base development media school security vpn" ;; \
+        *)       offered="base development gaming media school security vpn" ;; \
+    esac; \
+    for name in ${offered}; do \
+        cp "/usr/share/nexus/profile-pool/${name}.profile" /usr/share/nexus/profiles/; \
+    done; \
+    echo "Add-ons offered (${NEXUS_PROFILE}):" $(ls /usr/share/nexus/profiles | sed 's/\.profile$//' | grep -v '^base$')
 COPY components/aliases /usr/share/nexus/aliases
 COPY image/identity.sh /usr/libexec/nexus/identity
 

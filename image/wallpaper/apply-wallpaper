@@ -49,7 +49,13 @@ if [ "$(cat "${STATE}" 2>/dev/null)" = "${wanted}" ]; then
     exit 0
 fi
 
-if ! command -v plasma-apply-wallpaperimage > /dev/null 2>&1; then
+# Plasma (the KDE edition) or LXQt's desktop, pcmanfm-qt (the minimal
+# edition). Anything else: leave the wallpaper alone.
+if command -v plasma-apply-wallpaperimage > /dev/null 2>&1; then
+    apply() { plasma-apply-wallpaperimage "$1"; }
+elif command -v pcmanfm-qt > /dev/null 2>&1; then
+    apply() { pcmanfm-qt --set-wallpaper="$1" --wallpaper-mode=zoom; }
+else
     exit 0
 fi
 
@@ -62,13 +68,13 @@ if [ -z "${image}" ]; then
     exit 0
 fi
 
-# The desktop may not be up yet when autostart runs this, and
-# plasma-apply-wallpaperimage fails until it is. So it is retried for
+# The desktop may not be up yet when autostart runs this, and both
+# setters fail until it is. So it is retried for
 # a minute, and nothing is recorded unless it worked -- a wallpaper
 # that failed to apply is tried again at the next login rather than
 # marked done.
 for _ in $(seq 1 30); do
-    if plasma-apply-wallpaperimage "${image}" > /dev/null 2>&1; then
+    if apply "${image}" > /dev/null 2>&1; then
         mkdir -p "$(dirname "${STATE}")"
         printf '%s\n' "${wanted}" > "${STATE}"
         exit 0
