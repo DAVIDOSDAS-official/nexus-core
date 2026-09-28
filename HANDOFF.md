@@ -20,7 +20,7 @@ and `CAPABILITIES.md`.
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.19** (patches 1–37); weekly signed builds from GitHub Actions.
+**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.20** (patches 1–38); weekly signed builds from GitHub Actions.
 Signed updates enforced on the Asus. **513 tests** (510 pass, 3 skipped).
 
 ---
@@ -134,6 +134,19 @@ in the future (installer currently takes a whole disk). Proposal:
   (Firefox, PCManFM-Qt, QTerminal); first boot writes
   /etc/xdg/lxqt/lxqt-powermanagement.conf from the hardware (battery
   and lid watchers only if present, runCheckLevel=1).
+- **Asus on :minimal (28 Sept):** login screen took **no mouse on real
+  hardware** (Weston greeter, sddm-wayland-generic); the VM on 0.1.19
+  (labwc) gave a black desktop. Rolled back to KDE from the boot menu
+  (works). LXQt's Miriway wrapper sets MIRIWAY_CONFIG_DIR=lxqt, i.e.
+  ~/.config/lxqt/miriway-shell.config; docs are not in the image.
+- **Patch 38 (0.1.20):** back to **exactly Fedora's LXQt setup**:
+  Miriway for the desktop (lxqt-wayland-session-default-compositor-
+  miriway) and the login screen (sddm-wayland-miriway); labwc, Weston
+  and the default-compositor rewrite are gone. Keyboard: first boot
+  writes MIR_SERVER_KEYMAP (layout+variant+options, e.g.
+  rs,us+latin,+grp:alt_shift_toggle) to /etc/environment, plus the XKB_
+  lines. Lesson: follow the distribution's tested defaults unless a
+  test says otherwise.
 - **To test:** VM with 2 GB RAM: login, Wi-Fi/sound/browser, installer
   keyboard in the desktop, wallpaper, `free -m` after login (target
   < 600 MB used), then the Asus; then website second download.

@@ -147,24 +147,26 @@ add_english_layout() {
     if localectl --no-convert set-x11-keymap "${layouts},us" \
             "${model}" "${variants}," "${options}" 2>/dev/null; then
         # The minimal edition says its own shortcut, below.
-        [ -x /usr/bin/labwc ] || echo "Keyboard: added English (US) alongside ${layouts}." \
+        [ -x /usr/bin/miriway-shell ] || echo "Keyboard: added English (US) alongside ${layouts}." \
             "Switch with Meta+Alt+K or the indicator by the clock."
     fi
 }
 
 add_english_layout
 
-# The minimal edition's desktop (labwc) does not read localectl.
+# The minimal edition's desktop (Miriway) does not read localectl.
 #
-# KDE takes the layouts from localectl; labwc, like every wlroots
-# compositor, takes them from XKB_DEFAULT_* in its environment. Without
-# this, a Serbian keyboard chosen in the installer -- the one the disk
-# password was typed on -- is US again the moment the desktop starts.
-# /etc/environment is read at login (pam_env), so the session inherits
-# it. Two or more layouts get Alt+Shift to switch, unless the installer
-# already set a switching option.
-sync_labwc_keyboard() {
-    [ -x /usr/bin/labwc ] || return 0
+# KDE takes the layouts from localectl; Miriway, like every Mir server,
+# takes its keymap from MIR_SERVER_KEYMAP (or --keymap), written as
+# layout+variant+options, e.g. "rs,us+latin,+grp:alt_shift_toggle".
+# Without this, a Serbian keyboard chosen in the installer -- the one
+# the disk password was typed on -- is US again the moment the desktop
+# starts. /etc/environment is read at login (pam_env), so the session
+# inherits it. Two or more layouts get Alt+Shift to switch, unless the
+# installer already set a switching option. XKB_DEFAULT_* are written
+# too, for any wlroots-based compositor.
+sync_desktop_keyboard() {
+    command -v miriway-shell > /dev/null 2>&1 || [ -x /usr/bin/labwc ] || return 0
     command -v localectl > /dev/null 2>&1 || return 0
 
     local status layouts variants options
@@ -185,10 +187,17 @@ sync_labwc_keyboard() {
             ;;
     esac
 
+    local keymap="${layouts}"
+    if [ -n "${variants}" ] || [ -n "${options}" ]; then
+        keymap="${keymap}+${variants}"
+    fi
+    [ -n "${options}" ] && keymap="${keymap}+${options}"
+
     local file=/etc/environment
     touch "${file}"
-    sed -i '/^XKB_DEFAULT_\(LAYOUT\|VARIANT\|OPTIONS\)=/d' "${file}"
+    sed -i '/^\(XKB_DEFAULT_\(LAYOUT\|VARIANT\|OPTIONS\)\|MIR_SERVER_KEYMAP\)=/d' "${file}"
     {
+        printf 'MIR_SERVER_KEYMAP=%s\n' "${keymap}"
         printf 'XKB_DEFAULT_LAYOUT=%s\n' "${layouts}"
         [ -n "${variants}" ] && printf 'XKB_DEFAULT_VARIANT=%s\n' "${variants}"
         [ -n "${options}" ] && printf 'XKB_DEFAULT_OPTIONS=%s\n' "${options}"
@@ -199,7 +208,7 @@ sync_labwc_keyboard() {
     esac
 }
 
-sync_labwc_keyboard
+sync_desktop_keyboard
 
 # LXQt's power manager, set for this machine's hardware.
 #

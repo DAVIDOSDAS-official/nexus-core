@@ -74,7 +74,7 @@ Capability: archiver
 Resolves-To: tar
 
 Capability: desktop-session
-Resolves-To: plasma-workspace | gnome-shell | xfce4-session | lxqt-labwc-session
+Resolves-To: plasma-workspace | gnome-shell | xfce4-session | lxqt-labwc-session | lxqt-wayland-session-default-compositor-miriway
 
 Capability: display-manager
 Resolves-To: sddm | gdm | lightdm
@@ -118,7 +118,7 @@ Capability: desktop-portal
 Resolves-To: xdg-desktop-portal-kde | xdg-desktop-portal-gnome | xdg-desktop-portal-gtk | xdg-desktop-portal-lxqt
 
 Capability: window-manager
-Resolves-To: sway | hyprland | i3 | bspwm | dwm | river | labwc
+Resolves-To: sway | hyprland | i3 | bspwm | dwm | river | labwc | miriway
 
 Capability: status-bar
 Resolves-To: waybar | polybar | i3status
@@ -222,7 +222,7 @@ Capability: power-manager
 Resolves-To: lxqt-powermanagement
 
 Capability: greeter-compositor
-Resolves-To: sddm-wayland-generic
+Resolves-To: sddm-wayland-miriway | sddm-wayland-generic
 
 Capability: pulseaudio-compat
 Resolves-To: pipewire-pulseaudio

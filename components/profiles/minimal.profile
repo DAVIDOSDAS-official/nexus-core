@@ -13,18 +13,19 @@ Description: A light, complete desktop for older computers: LXQt, and nothing it
 # level, without gvfs no trash and no USB sticks in the file manager,
 # without xdg-user-dirs no Documents or Downloads folder.
 #
-# labwc rather than Miriway, which Fedora's LXQt group defaults to:
-# both are in Fedora 44, but labwc takes keyboard layouts (several, with
-# a switch key) from XKB_DEFAULT_*, which first boot can set from the
-# installer's choice. Miriway's keymap is one setting in its own config.
+# Miriway, exactly as Fedora's own LXQt edition ships it, for both the
+# desktop and the login screen. 0.1.18/0.1.19 used labwc and Weston
+# instead, and on the Asus (28 September) the login screen took no
+# mouse at all, and in the VM labwc gave a black desktop. Going off
+# Fedora's tested setup broke it both times, so this follows it. The
+# installer's keyboard reaches Miriway through MIR_SERVER_KEYMAP, which
+# first boot writes (Mir reads every option from MIR_SERVER_* too).
 #
 # Named piece by piece, session and shortcuts and theme included,
 # because weak dependencies are off in image builds: nothing arrives
 # because it was merely recommended.
 #
-# Wayland, with labwc as the compositor: X11 is on its way out of
-# Fedora, and labwc is the small one LXQt supports. SDDM's greeter runs
-# on Weston here (sddm-wayland-generic) because there is no KWin.
+# Wayland: X11 is on its way out of Fedora.
 #
 # Combining this with anything is a different request, not a smaller
 # one, so it is refused with a pointer to the edition that does combine.
@@ -70,14 +71,14 @@ Requires: desktop-session,
 # from nothing picks the cheapest provider per capability, and a light
 # desktop ends up with KDE's file manager because nothing said
 # otherwise. On a machine that already has tools these only break ties.
-Prefers: desktop-session=lxqt-labwc-session,
+Prefers: desktop-session=lxqt-wayland-session-default-compositor-miriway,
  session-manager=lxqt-session,
  global-shortcuts=lxqt-globalkeys,
  qt-desktop-integration=lxqt-qtplugin,
  desktop-theme=lxqt-themes,
- window-manager=labwc,
+ window-manager=miriway,
  display-manager=sddm,
- greeter-compositor=sddm-wayland-generic,
+ greeter-compositor=sddm-wayland-miriway,
  desktop-panel=lxqt-panel,
  application-launcher=lxqt-runner,
  polkit-agent=lxqt-policykit,
