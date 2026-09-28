@@ -364,6 +364,13 @@ RUN set -eu; \
         done; \
     fi
 
+# The minimal edition's desktop, finished (28 September, from David's
+# VM test of 0.1.18): labwc as the compositor, and a panel with
+# launchers in it. A script rather than lines here; see its comments.
+# It does nothing on an image without LXQt.
+COPY image/lxqt-defaults.sh /usr/libexec/nexus/lxqt-defaults
+RUN sh /usr/libexec/nexus/lxqt-defaults
+
 # Fedora's artwork must still be gone.
 #
 # The os stage swapped it out, but that proves nothing about this

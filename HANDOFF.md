@@ -20,7 +20,7 @@ and `CAPABILITIES.md`.
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.18** (patches 1–36); weekly signed builds from GitHub Actions.
+**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.19** (patches 1–37); weekly signed builds from GitHub Actions.
 Signed updates enforced on the Asus. **513 tests** (510 pass, 3 skipped).
 
 ---
@@ -119,6 +119,21 @@ in the future (installer currently takes a whole disk). Proposal:
   when there is no Breeze). Fedora's LXQt defaults to the Miriway
   compositor; we keep labwc because it takes several keyboard layouts
   and a switch key from XKB_DEFAULT_*. Revisit if labwc disappoints.
+- **VM test of 0.1.18 (28 Sept, 2 GB RAM):** first boot offered the
+  right five add-ons and installed development+school+media (17/17);
+  themed SDDM login; LXQt desktop, menu, Nexus wallpaper, Firefox,
+  QTerminal; **581 MB used** after login (target < 600); zram 1.9 GB.
+  Problems: mouse dead at login and poor on the desktop; the desktop
+  ran **Miriway**, not labwc (Fedora picks it through the one-line file
+  /usr/share/lxqt/wayland/default-compositor); empty quick-launch
+  ("Drop application icons here"); "No battery!" and first-run pop-ups.
+  Keyboard carry-over reached the session (XKB_DEFAULT_LAYOUT=us) but
+  English was chosen, so switching was not tested.
+- **Patch 37 (0.1.19):** `image/lxqt-defaults.sh` points
+  default-compositor at labwc and fills the panel's quick launch
+  (Firefox, PCManFM-Qt, QTerminal); first boot writes
+  /etc/xdg/lxqt/lxqt-powermanagement.conf from the hardware (battery
+  and lid watchers only if present, runCheckLevel=1).
 - **To test:** VM with 2 GB RAM: login, Wi-Fi/sound/browser, installer
   keyboard in the desktop, wallpaper, `free -m` after login (target
   < 600 MB used), then the Asus; then website second download.

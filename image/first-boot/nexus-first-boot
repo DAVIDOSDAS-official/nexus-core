@@ -201,6 +201,37 @@ sync_labwc_keyboard() {
 
 sync_labwc_keyboard
 
+# LXQt's power manager, set for this machine's hardware.
+#
+# By default it watches for a battery and a lid, and on a desktop or a
+# VM it greets every new user with "No battery! ... monitoring disabled"
+# and "running for the first time" (David's VM, 28 September). Whether
+# there is a battery or a lid is known here, so the watchers are set to
+# match and the first-run notice is marked as seen (runCheckLevel).
+# Written to /etc/xdg, the system-wide default; a user's own settings
+# still win.
+setup_lxqt_power() {
+    command -v lxqt-powermanagement > /dev/null 2>&1 || return 0
+
+    local battery=false lid=false
+    for supply in /sys/class/power_supply/*; do
+        [ -r "${supply}/type" ] || continue
+        [ "$(cat "${supply}/type" 2>/dev/null)" = Battery ] && battery=true
+    done
+    ls /proc/acpi/button/lid/* > /dev/null 2>&1 && lid=true
+
+    mkdir -p /etc/xdg/lxqt
+    printf '%s\n' \
+        '[General]' \
+        "enableBatteryWatcher=${battery}" \
+        "enableLidWatcher=${lid}" \
+        'enableIdlenessWatcher=true' \
+        'runCheckLevel=1' \
+        > /etc/xdg/lxqt/lxqt-powermanagement.conf
+}
+
+setup_lxqt_power
+
 if [ ! -t 0 ]; then
     echo "nexus-first-boot has no terminal to ask on; not asking." >&2
     echo "The machine is usable. Run 'nexus setup' to choose." >&2
