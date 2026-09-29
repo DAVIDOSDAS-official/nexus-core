@@ -11,16 +11,23 @@
 #   3. otherwise base, which every image has.
 #
 # Once per choice, not once per login. What was applied is recorded in
-# ~/.config/nexus/wallpaper-applied, and while /etc/nexus/wallpaper
-# still names the same thing this does nothing -- so a wallpaper the
-# person picks themselves stays. Only a new choice in first boot
-# changes it again.
+# ~/.config/nexus/wallpaper-applied (Plasma) or wallpaper-applied-lxqt
+# (LXQt), and while /etc/nexus/wallpaper still names the same thing
+# this does nothing -- so a wallpaper the person picks themselves
+# stays. Only a new choice in first boot changes it again.
+#
+# One record per desktop, because a home folder outlives an edition:
+# on the Asus (28 September) the KDE edition's record came along to
+# the minimal edition, and LXQt never got a wallpaper -- the record
+# said it was done, and it was, on a desktop no longer there. Plasma
+# keeps the original file name, so nobody on the KDE edition gets
+# their own wallpaper replaced by this update.
 #
 # Never fails a login: every problem ends in exit 0.
 
 set -u
 
-STATE="${XDG_CONFIG_HOME:-${HOME}/.config}/nexus/wallpaper-applied"
+STATE_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/nexus"
 WALLPAPERS=/usr/share/wallpapers
 
 wanted=""
@@ -45,17 +52,19 @@ if [ ! -d "${package}" ]; then
     exit 0
 fi
 
-if [ "$(cat "${STATE}" 2>/dev/null)" = "${wanted}" ]; then
-    exit 0
-fi
-
 # Plasma (the KDE edition) or LXQt's desktop, pcmanfm-qt (the minimal
 # edition). Anything else: leave the wallpaper alone.
 if command -v plasma-apply-wallpaperimage > /dev/null 2>&1; then
     apply() { plasma-apply-wallpaperimage "$1"; }
+    STATE="${STATE_DIR}/wallpaper-applied"
 elif command -v pcmanfm-qt > /dev/null 2>&1; then
     apply() { pcmanfm-qt --set-wallpaper="$1" --wallpaper-mode=zoom; }
+    STATE="${STATE_DIR}/wallpaper-applied-lxqt"
 else
+    exit 0
+fi
+
+if [ "$(cat "${STATE}" 2>/dev/null)" = "${wanted}" ]; then
     exit 0
 fi
 

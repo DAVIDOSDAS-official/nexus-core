@@ -13,13 +13,21 @@ Description: A light, complete desktop for older computers: LXQt, and nothing it
 # level, without gvfs no trash and no USB sticks in the file manager,
 # without xdg-user-dirs no Documents or Downloads folder.
 #
-# Miriway, exactly as Fedora's own LXQt edition ships it, for both the
-# desktop and the login screen. 0.1.18/0.1.19 used labwc and Weston
-# instead, and on the Asus (28 September) the login screen took no
-# mouse at all, and in the VM labwc gave a black desktop. Going off
-# Fedora's tested setup broke it both times, so this follows it. The
-# installer's keyboard reaches Miriway through MIR_SERVER_KEYMAP, which
-# first boot writes (Mir reads every option from MIR_SERVER_* too).
+# Two compositors, each where it was proven on the Asus:
+#
+#   Login screen: Miriway (sddm-wayland-miriway), as Fedora's LXQt
+#   ships it. Weston there (0.1.18/0.1.19) took no mouse at all.
+#
+#   Desktop: labwc (29 September). Miriway cannot switch keyboard
+#   layouts -- it has no keymap setting of its own, and
+#   MIR_SERVER_KEYMAP in /etc/environment stopped the login screen
+#   from starting. labwc takes several layouts and a switch key from
+#   XKB_DEFAULT_* in ~/.config/lxqt/labwc/environment, which first
+#   boot writes from the installer's choice. Tested: us,rs(latin) with
+#   Alt+Shift. (The 0.1.19 VM's black desktop was most likely not
+#   labwc itself: no compositor was set, and then LXQt starts a
+#   chooser instead of the session. image/lxqt-defaults.sh now sets
+#   it; the VM test of 0.1.21 confirms or not.)
 #
 # Named piece by piece, session and shortcuts and theme included,
 # because weak dependencies are off in image builds: nothing arrives
@@ -71,12 +79,12 @@ Requires: desktop-session,
 # from nothing picks the cheapest provider per capability, and a light
 # desktop ends up with KDE's file manager because nothing said
 # otherwise. On a machine that already has tools these only break ties.
-Prefers: desktop-session=lxqt-wayland-session-default-compositor-miriway,
+Prefers: desktop-session=lxqt-labwc-session,
  session-manager=lxqt-session,
  global-shortcuts=lxqt-globalkeys,
  qt-desktop-integration=lxqt-qtplugin,
  desktop-theme=lxqt-themes,
- window-manager=miriway,
+ window-manager=labwc,
  display-manager=sddm,
  greeter-compositor=sddm-wayland-miriway,
  desktop-panel=lxqt-panel,

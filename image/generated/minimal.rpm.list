@@ -22,12 +22,12 @@ coreutils                       # core-utilities
 dnf5                            # package-manager
 ca-certificates                 # ca-certificates
 tar                             # archiver
-lxqt-wayland-session-default-compositor-miriway # desktop-session
+lxqt-labwc-session              # desktop-session
 lxqt-session                    # session-manager
 lxqt-globalkeys                 # global-shortcuts
 lxqt-qtplugin                   # qt-desktop-integration
 lxqt-themes                     # desktop-theme
-miriway                         # window-manager
+labwc                           # window-manager
 sddm                            # display-manager
 sddm-wayland-miriway            # greeter-compositor
 lxqt-panel                      # desktop-panel

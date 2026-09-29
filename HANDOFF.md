@@ -20,7 +20,7 @@ and `CAPABILITIES.md`.
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.20** (patches 1–38); weekly signed builds from GitHub Actions.
+**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.21** (patches 1–39); weekly signed builds from GitHub Actions.
 Signed updates enforced on the Asus. **513 tests** (510 pass, 3 skipped).
 
 ---
@@ -147,9 +147,29 @@ in the future (installer currently takes a whole disk). Proposal:
   rs,us+latin,+grp:alt_shift_toggle) to /etc/environment, plus the XKB_
   lines. Lesson: follow the distribution's tested defaults unless a
   test says otherwise.
-- **To test:** VM with 2 GB RAM: login, Wi-Fi/sound/browser, installer
-  keyboard in the desktop, wallpaper, `free -m` after login (target
-  < 600 MB used), then the Asus; then website second download.
+- **Asus on 0.1.20 (29 Sept):** works (mouse, panel, battery), but
+  MIR_SERVER_KEYMAP in /etc/environment **killed the login screen**
+  (black after logout), and Miriway has no keymap setting at all.
+  Layered `labwc lxqt-labwc-session`, chose labwc in Session Settings:
+  desktop + mouse fine; layouts via ~/.config/lxqt/labwc/environment
+  (XKB_DEFAULT_LAYOUT=us,rs / VARIANT=,latin / OPTIONS=grp:alt_shift_toggle)
+  **work** (after `labwc --reconfigure` or a new login).
+  startlxqtwayland facts: compositor= read from ~/.config/lxqt then
+  $XDG_CONFIG_DIRS/lxqt/session.conf; none set → a first-run chooser
+  (probable cause of the 0.1.19 VM black screen); labwc folder copied
+  from /usr/share/lxqt/wayland/labwc only if missing.
+- **Patch 39 (0.1.21):** login screen stays Miriway (sddm-wayland-
+  miriway); desktop is labwc (lxqt-labwc-session). lxqt-defaults sets
+  compositor=labwc in /etc/xdg/lxqt/session.conf. First boot: nothing
+  in /etc/environment any more (old keyboard lines removed); copies
+  LXQt's labwc folder into each home (uid 1000+) and /etc/skel and adds
+  the installer's layouts (Alt+Shift when several). `nexus setup a, b`
+  accepts spaces. Wallpaper record per desktop (wallpaper-applied for
+  Plasma, wallpaper-applied-lxqt for LXQt).
+- **To test:** fresh minimal ISO in VM (2 GB): desktop not black,
+  mouse, `free -m` < 600 MB; install with Serbian keyboard → Alt+Shift
+  works on the desktop; wallpaper appears; then the Asus; then website
+  second download.
 
 ---
 

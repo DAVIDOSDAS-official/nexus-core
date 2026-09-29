@@ -4887,9 +4887,34 @@ int main(int argc, char** argv) {
         }
 
         if (command == "setup") {
+            // "school, media" is two words to the shell: "school," and
+            // "media". Only the first used to arrive, so a person who
+            // typed the list the way they would write it got half of
+            // it. Every word after "setup" is part of the list, and
+            // commas, spaces and empty entries are all the same
+            // separator.
+            std::string chosen;
+            for (std::size_t word = 1; word < positional.size(); ++word) {
+                std::string entry;
+                const std::string text = positional[word] + ",";
+                for (const char c : text) {
+                    if (c == ',' || c == ' ' || c == '\t') {
+                        if (!entry.empty()) {
+                            if (!chosen.empty()) {
+                                chosen += ",";
+                            }
+                            chosen += entry;
+                            entry.clear();
+                        }
+                    } else {
+                        entry += c;
+                    }
+                }
+            }
+
             return commandSetup(
                 aliases, installed, universe, hardware, profileDir,
-                arch, argument, apply, assumeYes, showCommands,
+                arch, chosen, apply, assumeYes, showCommands,
                 invocation);
         }
 

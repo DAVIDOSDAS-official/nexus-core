@@ -147,26 +147,69 @@ add_english_layout() {
     if localectl --no-convert set-x11-keymap "${layouts},us" \
             "${model}" "${variants}," "${options}" 2>/dev/null; then
         # The minimal edition says its own shortcut, below.
-        [ -x /usr/bin/miriway-shell ] || echo "Keyboard: added English (US) alongside ${layouts}." \
+        [ -x /usr/bin/labwc ] || echo "Keyboard: added English (US) alongside ${layouts}." \
             "Switch with Meta+Alt+K or the indicator by the clock."
     fi
 }
 
 add_english_layout
 
-# The minimal edition's desktop (Miriway) does not read localectl.
+# The minimal edition's desktop (labwc) does not read localectl.
 #
-# KDE takes the layouts from localectl; Miriway, like every Mir server,
-# takes its keymap from MIR_SERVER_KEYMAP (or --keymap), written as
-# layout+variant+options, e.g. "rs,us+latin,+grp:alt_shift_toggle".
+# KDE takes the layouts from localectl; labwc takes them from
+# XKB_DEFAULT_* in its environment file. LXQt starts it as
+# "labwc -C ~/.config/lxqt/labwc", so the file is
+# ~/.config/lxqt/labwc/environment -- tested on the Asus on
+# 29 September: us,rs(latin) with Alt+Shift switching.
+#
 # Without this, a Serbian keyboard chosen in the installer -- the one
 # the disk password was typed on -- is US again the moment the desktop
-# starts. /etc/environment is read at login (pam_env), so the session
-# inherits it. Two or more layouts get Alt+Shift to switch, unless the
-# installer already set a switching option. XKB_DEFAULT_* are written
-# too, for any wlroots-based compositor.
+# starts. Two or more layouts get Alt+Shift to switch, unless the
+# installer already set a switching option.
+#
+# LXQt copies its default labwc folder into a home only when that
+# folder is missing, so the folder is copied here the same way first,
+# and the keyboard added to it; LXQt then leaves it alone. Every
+# person already on the machine gets it, and /etc/skel for anyone
+# added later.
+#
+# Nothing goes into /etc/environment: that is read by the login
+# screen too, and in 0.1.20 a keyboard line there (MIR_SERVER_KEYMAP)
+# stopped the login screen from starting. Lines an earlier version
+# wrote there are removed.
+labwc_keyboard_file() {
+    # $1: the home folder; $2: owner, or empty for /etc/skel.
+    local dir="$1/.config/lxqt/labwc"
+
+    if [ ! -d "${dir}" ]; then
+        mkdir -p "$1/.config/lxqt"
+        cp -a /usr/share/lxqt/wayland/labwc "${dir}" || return 0
+    fi
+
+    local file="${dir}/environment"
+    touch "${file}"
+    sed -i '/^XKB_DEFAULT_\(LAYOUT\|VARIANT\|OPTIONS\)=/d' "${file}"
+    {
+        printf 'XKB_DEFAULT_LAYOUT=%s\n' "${layouts}"
+        [ -n "${variants}" ] && printf 'XKB_DEFAULT_VARIANT=%s\n' "${variants}"
+        [ -n "${options}" ] && printf 'XKB_DEFAULT_OPTIONS=%s\n' "${options}"
+    } >> "${file}"
+
+    if [ -n "$2" ]; then
+        # .config and .config/lxqt too, in case they were made here.
+        chown "$2" "$1/.config" "$1/.config/lxqt" 2> /dev/null
+        chown -R "$2" "${dir}"
+    fi
+}
+
 sync_desktop_keyboard() {
-    command -v miriway-shell > /dev/null 2>&1 || [ -x /usr/bin/labwc ] || return 0
+    if [ -f /etc/environment ]; then
+        sed -i '/^\(XKB_DEFAULT_\(LAYOUT\|VARIANT\|OPTIONS\)\|MIR_SERVER_KEYMAP\)=/d' \
+            /etc/environment
+    fi
+
+    [ -x /usr/bin/labwc ] || return 0
+    [ -d /usr/share/lxqt/wayland/labwc ] || return 0
     command -v localectl > /dev/null 2>&1 || return 0
 
     local status layouts variants options
@@ -187,21 +230,15 @@ sync_desktop_keyboard() {
             ;;
     esac
 
-    local keymap="${layouts}"
-    if [ -n "${variants}" ] || [ -n "${options}" ]; then
-        keymap="${keymap}+${variants}"
-    fi
-    [ -n "${options}" ] && keymap="${keymap}+${options}"
+    local name uid gid home
+    while IFS=: read -r name _ uid gid _ home _; do
+        [ "${uid}" -ge 1000 ] 2> /dev/null || continue
+        [ "${uid}" -lt 60000 ] || continue
+        [ -d "${home}" ] || continue
+        labwc_keyboard_file "${home}" "${uid}:${gid}"
+    done < <(getent passwd)
 
-    local file=/etc/environment
-    touch "${file}"
-    sed -i '/^\(XKB_DEFAULT_\(LAYOUT\|VARIANT\|OPTIONS\)\|MIR_SERVER_KEYMAP\)=/d' "${file}"
-    {
-        printf 'MIR_SERVER_KEYMAP=%s\n' "${keymap}"
-        printf 'XKB_DEFAULT_LAYOUT=%s\n' "${layouts}"
-        [ -n "${variants}" ] && printf 'XKB_DEFAULT_VARIANT=%s\n' "${variants}"
-        [ -n "${options}" ] && printf 'XKB_DEFAULT_OPTIONS=%s\n' "${options}"
-    } >> "${file}"
+    labwc_keyboard_file /etc/skel ""
 
     case "${layouts}" in
         *,*) echo "Keyboard (desktop): ${layouts}. Switch with Alt+Shift." ;;
