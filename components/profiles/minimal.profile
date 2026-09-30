@@ -27,7 +27,9 @@ Description: A light, complete desktop for older computers: LXQt, and nothing it
 #   Alt+Shift. (The 0.1.19 VM's black desktop was most likely not
 #   labwc itself: no compositor was set, and then LXQt starts a
 #   chooser instead of the session. image/lxqt-defaults.sh now sets
-#   it; the VM test of 0.1.21 confirms or not.)
+#   it. 0.1.21's VM still ran Miriway: Fedora's own
+#   /etc/lxqt/session.conf says miriway and is read before
+#   /etc/xdg, so 0.1.22 sets both.)
 #
 # Named piece by piece, session and shortcuts and theme included,
 # because weak dependencies are off in image builds: nothing arrives

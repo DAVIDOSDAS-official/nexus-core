@@ -67,6 +67,38 @@ if [ "${TYPE}" = "anaconda-iso" ]; then
     fi
 fi
 
+# An image from a registry is fetched fresh every time. Using whatever
+# copy was already here built a 0.1.18 ISO on 29 September, a day after
+# 0.1.21 was published. podman 3.4 cannot resume a download that breaks
+# off, so it is tried a few times, and if the connection keeps failing
+# the one that can (skopeo, as a container) is named.
+# PULL=no uses the copy already here.
+if [ "${PULL:-yes}" != no ] && [ "${IMAGE#localhost/}" = "${IMAGE}" ]; then
+    echo "Fetching the latest ${IMAGE}."
+    pulled=no
+    for attempt in 1 2 3; do
+        if podman pull "${IMAGE}"; then
+            pulled=yes
+            break
+        fi
+        echo "Download broke off (attempt ${attempt} of 3)." >&2
+        sudo rm -rf /var/tmp/storage* 2> /dev/null || true
+        sleep 5
+    done
+    if [ "${pulled}" = no ]; then
+        echo >&2
+        echo "Could not fetch ${IMAGE}. The copy here, if any, may be old," >&2
+        echo "so nothing was built. skopeo retries each piece; fetch with:" >&2
+        echo "    mkdir -p /var/tmp/nexus-img" >&2
+        echo "    podman run --rm -v /var/tmp/nexus-img:/out quay.io/skopeo/stable:latest \\" >&2
+        echo "        copy --retry-times 10 docker://${IMAGE} dir:/out/img" >&2
+        echo "    id=\$(podman pull -q dir:/var/tmp/nexus-img/img) && podman tag \"\$id\" ${IMAGE}" >&2
+        echo "    rm -rf /var/tmp/nexus-img" >&2
+        echo "then run this again with PULL=no in front." >&2
+        exit 1
+    fi
+fi
+
 if ! podman image exists "${IMAGE}"; then
     echo "No image ${IMAGE}. Build it first:" >&2
     echo "    podman build --target desktop \\" >&2

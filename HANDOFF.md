@@ -20,7 +20,7 @@ and `CAPABILITIES.md`.
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.21** (patches 1–39); weekly signed builds from GitHub Actions.
+**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.22** (patches 1–40); weekly signed builds from GitHub Actions.
 Signed updates enforced on the Asus. **513 tests** (510 pass, 3 skipped).
 
 ---
@@ -166,6 +166,19 @@ in the future (installer currently takes a whole disk). Proposal:
   the installer's layouts (Alt+Shift when several). `nexus setup a, b`
   accepts spaces. Wallpaper record per desktop (wallpaper-applied for
   Plasma, wallpaper-applied-lxqt for LXQt).
+- **VM, fresh 0.1.21 install (30 Sept):** installer, first boot,
+  `media, school` (9/9), login, desktop, wallpaper, keyboard file all
+  fine; 621 MB used. **But the session ran Miriway**, not labwc:
+  Fedora's lxqt-session ships /etc/lxqt/session.conf with
+  compositor=miriway, and LXQt's search order is ~/.config, /etc,
+  /etc/xdg, /usr/share -- so /etc beat our /etc/xdg. (The Asus ran
+  labwc only because of the user's own session.conf.)
+- **Patch 40 (0.1.22):** lxqt-defaults sets compositor=labwc in
+  /etc/lxqt/session.conf as well as /etc/xdg. build-installer pulls a
+  registry image itself (3 tries; on failure prints the skopeo
+  commands; PULL=no uses the local copy). The Acer's podman 3.4.4
+  can't resume broken downloads; skopeo `--retry-times 10` to `dir:`,
+  then `podman pull dir:` + `podman tag`, works.
 - **To test:** fresh minimal ISO in VM (2 GB): desktop not black,
   mouse, `free -m` < 600 MB; install with Serbian keyboard → Alt+Shift
   works on the desktop; wallpaper appears; then the Asus; then website

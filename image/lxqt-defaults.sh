@@ -4,8 +4,8 @@
 # image is built. Does nothing where LXQt is not installed.
 #
 # The compositor. LXQt's startlxqtwayland takes it from the first
-# session.conf with a compositor= line: ~/.config/lxqt, then
-# /etc/xdg/lxqt. With none at all it does not start the desktop -- it
+# session.conf with a compositor= line: ~/.config/lxqt, then /etc/lxqt,
+# then /etc/xdg/lxqt, then /usr/share/lxqt. With none at all it does not start the desktop -- it
 # starts a chooser (lxqt-config-session on its own) -- probably what
 # the 0.1.19 VM showed, where 0.1.19 had changed only
 # /usr/share/lxqt/wayland/default-compositor, which that script never
@@ -20,9 +20,9 @@
 
 set -eu
 
-session=/etc/xdg/lxqt/session.conf
-if [ -x /usr/bin/labwc ] && [ -d /usr/share/lxqt/wayland/labwc ]; then
-    mkdir -p /etc/xdg/lxqt
+set_compositor() {
+    session="$1"
+    mkdir -p "$(dirname "${session}")"
     if [ -f "${session}" ] && grep -q '^\[General\]' "${session}"; then
         sed -i '/^compositor[[:space:]]*=/d' "${session}"
         sed -i 's/^\[General\]$/[General]\ncompositor=labwc/' "${session}"
@@ -33,7 +33,19 @@ if [ -x /usr/bin/labwc ] && [ -d /usr/share/lxqt/wayland/labwc ]; then
         fi
         mv "${session}.new" "${session}"
     fi
-    echo "LXQt compositor: labwc ($(grep -c '^compositor=labwc$' "${session}") line)"
+    echo "LXQt compositor in ${session}: $(grep '^compositor' "${session}" | tr '\n' ' ')"
+}
+
+if [ -x /usr/bin/labwc ] && [ -d /usr/share/lxqt/wayland/labwc ]; then
+    # Fedora's lxqt-session ships /etc/lxqt/session.conf with
+    # compositor=miriway, and /etc comes before /etc/xdg in LXQt's
+    # search -- so 0.1.21, which only set /etc/xdg, still started
+    # Miriway for every new user (VM, 30 September). Both are set;
+    # rebuilt every week, so a changed Fedora file is set again.
+    if [ -f /etc/lxqt/session.conf ]; then
+        set_compositor /etc/lxqt/session.conf
+    fi
+    set_compositor /etc/xdg/lxqt/session.conf
 fi
 
 panel=/etc/xdg/lxqt/panel.conf
