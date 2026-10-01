@@ -20,7 +20,7 @@ and `CAPABILITIES.md`.
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.24** (patches 1–44); weekly signed builds from GitHub Actions.
+**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.25** (patches 1–45); weekly signed builds from GitHub Actions.
 Signed updates enforced on the Asus. **513 tests** (510 pass, 3 skipped).
 
 ---
@@ -212,6 +212,10 @@ in the future (installer currently takes a whole disk). Proposal:
   `nexus gaps`); dependency FAILs downgraded to "not judged" while the
   clock is behind. history: "System versions" block; staged records
   whose package is layered in the booted deployment show [applied].
+- **Patch 45 (0.1.25):** Asus check of 0.1.24 fine except: /boot
+  (2 GB) warned at 1.6 GB free — /boot now judged by share only (<15%
+  warn); two builds on one day share a Version, so rollback says
+  "an earlier build from the same day".
 - **Earlier test note:** fresh minimal ISO in VM (2 GB): desktop not black,
   mouse, `free -m` < 600 MB; install with Serbian keyboard → Alt+Shift
   works on the desktop; wallpaper appears; then the Asus; then website

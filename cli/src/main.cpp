@@ -1866,9 +1866,14 @@ int commandSummary() {
             std::cout << "\n";
         }
         if (other != nullptr) {
-            std::cout << "  Rollback    ready: "
-                      << (other->version.empty() ? "previous version"
-                                                 : other->version)
+            // Two builds on one day share a version string (the Asus,
+            // 1 October: 0.1.23 and 0.1.24 were both 44.20261001.0).
+            std::string previous =
+                other->version.empty() ? "previous version" : other->version;
+            if (other->version == booted->version) {
+                previous = "an earlier build from the same day";
+            }
+            std::cout << "  Rollback    ready: " << previous
                       << " (pick it in the boot menu if an update"
                          " misbehaves)\n";
         } else {
@@ -2051,9 +2056,15 @@ nexus::Finding checkStorage() {
                       p.name, free / 1e9, size / 1e9);
         if (!details.empty()) details += "; ";
         details += buf;
-        if (pct < 3 || free < 1e9) {
+        // /boot is small by design (2 GB on the Asus) and holds only
+        // a few kernels, so it is judged by share alone; /var by share
+        // and by size. The Asus's 1.6 GB free of 2.0 GB was a warning
+        // under the old size rule (1 October).
+        const bool small = std::string(p.path) == "/boot";
+        if (pct < 3 || (!small && free < 1e9)) {
             worst = nexus::Health::Problem;
-        } else if ((pct < 10 || free < 5e9) && worst == nexus::Health::Ok) {
+        } else if ((pct < (small ? 15 : 10) || (!small && free < 5e9)) &&
+                   worst == nexus::Health::Ok) {
             worst = nexus::Health::Warning;
         }
     }
@@ -2117,7 +2128,13 @@ int commandHistory(const std::string& path) {
             std::cout << "  " << (d.booted ? "now      " : "previous ")
                       << (d.date.empty() ? std::string("?") : dayOf(d.date))
                       << "  " << (d.version.empty() ? "?" : d.version)
-                      << "  " << describeImage(d.image) << "\n";
+                      << "  " << describeImage(d.image);
+            if (!d.booted && !deployments.empty() &&
+                deployments.front().booted &&
+                d.version == deployments.front().version) {
+                std::cout << "  (earlier build, same day)";
+            }
+            std::cout << "\n";
             if (d.booted) {
                 layeredNow.insert(d.layered.begin(), d.layered.end());
             }

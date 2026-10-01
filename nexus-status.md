@@ -1,7 +1,7 @@
 # Nexus-CORE — where things stand (1 October 2026)
 
 Nexus-CORE is a Fedora 44 bootc image plus the Nexus C++ tool (`nexus`).
-Current version: **0.1.24** (patches 1–44). 513 tests pass.
+Current version: **0.1.25** (patches 1–45). 513 tests pass.
 
 ## Released
 
