@@ -20,7 +20,7 @@ and `CAPABILITIES.md`.
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.22** (patches 1–41); weekly signed builds from GitHub Actions.
+**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.23** (patches 1–42); weekly signed builds from GitHub Actions.
 Signed updates enforced on the Asus. **513 tests** (510 pass, 3 skipped).
 
 ---
@@ -190,6 +190,12 @@ in the future (installer currently takes a whole disk). Proposal:
   skopeo container, fetched with retries), loads the dir and tags it
   (untag only the dir's own name — bare `podman untag` drops every
   name and the next prune deletes the image). Prints nexus --version.
+- **Patch 42 (0.1.23):** gaming.profile adds heroic
+  (com.heroicgameslauncher.hgl), lutris (net.lutris.Lutris),
+  protonup-qt (net.davidotek.pupgui2) as Flatpaks. check-add-ons does
+  not check Flatpak ids, so they were checked by hand on Flathub.
+  NVIDIA parked: no NVIDIA hardware to test. Minimal ISO 0.1.22 checked
+  (sha256 6fff8598…), to archive.org as nexus-core-minimal-preview1.
 - **Earlier test note:** fresh minimal ISO in VM (2 GB): desktop not black,
   mouse, `free -m` < 600 MB; install with Serbian keyboard → Alt+Shift
   works on the desktop; wallpaper appears; then the Asus; then website

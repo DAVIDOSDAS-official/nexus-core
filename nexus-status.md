@@ -1,7 +1,7 @@
 # Nexus-CORE — where things stand (1 October 2026)
 
 Nexus-CORE is a Fedora 44 bootc image plus the Nexus C++ tool (`nexus`).
-Current version: **0.1.22** (patches 1–41). 513 tests pass.
+Current version: **0.1.23** (patches 1–42). 513 tests pass.
 
 ## Released
 
@@ -66,6 +66,12 @@ The Asus, updated to 0.1.22, boots cleanly (no text before the password).
    the website ("Minimal — for older computers") with its sha256.
 2. Patch 41 (done): the ISO build falls back to skopeo by itself when
    podman's download breaks off.
+3. Patch 42 (0.1.23): gaming add-on (KDE edition) gains Heroic (Epic,
+   GOG, Amazon), Lutris and ProtonUp-Qt (Proton-GE), all from Flathub.
+   Test: `nexus setup gaming` on a KDE machine, each one opens.
+4. Then `gamecheck`: before installing a game, says whether it runs on
+   Linux (ProtonDB) and whether its anti-cheat allows Linux
+   (AreWeAntiCheatYet) — never bypasses anti-cheat.
 
 ## Later
 
@@ -81,4 +87,8 @@ The Asus, updated to 0.1.22, boots cleanly (no text before the password).
 - `gamecheck` (AreWeAntiCheatYet + ProtonDB, never bypass anti-cheat).
 - First big update: graphical Nexus app (Qt Quick), the minimalism look,
   the showcase tour.
-- NVIDIA, greenboot, dual boot.
+- NVIDIA: needs an NVIDIA machine to test on — none available, so it
+  waits until there is one.
+- greenboot, dual boot.
+- The minimal edition does not offer gaming (decided 27 Sept: Steam
+  needs more memory than that edition's machines have).
