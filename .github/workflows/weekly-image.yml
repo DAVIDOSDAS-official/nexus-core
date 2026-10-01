@@ -118,10 +118,17 @@ jobs:
           fi
           echo "Signing key and password match image/signing/cosign.pub."
 
+      # apt with short timeouts and retries, and the step capped at 20
+      # minutes: on 1 October the runner's Ubuntu mirror (azure.archive)
+      # stopped answering and apt-get update hung for over an hour,
+      # holding the kde build hostage. A stuck mirror now fails in
+      # minutes and the run can simply be re-run.
       - name: Tests
+        timeout-minutes: 20
         run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake g++ libgtest-dev
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          sudo apt-get ${APT} update
+          sudo apt-get ${APT} install -y cmake g++ libgtest-dev
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --parallel
           ctest --test-dir build --output-on-failure
