@@ -1,7 +1,7 @@
 # Nexus-CORE — where things stand (1 October 2026)
 
 Nexus-CORE is a Fedora 44 bootc image plus the Nexus C++ tool (`nexus`).
-Current version: **0.1.25** (patches 1–45). 513 tests pass.
+Current version: **0.1.26** (patches 1–46). 513 tests pass.
 
 ## Released
 
@@ -80,8 +80,12 @@ The Asus, updated to 0.1.22, boots cleanly (no text before the password).
    Storage (not the read-only `/`), Services, and drops the
    developer-only "Model" line; `history` shows system versions and
    marks applied changes as applied. Help text corrected.
-6. Then `install` in plain words (what, from where, size, Proceed?),
-   and `gamecheck` with a per-game privacy report: before installing a game, says whether it runs on
+6. Patch 46 (0.1.26): `install` in plain words — what it is (dnf's
+   summary), where from (Fedora / RPM Fusion), new packages, download
+   and disk size, which add-on includes it (and whether that add-on uses
+   the Flathub version), restart needed, dnf's check in one line
+   (`--explain` for the lists), "Proceed? [Y/n]".
+7. Then `gamecheck` with a per-game privacy report: before installing a game, says whether it runs on
    Linux (ProtonDB) and whether its anti-cheat allows Linux
    (AreWeAntiCheatYet) — never bypasses anti-cheat.
 

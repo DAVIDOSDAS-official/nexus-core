@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <sys/statvfs.h>
 #include <ctime>
+#include <cctype>
 #include <sstream>
 
 #include <nexus/component.hpp>
@@ -850,6 +851,80 @@ int commandImage(
 // Every other correctness question in this project was settled by
 // comparing against a native tool rather than by another assertion.
 // This is that, applied to the one part metadata cannot answer.
+
+// ---------------------------------------------------------------------
+// For `install`: the facts a person decides on, in their words.
+
+std::string humanBytes(std::uint64_t bytes) {
+    char buf[32];
+    if (bytes >= 1000ULL * 1000 * 1000) {
+        std::snprintf(buf, sizeof buf, "%.1f GB", bytes / 1e9);
+    } else if (bytes >= 1000ULL * 1000) {
+        std::snprintf(buf, sizeof buf, "%.0f MB", bytes / 1e6);
+    } else {
+        std::snprintf(buf, sizeof buf, "%.0f kB", bytes / 1e3);
+    }
+    return buf;
+}
+
+// "rpmfusion-free-updates" -> "RPM Fusion (free)". The repository id is
+// kept in brackets: it is what a person searching for help will need.
+std::string humanRepository(const std::string& id) {
+    if (id.rfind("rpmfusion-nonfree", 0) == 0) {
+        return "RPM Fusion, nonfree part (" + id + ")";
+    }
+    if (id.rfind("rpmfusion-free", 0) == 0) {
+        return "RPM Fusion (" + id + ")";
+    }
+    if (id == "fedora" || id.rfind("updates", 0) == 0) {
+        return "Fedora (" + id + ")";
+    }
+    return id;
+}
+
+// One package's summary and repository, asked of dnf. Only the facts
+// dnf states; anything it does not say stays empty and is not shown.
+struct PackageFacts {
+    std::string summary;
+    std::string repository;
+};
+
+PackageFacts dnfFacts(const std::string& name) {
+    PackageFacts facts;
+    for (char c : name) {
+        if (!(std::isalnum(static_cast<unsigned char>(c)) ||
+              c == '-' || c == '_' || c == '.' || c == '+')) {
+            return facts;
+        }
+    }
+    if (!nexus::system::commandExists("dnf")) {
+        return facts;
+    }
+    const auto info = nexus::system::runCommand(
+        "LC_ALL=C dnf -q info --available '" + name + "' 2>/dev/null",
+        false);
+    std::istringstream in(info.text);
+    std::string line;
+    while (std::getline(in, line)) {
+        const auto colon = line.find(':');
+        if (colon == std::string::npos) {
+            continue;
+        }
+        std::string key = line.substr(0, colon);
+        while (!key.empty() && key.back() == ' ') key.pop_back();
+        std::string value = line.substr(colon + 1);
+        const auto start = value.find_first_not_of(' ');
+        value = start == std::string::npos ? "" : value.substr(start);
+        if (key == "Summary" && facts.summary.empty()) {
+            facts.summary = value;
+        } else if ((key == "Repository" || key == "From repository" ||
+                    key == "Repo") && facts.repository.empty()) {
+            facts.repository = value;
+        }
+    }
+    return facts;
+}
+
 int commandInstall(
     const nexus::AliasTable& aliases,
     const std::vector<Component>& universe,
@@ -860,7 +935,9 @@ int commandInstall(
     bool apply,
     bool assumeYes,
     bool showCommands,
-    const std::string& invocation
+    const std::string& invocation,
+    const std::string& profileDirectory,
+    bool explain
 ) {
     nexus::SolverRequest request;
 
@@ -894,6 +971,9 @@ int commandInstall(
 
     std::set<std::string> expected;
     std::string requested;
+    std::uint64_t download = 0;
+    std::uint64_t onDisk = 0;
+    bool sizesKnown = true;
 
     for (const std::string& id : solution.selected) {
         for (const Component& component : universe) {
@@ -908,16 +988,96 @@ int commandInstall(
             if (here.count(component.name() + ":" +
                            component.architecture()) == 0) {
                 expected.insert(component.name());
+                if (component.downloadSize() == 0) {
+                    sizesKnown = false;
+                }
+                download += component.downloadSize();
+                onDisk += component.installedSize();
             }
 
             break;
         }
     }
 
-    std::cout
-        << "Request:   " << capability << "\n"
-        << "Resolves:  " << requested << "\n"
-        << "New:       " << expected.size() << " component(s)\n";
+    // What a person decides on, first: what it is, where it comes
+    // from, how big it is, and what happens to the machine. The
+    // comparison with dnf follows, in one line unless asked for.
+    // (Before 1 October this printed "Request / Resolves / New" and,
+    // for vlc, "The plans differ" with two lists -- accurate, and
+    // meaningless to anyone not writing Nexus.)
+    // Setup calls this once per item and passes no profile directory:
+    // there the add-on is already the context, and a dnf query per
+    // item would only slow it down.
+    const bool standalone = !profileDirectory.empty();
+    const PackageFacts facts =
+        useRpm && standalone ? dnfFacts(requested) : PackageFacts{};
+
+    std::cout << requested;
+    if (!facts.summary.empty()) {
+        std::cout << "  -  " << facts.summary;
+    }
+    std::cout << "\n";
+    if (requested != capability) {
+        std::cout << "  Asked for   " << capability << "\n";
+    }
+    if (!facts.repository.empty()) {
+        std::cout << "  From        " << humanRepository(facts.repository)
+                  << "\n";
+    }
+    if (expected.empty()) {
+        std::cout << "  Already installed.\n";
+        return 0;
+    }
+    std::cout << "  New         " << expected.size()
+              << " package(s), counting what it needs\n";
+    if (download > 0) {
+        std::cout << "  Download    " << (sizesKnown ? "" : "at least ")
+                  << humanBytes(download) << "\n";
+    }
+    if (onDisk > 0) {
+        std::cout << "  On disk     about " << humanBytes(onDisk) << "\n";
+    }
+
+    // Add-ons that include this, and how they get it: the media
+    // add-on takes VLC from Flathub, and installing the rpm by name
+    // without being told so is how one machine ends up with two.
+    if (standalone) {
+        const auto loaded = nexus::system::parseProfileDirectory(
+            profileDirectory);
+        for (const nexus::Profile& profile : loaded.profiles) {
+            if (profile.name == "base") {
+                continue;
+            }
+            bool includes = false;
+            for (const auto& requirement : profile.requirements) {
+                for (const auto& alternative : requirement.alternatives) {
+                    if (alternative.capability == capability) {
+                        includes = true;
+                    }
+                }
+            }
+            if (!includes) {
+                continue;
+            }
+            std::cout << "  Add-on      part of " << profile.name;
+            const auto flat = profile.flatpak.find(capability);
+            if (flat != profile.flatpak.end()) {
+                std::cout << ", which uses the Flathub version ("
+                          << flat->second << ").\n"
+                          << "              For that one instead: "
+                             "sudo nexus setup " << profile.name
+                          << " --apply\n";
+            } else {
+                std::cout << "\n";
+            }
+        }
+    }
+
+    if (nexus::system::commandExists("rpm-ostree") &&
+        std::filesystem::exists("/run/ostree-booted")) {
+        std::cout << "  Restart     needed: added packages take effect "
+                     "the next time the machine starts\n";
+    }
 
     // The interlock is the same either way; only the tool asked
     // differs.
@@ -929,70 +1089,55 @@ int commandInstall(
 
     switch (check.agreement) {
         case nexus::system::PlanAgreement::Agrees:
-            std::cout
-                << "Verified:  " << manager
-                << " would do the same thing.\n";
+            std::cout << "  Checked     " << manager
+                      << " agrees with this plan\n";
             break;
 
         case nexus::system::PlanAgreement::Unavailable:
-            std::cout
-                << "\n" << manager << " could not be asked, so this "
-                << "plan is unverified.\nThat is not the same as "
-                << manager << " objecting to it.\n";
+            std::cout << "  Checked     " << manager
+                      << " could not be asked; the plan is unchecked\n";
             break;
 
         case nexus::system::PlanAgreement::Refused:
-            std::cout
-                << "\n" << manager << " refuses this plan:\n";
-
+            std::cout << "\n" << manager << " refuses this plan:\n";
             for (const std::string& message : check.refusal) {
                 std::cout << "    " << message << "\n";
             }
-
-            std::cout
-                << "\nNexus resolved it from metadata, which does "
-                << "not describe\nrepository restrictions, holds or "
-                << "pins. " << manager << " knows those.\n";
+            std::cout << "\nNexus works from repository metadata, which"
+                         " does not describe\nholds, pins or repository"
+                         " rules. " << manager << " knows those.\n";
             break;
 
         case nexus::system::PlanAgreement::Differs: {
-            std::cout
-                << manager << " would install: "
-                << check.theirs.size()
-                << "\n\nThe plans differ.\n";
+            // Not a fault: dnf applies rules Nexus does not model, and
+            // dnf's list is the one used. Said in a line; the lists
+            // are there for anyone who asks with --explain.
+            const long extra = static_cast<long>(check.theirs.size()) -
+                               static_cast<long>(expected.size());
+            std::cout << "  Checked     " << manager << " agrees, with "
+                      << (extra >= 0 ? std::to_string(extra) + " more"
+                                     : std::to_string(-extra) + " fewer")
+                      << " package(s) by its own rules;\n"
+                         "              its list is the one used"
+                         " (--explain shows both)\n";
 
-            const auto show =
-                [](const std::string& title,
-                   const std::vector<std::string>& names) {
-                    if (names.empty()) {
-                        return;
-                    }
-
-                    std::cout << "\n" << title << ":\n";
-
-                    std::size_t shown = 0;
-
-                    for (const std::string& name : names) {
-                        std::cout << "    " << name << "\n";
-
-                        if (++shown >= 10) {
-                            std::cout
-                                << "    ... and "
-                                << (names.size() - shown) << " more\n";
-                            break;
+            if (explain) {
+                const auto show =
+                    [](const std::string& title,
+                       const std::vector<std::string>& names) {
+                        if (names.empty()) {
+                            return;
                         }
-                    }
-                };
-
-            show("Nexus expects, " + manager + " does not",
-                 check.onlyOurs);
-            show(manager + " expects, Nexus does not",
-                 check.onlyTheirs);
-
-            std::cout
-                << "\nA difference is not automatically a fault: "
-                << manager << " applies\npolicy Nexus does not "
-                << "model.\n";
+                        std::cout << "\n" << title << ":\n";
+                        for (const std::string& name : names) {
+                            std::cout << "    " << name << "\n";
+                        }
+                    };
+                show("Nexus expects, " + manager + " does not",
+                     check.onlyOurs);
+                show(manager + " expects, Nexus does not",
+                     check.onlyTheirs);
+            }
             break;
         }
     }
@@ -1021,8 +1166,8 @@ int commandInstall(
 
     if (!apply) {
         std::cout
-            << "\nNothing has been changed. Use --apply to install, "
-            << "or\n--commands to see what it would run.\n";
+            << "\nNothing has been changed. To install it:\n"
+            << "    sudo " << invocation << " --apply\n";
 
         return check.agreement == nexus::system::PlanAgreement::Agrees
             ? 0
@@ -1104,13 +1249,16 @@ int commandInstall(
             }
         }
 
-        std::cout << "\nProceed? [y/N] ";
+        std::cout << "\nProceed? [Y/n] ";
 
         std::string answer;
 
         std::getline(std::cin, answer);
 
-        if (answer != "y" && answer != "Y" && answer != "yes") {
+        // Enter is yes: the plan is on the screen and the command was
+        // run with --apply, so the person has asked twice already.
+        if (!(answer.empty() || answer == "y" || answer == "Y" ||
+              answer == "yes")) {
             std::cout << "Nothing has been changed.\n";
             return 1;
         }
@@ -3990,7 +4138,8 @@ int commandSetup(
 
         const int status = commandInstall(
             aliases, universe, installed, name, architecture,
-            gUseRpmVersions, true, true, false, invocation);
+            gUseRpmVersions, true, true, false, invocation,
+            std::string{}, false);
 
         if (status == 0) {
             done += 1;
@@ -5128,7 +5277,7 @@ int main(int argc, char** argv) {
             return commandInstall(
                 aliases, universe, installed, argument, arch,
                 preferRpm, apply, assumeYes, showCommands,
-                invocation);
+                invocation, profileDir, explain);
         }
 
         if (command == "options") {

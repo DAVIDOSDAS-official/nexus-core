@@ -20,7 +20,7 @@ and `CAPABILITIES.md`.
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.25** (patches 1–45); weekly signed builds from GitHub Actions.
+**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.26** (patches 1–46); weekly signed builds from GitHub Actions.
 Signed updates enforced on the Asus. **513 tests** (510 pass, 3 skipped).
 
 ---
@@ -216,6 +216,13 @@ in the future (installer currently takes a whole disk). Proposal:
   (2 GB) warned at 1.6 GB free — /boot now judged by share only (<15%
   warn); two builds on one day share a Version, so rollback says
   "an earlier build from the same day".
+- **Patch 46 (0.1.26):** commandInstall preview rewritten: name +
+  `dnf -q info --available` Summary/Repository, Asked for, New, Download
+  /On disk (sum of repo metadata sizes), Add-on (profiles requiring the
+  capability; notes its Flatpak mapping), Restart (ostree-booted), one
+  "Checked" line (lists under --explain), Proceed? [Y/n] (Enter = yes).
+  Setup passes an empty profile dir → no dnf query/add-on lines per item.
+  Tested on Ubuntu metadata (vlc: 36 packages, 7 MB); dnf path untested.
 - **Earlier test note:** fresh minimal ISO in VM (2 GB): desktop not black,
   mouse, `free -m` < 600 MB; install with Serbian keyboard → Alt+Shift
   works on the desktop; wallpaper appears; then the Asus; then website
