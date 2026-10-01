@@ -20,7 +20,7 @@ and `CAPABILITIES.md`.
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.23** (patches 1–42); weekly signed builds from GitHub Actions.
+**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.24** (patches 1–44); weekly signed builds from GitHub Actions.
 Signed updates enforced on the Asus. **513 tests** (510 pass, 3 skipped).
 
 ---
@@ -196,6 +196,22 @@ in the future (installer currently takes a whole disk). Proposal:
   not check Flatpak ids, so they were checked by hand on Flathub.
   NVIDIA parked: no NVIDIA hardware to test. Minimal ISO 0.1.22 checked
   (sha256 6fff8598…), to archive.org as nexus-core-minimal-preview1.
+- **1 Oct, clock:** Asus clock was days behind (NTP off). rpm skips
+  packages whose signature is newer than the clock ("not alive"); the
+  rpm-ostree deployment made then kept a package list without firefox,
+  hunspell, libmaxminddb → doctor FAIL, `why firefox` unknown, the
+  "Verifying a signature" warning. Fixed: `timedatectl set-ntp true` +
+  upgrade to 0.1.23. Asus RTC is in local time (LocalRTC=yes).
+- **Patch 43:** workflow Tests step: apt Acquire timeouts/retries,
+  timeout-minutes 20.
+- **Patch 44 (0.1.24):** bare `nexus` summary (parses `rpm-ostree
+  status` text: booted/rollback, Version (date), LayeredPackages);
+  doctor: Clock (rpm "not alive" / build time ahead / NTP off /
+  LocalRTC), Memory (/proc/meminfo), Storage (/var, /boot via
+  statvfs), Services (failed units); Model finding removed (still in
+  `nexus gaps`); dependency FAILs downgraded to "not judged" while the
+  clock is behind. history: "System versions" block; staged records
+  whose package is layered in the booted deployment show [applied].
 - **Earlier test note:** fresh minimal ISO in VM (2 GB): desktop not black,
   mouse, `free -m` < 600 MB; install with Serbian keyboard → Alt+Shift
   works on the desktop; wallpaper appears; then the Asus; then website

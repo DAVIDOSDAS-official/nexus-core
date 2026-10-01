@@ -1,7 +1,7 @@
 # Nexus-CORE — where things stand (1 October 2026)
 
 Nexus-CORE is a Fedora 44 bootc image plus the Nexus C++ tool (`nexus`).
-Current version: **0.1.23** (patches 1–42). 513 tests pass.
+Current version: **0.1.24** (patches 1–44). 513 tests pass.
 
 ## Released
 
@@ -56,6 +56,10 @@ The Asus, updated to 0.1.22, boots cleanly (no text before the password).
 - LXQt picks the compositor from the first `session.conf` with a
   `compositor=` line: your own `~/.config/lxqt`, then `/etc/lxqt`, then
   `/etc/xdg/lxqt`, then `/usr/share/lxqt`.
+- A clock set in the past makes rpm skip every package signed "after"
+  it ("signature is not alive"), and an update made then saves that
+  incomplete package list. Fixed on the Asus by turning automatic time
+  on and updating. Doctor now checks the clock.
 - The Acer's podman (3.4.4) can't retry broken downloads; the skopeo
   container does (`--retry-times 10`), then `podman pull dir:…`.
 
@@ -69,7 +73,15 @@ The Asus, updated to 0.1.22, boots cleanly (no text before the password).
 3. Patch 42 (0.1.23): gaming add-on (KDE edition) gains Heroic (Epic,
    GOG, Amazon), Lutris and ProtonUp-Qt (Proton-GE), all from Flathub.
    Test: `nexus setup gaming` on a KDE machine, each one opens.
-4. Then `gamecheck`: before installing a game, says whether it runs on
+4. Patch 43: weekly build's apt step has timeouts (a dead Ubuntu mirror
+   hung it for an hour on 1 Oct).
+5. Patch 44 (0.1.24): `nexus` alone shows the machine (edition, image,
+   version, rollback, added packages); `doctor` gains Clock, Memory,
+   Storage (not the read-only `/`), Services, and drops the
+   developer-only "Model" line; `history` shows system versions and
+   marks applied changes as applied. Help text corrected.
+6. Then `install` in plain words (what, from where, size, Proceed?),
+   and `gamecheck` with a per-game privacy report: before installing a game, says whether it runs on
    Linux (ProtonDB) and whether its anti-cheat allows Linux
    (AreWeAntiCheatYet) — never bypasses anti-cheat.
 

@@ -15,6 +15,9 @@
 #include <vector>
 
 #include <unistd.h>
+#include <sys/statvfs.h>
+#include <ctime>
+#include <sstream>
 
 #include <nexus/component.hpp>
 #include <nexus/conflict_detector.hpp>
@@ -62,9 +65,10 @@ using nexus::system::ModelGap;
 
 void printUsage() {
     std::cout
-        << "nexus - read-only system inspection\n"
+        << "nexus - a system tool that explains itself\n"
         << "\n"
         << "Usage:\n"
+        << "    nexus                  this machine in a few lines\n"
         << "    nexus guide            how to work this system\n"
         << "    nexus scan\n"
         << "    nexus what-provides <capability>\n"
@@ -112,7 +116,8 @@ void printUsage() {
         << "    --sysfs <dir>     root for hardware detection\n"
         << "    --version, -V     print version and build commit\n"
         << "\n"
-        << "This command never modifies the system.\n";
+        << "Nothing is changed without --apply; every other command\n"
+        << "only reads and explains.\n";
 }
 
 const Component* find(
@@ -1679,17 +1684,454 @@ int commandRemove(
     return 1;
 }
 
+// ---------------------------------------------------------------------
+// What the machine is running, as rpm-ostree reports it.
+//
+// Read from `rpm-ostree status` (text, no root needed) rather than the
+// JSON form, which is not the same in every version. Used by `nexus`
+// with no arguments and by `nexus history`.
+struct Deployment {
+    bool booted = false;
+    std::string image;      // what it was installed from
+    std::string version;    // e.g. 44.20260930.0
+    std::string date;       // e.g. 2026-09-30T17:36:58Z
+    std::vector<std::string> layered;
+};
+
+std::vector<Deployment> parseDeployments(const std::string& text) {
+    std::vector<Deployment> out;
+    std::string key;
+    std::istringstream lines(text);
+    std::string line;
+
+    auto words = [](const std::string& s) {
+        std::vector<std::string> list;
+        std::istringstream in(s);
+        std::string word;
+        while (in >> word) {
+            if (word.size() >= 2 && word.front() == '\'' &&
+                word.back() == '\'') {
+                word = word.substr(1, word.size() - 2);
+            }
+            list.push_back(word);
+        }
+        return list;
+    };
+
+    while (std::getline(lines, line)) {
+        if (line.rfind("\xe2\x97\x8f ", 0) == 0 ||   // "● "
+            (line.size() > 2 && line[0] == ' ' && line[1] == ' ' &&
+             line[2] != ' ')) {
+            Deployment d;
+            d.booted = line.rfind("\xe2\x97\x8f", 0) == 0;
+            const auto start = line.find_first_not_of(" ", d.booted ? 4 : 2);
+            d.image = start == std::string::npos ? "" : line.substr(start);
+            out.push_back(std::move(d));
+            key.clear();
+            continue;
+        }
+
+        if (out.empty()) {
+            continue;
+        }
+
+        const auto first = line.find_first_not_of(' ');
+        if (first == std::string::npos || first < 4) {
+            continue;
+        }
+
+        const auto colon = line.find(": ", first);
+        const bool isKey =
+            colon != std::string::npos &&
+            line.substr(first, colon - first).find(' ') == std::string::npos;
+
+        Deployment& d = out.back();
+
+        if (isKey) {
+            key = line.substr(first, colon - first);
+            const std::string value = line.substr(colon + 2);
+
+            if (key == "Version") {
+                const auto paren = value.find(" (");
+                d.version = value.substr(0, paren);
+                if (paren != std::string::npos) {
+                    d.date = value.substr(paren + 2);
+                    if (!d.date.empty() && d.date.back() == ')') {
+                        d.date.pop_back();
+                    }
+                }
+            } else if (key == "LayeredPackages") {
+                for (const auto& w : words(value)) {
+                    d.layered.push_back(w);
+                }
+            }
+        } else if (key == "LayeredPackages") {
+            for (const auto& w : words(line)) {
+                d.layered.push_back(w);
+            }
+        }
+    }
+
+    return out;
+}
+
+std::vector<Deployment> readDeployments() {
+    if (!nexus::system::commandExists("rpm-ostree")) {
+        return {};
+    }
+    const auto status = nexus::system::runCommand(
+        "rpm-ostree status 2>/dev/null", false);
+    if (!status.ok) {
+        return {};
+    }
+    return parseDeployments(status.text);
+}
+
+std::string osReleaseValue(const std::string& name) {
+    std::ifstream in("/etc/os-release");
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.rfind(name + "=", 0) == 0) {
+            std::string value = line.substr(name.size() + 1);
+            if (value.size() >= 2 && value.front() == '"' &&
+                value.back() == '"') {
+                value = value.substr(1, value.size() - 2);
+            }
+            return value;
+        }
+    }
+    return {};
+}
+
+// "ostree-image-signed:docker://ghcr.io/x/nexus-core:minimal" ->
+// "ghcr.io/x/nexus-core:minimal, signed"
+std::string describeImage(const std::string& image) {
+    std::string shown = image;
+    bool signedImage = false;
+    if (shown.rfind("ostree-image-signed:", 0) == 0) {
+        signedImage = true;
+        shown = shown.substr(std::string("ostree-image-signed:").size());
+    } else if (shown.rfind("ostree-unverified-registry:", 0) == 0) {
+        shown = shown.substr(std::string("ostree-unverified-registry:").size());
+    }
+    if (shown.rfind("docker://", 0) == 0) {
+        shown = shown.substr(9);
+    }
+    return shown + (signedImage ? " (signed)" : " (not signature-checked)");
+}
+
+std::string dayOf(const std::string& iso) {
+    return iso.size() >= 10 ? iso.substr(0, 10) : iso;
+}
+
+// ---------------------------------------------------------------------
+// `nexus` with no arguments: the machine in a few lines.
+//
+// Every line is read from the machine; nothing that cannot be read is
+// shown as if it had been. Health is not guessed here -- doctor is
+// named for it.
+int commandSummary() {
+    const std::string pretty = osReleaseValue("PRETTY_NAME");
+    const std::string variant = osReleaseValue("VARIANT_ID");
+
+    std::cout << "Nexus " << NEXUS_VERSION;
+    if (!pretty.empty()) {
+        std::cout << "  -  " << pretty;
+    }
+    std::cout << "\n\n";
+
+    if (!variant.empty()) {
+        std::cout << "  Edition     " << variant << "\n";
+    }
+
+    const auto deployments = readDeployments();
+    const Deployment* booted = nullptr;
+    const Deployment* other = nullptr;
+
+    for (const auto& d : deployments) {
+        if (d.booted && booted == nullptr) {
+            booted = &d;
+        } else if (!d.booted && other == nullptr) {
+            other = &d;
+        }
+    }
+
+    if (booted != nullptr) {
+        std::cout << "  Running     " << describeImage(booted->image) << "\n";
+        if (!booted->version.empty()) {
+            std::cout << "  Built       " << booted->version;
+            if (!booted->date.empty()) {
+                std::cout << ", " << dayOf(booted->date);
+            }
+            std::cout << "\n";
+        }
+        if (other != nullptr) {
+            std::cout << "  Rollback    ready: "
+                      << (other->version.empty() ? "previous version"
+                                                 : other->version)
+                      << " (pick it in the boot menu if an update"
+                         " misbehaves)\n";
+        } else {
+            std::cout << "  Rollback    none yet (appears after the"
+                         " first update)\n";
+        }
+        if (!booted->layered.empty()) {
+            std::cout << "  Added       " << booted->layered.size()
+                      << " package(s) on top of the image\n";
+        }
+        std::cout << "  Updates     weekly; sudo rpm-ostree upgrade"
+                     " fetches the newest now\n";
+    } else {
+        std::cout << "  (Not an image-based system, or rpm-ostree did"
+                     " not answer.)\n";
+    }
+
+    std::cout
+        << "\n"
+        << "  nexus doctor    is everything healthy?\n"
+        << "  nexus setup     add-ons for this machine\n"
+        << "  nexus history   what changed, and when\n"
+        << "  nexus --help    everything else\n";
+
+    return 0;
+}
+
+// ---------------------------------------------------------------------
+// Machine checks for doctor that need no package database.
+
+// The clock. A machine whose clock is behind treats every package
+// signed after that date as signed "in the future", and rpm silently
+// skips it: on the Asus (1 October), with the clock days behind,
+// Firefox and hunspell vanished from the package list, doctor reported
+// four broken dependencies, and `why firefox` said "unknown".
+nexus::Finding checkClock() {
+    nexus::Finding f;
+    f.check = "Clock";
+
+    // Two signs. rpm's own complaint -- "signature is not alive ...
+    // Not live until <date>" -- is the one that shows: the skipped
+    // packages are exactly the newer ones, so the build dates of the
+    // packages it does show can all look fine. The newest build date
+    // is the second sign, for an rpm that skips without saying so.
+    long newest = 0;
+    bool notAlive = false;
+    const auto built = nexus::system::runCommand(
+        "rpm -qa --qf '%{BUILDTIME}\\n' 2>&1", false);
+    {
+        std::istringstream in(built.text);
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.find("not alive") != std::string::npos ||
+                line.find("Not live until") != std::string::npos) {
+                notAlive = true;
+                continue;
+            }
+            try {
+                newest = std::max(newest, std::stol(line));
+            } catch (...) {
+            }
+        }
+    }
+
+    const long now = static_cast<long>(std::time(nullptr));
+
+    std::string ntp, synced, localRtc;
+    if (nexus::system::commandExists("timedatectl")) {
+        const auto show = nexus::system::runCommand(
+            "timedatectl show -p NTP -p NTPSynchronized -p LocalRTC "
+            "2>/dev/null", false);
+        std::istringstream in(show.text);
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.rfind("NTP=", 0) == 0) ntp = line.substr(4);
+            if (line.rfind("NTPSynchronized=", 0) == 0) synced = line.substr(16);
+            if (line.rfind("LocalRTC=", 0) == 0) localRtc = line.substr(9);
+        }
+    }
+
+    if (notAlive || (newest > 0 && now + 3600 < newest)) {
+        f.health = nexus::Health::Problem;
+        f.detail = "The clock is behind: some installed packages were"
+                   " built after the date it shows, and the package"
+                   " database skips them.";
+        f.examples.push_back("this makes installed programs look missing"
+                             " and requirements look broken");
+        f.total = 1;
+        f.suggestion = "sudo timedatectl set-ntp true";
+    } else if (ntp == "no") {
+        f.health = nexus::Health::Warning;
+        f.detail = "Automatic time is off; the clock is only as right as"
+                   " whoever last set it.";
+        f.suggestion = "sudo timedatectl set-ntp true";
+    } else if (localRtc == "yes") {
+        f.health = nexus::Health::Warning;
+        f.detail = "The hardware clock is kept in local time, as Windows"
+                   " does. Fine with Windows on the same machine;"
+                   " otherwise it shifts by an hour at daylight-saving"
+                   " changes.";
+        f.suggestion = "sudo timedatectl set-local-rtc 0   (no Windows"
+                       " on this machine)";
+    } else if (ntp == "yes" && synced == "no") {
+        f.health = nexus::Health::Ok;
+        f.detail = "Automatic time is on, not synchronised yet (offline?).";
+    } else if (ntp == "yes") {
+        f.health = nexus::Health::Ok;
+        f.detail = "Right, and kept right automatically.";
+    } else {
+        f.health = nexus::Health::Unknown;
+        f.detail = "Could not be checked.";
+    }
+    return f;
+}
+
+nexus::Finding checkMemory() {
+    nexus::Finding f;
+    f.check = "Memory";
+    std::ifstream in("/proc/meminfo");
+    std::string key;
+    long value = 0;
+    std::string unit;
+    long total = 0, available = -1;
+    while (in >> key >> value >> unit) {
+        if (key == "MemTotal:") total = value;
+        if (key == "MemAvailable:") available = value;
+    }
+    if (total <= 0 || available < 0) {
+        f.health = nexus::Health::Unknown;
+        f.detail = "Could not be read.";
+        return f;
+    }
+    const long usedMb = (total - available) / 1024;
+    const long totalMb = total / 1024;
+    const long percentFree = available * 100 / total;
+    f.detail = std::to_string(usedMb) + " MB in use of " +
+               std::to_string(totalMb) + " MB (" +
+               std::to_string(percentFree) + "% free).";
+    if (percentFree < 5) {
+        f.health = nexus::Health::Problem;
+        f.detail += " Almost none left; programs will be slow or closed.";
+        f.suggestion = "close something, or: nexus services";
+    } else if (percentFree < 15) {
+        f.health = nexus::Health::Warning;
+        f.detail += " Running low.";
+    } else {
+        f.health = nexus::Health::Ok;
+    }
+    return f;
+}
+
+// Storage. Not "/": on an image-based system that is the read-only
+// image itself and always shows 100% full. Your files and everything
+// added live under /var; old system versions under /boot.
+nexus::Finding checkStorage() {
+    nexus::Finding f;
+    f.check = "Storage";
+
+    struct Place { const char* path; const char* name; };
+    const Place places[] = {{"/var", "your files and apps"},
+                            {"/boot", "system versions"}};
+
+    nexus::Health worst = nexus::Health::Ok;
+    std::string details;
+    std::set<unsigned long> seen;
+
+    for (const auto& p : places) {
+        struct statvfs st{};
+        if (::statvfs(p.path, &st) != 0 || st.f_blocks == 0) {
+            continue;
+        }
+        if (!seen.insert(st.f_fsid).second) {
+            continue;
+        }
+        const double size = double(st.f_blocks) * st.f_frsize;
+        const double free = double(st.f_bavail) * st.f_frsize;
+        const int pct = int(free * 100.0 / size);
+        char buf[160];
+        std::snprintf(buf, sizeof buf, "%s: %.1f GB free of %.1f GB",
+                      p.name, free / 1e9, size / 1e9);
+        if (!details.empty()) details += "; ";
+        details += buf;
+        if (pct < 3 || free < 1e9) {
+            worst = nexus::Health::Problem;
+        } else if ((pct < 10 || free < 5e9) && worst == nexus::Health::Ok) {
+            worst = nexus::Health::Warning;
+        }
+    }
+
+    if (details.empty()) {
+        f.health = nexus::Health::Unknown;
+        f.detail = "Could not be read.";
+        return f;
+    }
+    f.health = worst;
+    f.detail = details + ".";
+    if (worst != nexus::Health::Ok) {
+        f.suggestion = "nexus largest";
+    }
+    return f;
+}
+
+nexus::Finding checkServices() {
+    nexus::Finding f;
+    f.check = "Services";
+    auto result = nexus::system::readServices();
+    if (!result.error.empty() || !result.systemdRunning) {
+        f.health = nexus::Health::Unknown;
+        f.detail = "Could not be read.";
+        return f;
+    }
+    if (result.failedCount == 0) {
+        f.health = nexus::Health::Ok;
+        f.detail = std::to_string(result.enabled) +
+                   " start at boot; none has failed.";
+        return f;
+    }
+    f.health = nexus::Health::Warning;
+    f.detail = std::to_string(result.failedCount) + " service(s) failed.";
+    for (const auto& s : result.services) {
+        if (s.failed && f.examples.size() < 5) {
+            f.examples.push_back(s.name);
+        }
+    }
+    f.total = result.failedCount;
+    f.suggestion = "systemctl --failed";
+    return f;
+}
+
 int commandHistory(const std::string& path) {
     // Every log, not the one belonging to whoever asked. Changes
     // are made under sudo and read back without it, so a machine's
     // history lives in two files and belongs to neither.
     const auto records = nexus::system::readAllTransactions();
 
+    // The system itself first: which version is running, and which
+    // one the boot menu can go back to. Image updates and switching
+    // edition are the biggest changes a machine sees, and they were
+    // missing from here entirely.
+    const auto deployments = readDeployments();
+    std::set<std::string> layeredNow;
+
+    if (!deployments.empty()) {
+        std::cout << "System versions\n";
+        for (const auto& d : deployments) {
+            std::cout << "  " << (d.booted ? "now      " : "previous ")
+                      << (d.date.empty() ? std::string("?") : dayOf(d.date))
+                      << "  " << (d.version.empty() ? "?" : d.version)
+                      << "  " << describeImage(d.image) << "\n";
+            if (d.booted) {
+                layeredNow.insert(d.layered.begin(), d.layered.end());
+            }
+        }
+        std::cout << "\n";
+    }
+
     if (records.empty()) {
         std::cout
             << "No changes recorded in " << path << ".\n";
         return 0;
     }
+
+    std::cout << "Changes made with nexus\n";
 
     for (const auto& record : records) {
         std::cout
@@ -1700,15 +2142,25 @@ int commandHistory(const std::string& path) {
             std::cout << " -> " << record.resolved;
         }
 
+        // "staged" means waiting for a reboot. Once the machine has
+        // rebooted into a version that carries it, it is applied --
+        // the Asus still said "staged" five days and three updates on.
+        const bool applied =
+            record.outcome == "staged" &&
+            (layeredNow.count(record.request) > 0 ||
+             layeredNow.count(record.resolved) > 0);
+
         std::cout
             << "  ["
-            << (record.unfinished ? "interrupted" : record.outcome)
+            << (record.unfinished ? "interrupted"
+                : applied        ? "applied"
+                                 : record.outcome)
             << "]\n";
 
         if (!record.packages.empty()) {
             std::string verb = "attempted ";
 
-            if (record.succeeded) {
+            if (record.succeeded || applied) {
                 verb =
                     record.kind ==
                         nexus::system::TransactionKind::Remove
@@ -1779,6 +2231,13 @@ int commandDoctor(
     }
 
     findings.push_back(std::move(build));
+
+    // The clock before the package database: when it is behind, the
+    // database is read with packages missing, and everything below
+    // that depends on it is wrong in ways that look like real faults.
+    const nexus::Finding clock = checkClock();
+    const bool clockBehind = clock.health == nexus::Health::Problem;
+    findings.push_back(clock);
 
     // Whether the system can be examined at all: every finding
     // below this one is worthless if it failed.
@@ -1900,6 +2359,10 @@ int commandDoctor(
 
     findings.push_back(std::move(locked));
 
+    findings.push_back(checkMemory());
+    findings.push_back(checkStorage());
+    findings.push_back(checkServices());
+
     if (havePackages && !source.incomplete.empty()) {
         // Not judged. Every "nothing installed satisfies this" would be
         // a claim about packages this read never saw -- 305 of them,
@@ -1920,7 +2383,16 @@ int commandDoctor(
             buildDetector(),
             protectedIds);
 
-        for (const nexus::Finding& finding : detail.findings) {
+        for (nexus::Finding finding : detail.findings) {
+            // With the clock behind, "nothing installed satisfies this"
+            // is the database skipping packages, not the machine
+            // missing them (the Asus, 1 October). Said as what it is.
+            if (clockBehind && finding.health == nexus::Health::Problem) {
+                finding.health = nexus::Health::Unknown;
+                finding.detail =
+                    "Not judged while the clock is behind (see Clock): " +
+                    finding.detail;
+            }
             findings.push_back(finding);
         }
     }
@@ -2050,28 +2522,11 @@ int commandDoctor(
         }
     }
 
-    if (!source.gaps.empty()) {
-        nexus::Finding gaps;
-
-        gaps.check = "Model";
-        gaps.health = nexus::Health::Warning;
-
-        std::size_t total = 0;
-
-        for (const auto& [kind, count] : source.gaps) {
-            total += count;
-            gaps.examples.push_back(
-                kind + " (" + std::to_string(count) + ")");
-        }
-
-        gaps.total = total;
-        gaps.detail =
-            std::to_string(total) +
-            " thing(s) in the metadata the model does not represent.";
-        gaps.suggestion = "nexus gaps";
-
-        findings.push_back(std::move(gaps));
-    }
+    // What the package metadata says that Nexus does not model
+    // (boolean dependencies and the like) used to be a warning here.
+    // It is a note about Nexus, not about the machine, and it made a
+    // healthy machine read "Usable, with things worth looking at".
+    // `nexus gaps` still lists it.
 
     nexus::Health worst = nexus::Health::Ok;
 
@@ -4110,6 +4565,10 @@ int main(int argc, char** argv) {
         }
 
         positional.push_back(arguments[index]);
+    }
+
+    if (positional.empty() && arguments.empty()) {
+        return commandSummary();
     }
 
     if (positional.empty() ||
