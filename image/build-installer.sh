@@ -69,34 +69,66 @@ fi
 
 # An image from a registry is fetched fresh every time. Using whatever
 # copy was already here built a 0.1.18 ISO on 29 September, a day after
-# 0.1.21 was published. podman 3.4 cannot resume a download that breaks
-# off, so it is tried a few times, and if the connection keeps failing
-# the one that can (skopeo, as a container) is named.
-# PULL=no uses the copy already here.
+# 0.1.21 was published.
+#
+# podman first. Old podman (3.4, on the Acer) cannot resume a download
+# that breaks off, and on a connection that drops long downloads it
+# never finishes (30 September: three tries, three failures). Then
+# skopeo, which retries each piece on its own: the system's skopeo if
+# it has --retry-times, otherwise skopeo as a container -- itself a
+# small download, tried until it arrives. skopeo writes a plain folder,
+# which podman loads and names. PULL=no uses the copy already here.
+fetch_with_skopeo() {
+    local dir
+    dir="$(mktemp -d /var/tmp/nexus-img.XXXXXX)"
+
+    if command -v skopeo > /dev/null 2>&1 \
+            && skopeo copy --help 2>&1 | grep -q -- '--retry-times'; then
+        echo "Fetching with skopeo (retries each piece)."
+        skopeo copy --retry-times 10 "docker://${IMAGE}" "dir:${dir}/img" || {
+            rm -rf "${dir}"; return 1; }
+    else
+        echo "Fetching with skopeo in a container (retries each piece)."
+        local got=no
+        for _ in 1 2 3 4 5 6 7 8; do
+            if podman pull quay.io/skopeo/stable:latest; then
+                got=yes
+                break
+            fi
+            sudo rm -rf /var/tmp/storage* 2> /dev/null || true
+            sleep 5
+        done
+        [ "${got}" = yes ] || { rm -rf "${dir}"; return 1; }
+        podman run --rm -v "${dir}:/out" quay.io/skopeo/stable:latest \
+            copy --retry-times 10 "docker://${IMAGE}" dir:/out/img || {
+            rm -rf "${dir}"; return 1; }
+    fi
+
+    # Only the folder's own name is removed afterwards. (podman untag
+    # with no name removes every name, and an image with no name is
+    # deleted by the next prune -- which is how 0.1.22 was lost once.)
+    local id status=0
+    id="$(podman pull -q "dir:${dir}/img")" \
+        && podman tag "${id}" "${IMAGE}" || status=1
+    podman untag "${id}" "localhost${dir}/img" > /dev/null 2>&1 || true
+    rm -rf "${dir}"
+    return "${status}"
+}
+
 if [ "${PULL:-yes}" != no ] && [ "${IMAGE#localhost/}" = "${IMAGE}" ]; then
     echo "Fetching the latest ${IMAGE}."
-    pulled=no
-    for attempt in 1 2 3; do
-        if podman pull "${IMAGE}"; then
-            pulled=yes
-            break
-        fi
-        echo "Download broke off (attempt ${attempt} of 3)." >&2
+    if ! podman pull "${IMAGE}"; then
+        echo "podman's download broke off; switching to skopeo." >&2
         sudo rm -rf /var/tmp/storage* 2> /dev/null || true
-        sleep 5
-    done
-    if [ "${pulled}" = no ]; then
-        echo >&2
-        echo "Could not fetch ${IMAGE}. The copy here, if any, may be old," >&2
-        echo "so nothing was built. skopeo retries each piece; fetch with:" >&2
-        echo "    mkdir -p /var/tmp/nexus-img" >&2
-        echo "    podman run --rm -v /var/tmp/nexus-img:/out quay.io/skopeo/stable:latest \\" >&2
-        echo "        copy --retry-times 10 docker://${IMAGE} dir:/out/img" >&2
-        echo "    id=\$(podman pull -q dir:/var/tmp/nexus-img/img) && podman tag \"\$id\" ${IMAGE}" >&2
-        echo "    rm -rf /var/tmp/nexus-img" >&2
-        echo "then run this again with PULL=no in front." >&2
-        exit 1
+        if ! fetch_with_skopeo; then
+            echo >&2
+            echo "Could not fetch ${IMAGE}, even with retries. Nothing was" >&2
+            echo "built: the copy here, if any, may be old. Try again later," >&2
+            echo "or run this with PULL=no to use the copy here anyway." >&2
+            exit 1
+        fi
     fi
+    echo "Image: $(podman run --rm "${IMAGE}" nexus --version 2> /dev/null || echo 'nexus version unknown')"
 fi
 
 if ! podman image exists "${IMAGE}"; then

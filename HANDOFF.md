@@ -20,7 +20,7 @@ and `CAPABILITIES.md`.
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.22** (patches 1–40); weekly signed builds from GitHub Actions.
+**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.22** (patches 1–41); weekly signed builds from GitHub Actions.
 Signed updates enforced on the Asus. **513 tests** (510 pass, 3 skipped).
 
 ---
@@ -179,7 +179,18 @@ in the future (installer currently takes a whole disk). Proposal:
   commands; PULL=no uses the local copy). The Acer's podman 3.4.4
   can't resume broken downloads; skopeo `--retry-times 10` to `dir:`,
   then `podman pull dir:` + `podman tag`, works.
-- **To test:** fresh minimal ISO in VM (2 GB): desktop not black,
+- **1 Oct:** fresh VM install of 0.1.22 (ISO sha256 6fff8598…): labwc
+  by itself, Alt+Shift → č. **Minimal edition ready.** Asus on 0.1.22
+  boots cleanly. Note: `vconsole.keymap=us-acentos` on that install
+  (English US + Serbian Latin) — dead keys at the LUKS prompt; check.
+  VM tip: `rm -f /tmp/nexus-test.qcow2 && qemu-img create` wipes the
+  installed VM; boot an installed VM without `-cdrom … -boot d`.
+- **Patch 41 (no version change, host script only):** build-installer
+  tries podman, then skopeo (system skopeo with --retry-times, else the
+  skopeo container, fetched with retries), loads the dir and tags it
+  (untag only the dir's own name — bare `podman untag` drops every
+  name and the next prune deletes the image). Prints nexus --version.
+- **Earlier test note:** fresh minimal ISO in VM (2 GB): desktop not black,
   mouse, `free -m` < 600 MB; install with Serbian keyboard → Alt+Shift
   works on the desktop; wallpaper appears; then the Asus; then website
   second download.

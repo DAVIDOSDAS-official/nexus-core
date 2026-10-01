@@ -1,7 +1,7 @@
-# Nexus-CORE — where things stand (30 September 2026)
+# Nexus-CORE — where things stand (1 October 2026)
 
 Nexus-CORE is a Fedora 44 bootc image plus the Nexus C++ tool (`nexus`).
-Current version: **0.1.22** (patches 1–40). 513 tests pass.
+Current version: **0.1.22** (patches 1–41). 513 tests pass.
 
 ## Released
 
@@ -19,7 +19,7 @@ Current version: **0.1.22** (patches 1–40). 513 tests pass.
 | Edition | Desktop | State |
 |---|---|---|
 | `kde` | KDE Plasma | Released (Preview 1) |
-| `minimal` | LXQt: login screen on Miriway, desktop on labwc | Almost ready — last fix awaiting a test |
+| `minimal` | LXQt: login screen on Miriway, desktop on labwc | **Ready** — tested 1 Oct, awaiting upload |
 | `server`, `tiling` | — | Parked, later |
 
 ## Add-ons (chosen at first boot, or `nexus setup <names>`)
@@ -36,11 +36,16 @@ battery, wallpaper and keyboard switching (Alt+Shift, us/rs Latin) all work.
 - Works: installer, first boot, add-ons (`media, school`: 9 of 9),
   login screen, desktop, wallpaper, keyboard file written correctly.
 - RAM after login: 621 MB used (target under 600 — close).
-- **Bug (fixed in 0.1.22, to be re-tested):** a new user's desktop ran
-  on Miriway instead of labwc, so keyboard layouts didn't switch.
-  Cause, confirmed: Fedora's `/etc/lxqt/session.conf` says Miriway and
-  LXQt reads it before our `/etc/xdg/lxqt/session.conf`. Patch 40 sets
-  labwc in both.
+- Bug found: a new user's desktop ran on Miriway instead of labwc, so
+  keyboard layouts didn't switch. Cause: Fedora's
+  `/etc/lxqt/session.conf` says Miriway and LXQt reads it before
+  `/etc/xdg/lxqt/session.conf`. Fixed in 0.1.22 (patch 40).
+
+**Fresh install in a VM, 0.1.22 (1 October):** labwc starts by itself,
+Alt+Shift switches us/rs Latin (č). Release candidate ISO:
+`output/bootiso/install.iso`, sha256
+`6fff85984b3c1d92fd2fe8c5bf23502c8e40efe1675feb08decc72c05a41e7dd`.
+The Asus, updated to 0.1.22, boots cleanly (no text before the password).
 
 ## What was learned this week
 
@@ -56,16 +61,21 @@ battery, wallpaper and keyboard switching (Alt+Shift, us/rs Latin) all work.
 
 ## Next steps
 
-1. Apply patch 40 (0.1.22), run the workflow, build a fresh minimal ISO
-   (build-installer now downloads the image itself).
-2. Fresh VM install again: `ps` must show labwc, and Alt+Shift must
-   switch layouts.
-3. Minimal ISO on archive.org, second download button on the website.
+1. Upload the minimal ISO to archive.org as
+   `nexus-core-minimal-preview1.iso`; add the second download button on
+   the website ("Minimal — for older computers") with its sha256.
+2. Patch 41 (done): the ISO build falls back to skopeo by itself when
+   podman's download breaks off.
 
 ## Later
 
 - Installer: don't pre-select any disk when there are several.
 - Give the ISO a Nexus name instead of "Fedora-S-dvd-x86_64-44".
+- Installer start shows a long `[ OK ]` list (Fedora's installer):
+  hide it with `quiet` in the ISO's boot entries (two grub.cfg copies,
+  one inside the EFI image).
+- Check why the installer set the disk-password keyboard to
+  `us-acentos` (dead keys) for English (US) + Serbian (Latin).
 - Trim minimal's RAM under 600 MB.
 - Security review, server and tiling editions.
 - `gamecheck` (AreWeAntiCheatYet + ProtonDB, never bypass anti-cheat).
