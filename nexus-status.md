@@ -1,7 +1,7 @@
 # Nexus-CORE — where things stand (2 October 2026)
 
 Nexus-CORE is a Fedora 44 bootc image plus the Nexus C++ tool (`nexus`).
-Current version: **0.1.27** (patches 1–47). 525 tests pass.
+Current version: **0.1.28** (patches 1–48). 525 tests pass.
 
 ## Released
 
@@ -89,8 +89,11 @@ The Asus, updated to 0.1.22, boots cleanly (no text before the password).
    search, or the anti-cheat list), ProtonDB tier, AreWeAntiCheatYet
    status with notes, a verdict, and what the Steam Flatpak can see here
    (files, network, microphone, devices, location). Works in every
-   edition; reports only, never touches anti-cheat. Verified on the Asus
-   with real network: pending.
+   edition; reports only, never touches anti-cheat. **Verified on the
+   Asus, 2 Oct** (Elden Ring Gold/EAC supported, CS2 native, Fortnite
+   denied). Patch 48 (0.1.28): name for a Steam id, only related
+   "Also on Steam" suggestions, Heroic's sandbox for non-Steam games,
+   no sandbox section when a game cannot run.
 8. Later for gamecheck: `--tighten` (narrow the Steam sandbox).
 
 ## Later

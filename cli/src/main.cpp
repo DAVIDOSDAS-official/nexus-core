@@ -2367,8 +2367,22 @@ int commandGamecheck(const std::vector<std::string>& words) {
         if (!pick.id.empty()) {
             steamId = pick.id;
             name = pick.name;
+            // Only names that contain what was typed: the store's
+            // search also answers with things like "Pure Farming 2018 -
+            // Gomselmash Palesse CS-200" for "counter-strike 2".
+            auto lowered = [](std::string t) {
+                for (char& c : t) {
+                    c = static_cast<char>(
+                        std::tolower(static_cast<unsigned char>(c)));
+                }
+                return t;
+            };
+            const std::string want = lowered(typed);
             for (const auto& m : matches) {
-                if (m.id != pick.id && others.size() < 4) others.push_back(m);
+                if (m.id != pick.id && others.size() < 4 &&
+                    lowered(m.name).find(want) != std::string::npos) {
+                    others.push_back(m);
+                }
             }
         }
     }
@@ -2382,6 +2396,10 @@ int commandGamecheck(const std::vector<std::string>& words) {
         // list knows the game, often with its Steam id.
         name = antiCheat.name;
         steamId = antiCheat.steamId;
+    } else if (name == steamId && antiCheat.found) {
+        // Asked by number: the list knows its name ("1245620" read
+        // "1245620  (Steam 1245620)" on the Asus, 2 October).
+        name = antiCheat.name;
     }
 
     nexus::system::ProtonSummary proton;
@@ -2456,27 +2474,45 @@ int commandGamecheck(const std::vector<std::string>& words) {
     }
     std::cout << "  Verdict         " << verdict << "\n";
 
-    // What it can see: the Steam Flatpak's real permissions here.
-    std::cout << "\n  What Steam can see on this machine\n";
-    const auto perms = nexus::system::runCommand(
-        "flatpak info --show-permissions com.valvesoftware.Steam "
-        "2>/dev/null", false);
-    if (!perms.ok || perms.text.find("[Context]") == std::string::npos) {
-        std::cout << "    Steam is not installed here, so there is nothing"
-                     " to report.\n";
-        if (osReleaseValue("VARIANT_ID") == "minimal") {
-            std::cout << "    (The minimal edition has no gaming add-on;"
-                         " the KDE edition does.)\n";
-        } else {
-            std::cout << "    To install it: sudo nexus setup gaming"
-                         " --apply\n";
-        }
+    // What it can see: the real permissions of the launcher it would
+    // run under. Skipped when it will not run at all, and not shown as
+    // Steam's when the game is not a Steam game (Fortnite showed
+    // "What Steam can see" on the Asus, 2 October).
+    if (antiCheat.found && antiCheat.status == "Denied") {
+        std::cout << "\n  Nothing to check on this machine: it will not"
+                     " run here.\n";
     } else {
-        for (const auto& [what, answer] :
-             nexus::system::describeSandbox(perms.text)) {
-            std::string label = what;
-            while (label.size() < 14) label += ' ';
-            std::cout << "    " << label << answer << "\n";
+        const bool steamGame = !steamId.empty();
+        const std::string app = steamGame ? "com.valvesoftware.Steam"
+                                          : "com.heroicgameslauncher.hgl";
+        const std::string launcher = steamGame ? "Steam" : "Heroic";
+
+        if (!steamGame) {
+            std::cout << "\n  Not a Steam game. Epic and GOG games run"
+                         " through Heroic (gaming add-on).\n";
+        }
+        std::cout << "\n  What " << launcher << " can see on this machine\n";
+        const auto perms = nexus::system::runCommand(
+            "flatpak info --show-permissions " + app + " 2>/dev/null",
+            false);
+        if (!perms.ok ||
+            perms.text.find("[Context]") == std::string::npos) {
+            std::cout << "    " << launcher << " is not installed here, so"
+                         " there is nothing to report.\n";
+            if (osReleaseValue("VARIANT_ID") == "minimal") {
+                std::cout << "    (The minimal edition has no gaming"
+                             " add-on; the KDE edition does.)\n";
+            } else {
+                std::cout << "    To install it: sudo nexus setup gaming"
+                             " --apply\n";
+            }
+        } else {
+            for (const auto& [what, answer] :
+                 nexus::system::describeSandbox(perms.text)) {
+                std::string label = what;
+                while (label.size() < 14) label += ' ';
+                std::cout << "    " << label << answer << "\n";
+            }
         }
     }
 

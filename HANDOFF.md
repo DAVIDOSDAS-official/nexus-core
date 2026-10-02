@@ -20,7 +20,7 @@ and `CAPABILITIES.md`.
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.27** (patches 1–47); weekly signed builds from GitHub Actions.
+**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.28** (patches 1–48); weekly signed builds from GitHub Actions.
 Signed updates enforced on the Asus. **513 tests** (510 pass, 3 skipped).
 
 ---
@@ -233,6 +233,11 @@ in the future (installer currently takes a whole disk). Proposal:
   raw.githubusercontent.com AreWeAntiCheatYet games.json (cached a day in
   ~/.cache/nexus). Sandbox here could reach GitHub only; Steam and
   ProtonDB answers unverified until tested on the Asus.
+- **2 Oct, gamecheck on the Asus:** Steam search, ProtonDB and
+  AreWeAntiCheatYet all answer. **Patch 48 (0.1.28):** numeric id takes
+  the anti-cheat list's name; suggestions only if their name contains
+  what was typed; non-Steam games show Heroic's Flatpak sandbox;
+  Denied games skip the sandbox section.
 - **Earlier test note:** fresh minimal ISO in VM (2 GB): desktop not black,
   mouse, `free -m` < 600 MB; install with Serbian keyboard → Alt+Shift
   works on the desktop; wallpaper appears; then the Asus; then website
