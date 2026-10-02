@@ -255,9 +255,12 @@ if [ "${TYPE}" = "anaconda-iso" ]; then
     # The boot text. Every menu entry already has `quiet`, and the
     # installer still scrolled two screens of systemd's "[ OK ]" lines
     # before its first window (filmed in the VM, 1 October): that list
-    # is systemd's, not the kernel's. show_status=auto hides it and
-    # still prints a line when something hangs or fails, so a slow
-    # start does not look frozen. Not on the troubleshooting entries
+    # is systemd's, not the kernel's. show_status=error hides it and
+    # still prints a line when something fails. (Not "auto": auto turns
+    # the whole list back on once boot is slow, and the installer always
+    # is -- it loads its image from the disc first. The 0.1.28 test ISO
+    # with "auto" showed the full list in the VM, 2 October.)
+    # Not on the troubleshooting entries
     # (basic graphics, rescue): there the text is the point.
     #
     # Three copies of the menu: /EFI/BOOT/grub.cfg and
@@ -271,7 +274,7 @@ if [ "${TYPE}" = "anaconda-iso" ]; then
     # on UEFI -- found testing this on 2 October. Its menu is edited in
     # place in the finished ISO instead (mtools at the file's offset),
     # so not one byte of the boot setup moves. See below.
-    QUIET="systemd.show_status=auto rd.systemd.show_status=auto"
+    QUIET="systemd.show_status=error rd.systemd.show_status=error"
     quiet_menu() {
         sed -i -E "/^[[:space:]]*linux .*inst\.stage2=/{/nomodeset|inst\.rescue|show_status/!s/\$/ ${QUIET}/}" "$1"
     }
@@ -311,7 +314,7 @@ if [ "${TYPE}" = "anaconda-iso" ]; then
             quiet_menu "${WORK}/efi-inner.cfg"
             if mcopy -o -i "${efi}" "${WORK}/efi-inner.cfg" ::/EFI/BOOT/grub.cfg \
                     && mtype -i "${efi}" ::/EFI/BOOT/grub.cfg \
-                       | grep -q 'show_status=auto'; then
+                       | grep -q 'show_status=error'; then
                 quieted=$(( quieted + 1 ))
             fi
         fi
