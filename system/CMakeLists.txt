@@ -23,6 +23,8 @@ add_library(nexus_system
     src/portage_source.cpp
     src/rpm_version.cpp
     src/xml.cpp
+    src/json.cpp
+    src/gamecheck.cpp
     src/rpm_source.cpp
     src/rpm_repo.cpp
     src/rpm_database.cpp

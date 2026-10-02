@@ -20,7 +20,7 @@ and `CAPABILITIES.md`.
 — **public**. The real name, `nexus-core`, has never been pushed; its
 first push is the actual release.
 
-**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.26** (patches 1–46); weekly signed builds from GitHub Actions.
+**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.27** (patches 1–47); weekly signed builds from GitHub Actions.
 Signed updates enforced on the Asus. **513 tests** (510 pass, 3 skipped).
 
 ---
@@ -223,6 +223,16 @@ in the future (installer currently takes a whole disk). Proposal:
   "Checked" line (lists under --explain), Proceed? [Y/n] (Enter = yes).
   Setup passes an empty profile dir → no dnf query/add-on lines per item.
   Tested on Ubuntu metadata (vlc: 36 packages, 7 MB); dnf path untested.
+- **Patch 47 (0.1.27):** gamecheck. New system/src/json.cpp (small
+  JSON reader, depth-limited) and gamecheck.cpp (parseSteamSearch,
+  pickSteamMatch, parseProtonSummary, findAntiCheat by storeIds.steam
+  then name, gameVerdict — Denied/Broken/Planned override the tier —,
+  describeSandbox from `flatpak info --show-permissions`, urlEncode);
+  12 new tests (525). CLI runs before the package read. Sources: Steam
+  storesearch API, protondb.com/api/v1/reports/summaries/<id>.json,
+  raw.githubusercontent.com AreWeAntiCheatYet games.json (cached a day in
+  ~/.cache/nexus). Sandbox here could reach GitHub only; Steam and
+  ProtonDB answers unverified until tested on the Asus.
 - **Earlier test note:** fresh minimal ISO in VM (2 GB): desktop not black,
   mouse, `free -m` < 600 MB; install with Serbian keyboard → Alt+Shift
   works on the desktop; wallpaper appears; then the Asus; then website

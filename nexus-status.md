@@ -1,7 +1,7 @@
-# Nexus-CORE — where things stand (1 October 2026)
+# Nexus-CORE — where things stand (2 October 2026)
 
 Nexus-CORE is a Fedora 44 bootc image plus the Nexus C++ tool (`nexus`).
-Current version: **0.1.26** (patches 1–46). 513 tests pass.
+Current version: **0.1.27** (patches 1–47). 525 tests pass.
 
 ## Released
 
@@ -85,9 +85,13 @@ The Asus, updated to 0.1.22, boots cleanly (no text before the password).
    and disk size, which add-on includes it (and whether that add-on uses
    the Flathub version), restart needed, dnf's check in one line
    (`--explain` for the lists), "Proceed? [Y/n]".
-7. Then `gamecheck` with a per-game privacy report: before installing a game, says whether it runs on
-   Linux (ProtonDB) and whether its anti-cheat allows Linux
-   (AreWeAntiCheatYet) — never bypasses anti-cheat.
+7. Patch 47 (0.1.27): `nexus gamecheck <game>` — Steam id (store
+   search, or the anti-cheat list), ProtonDB tier, AreWeAntiCheatYet
+   status with notes, a verdict, and what the Steam Flatpak can see here
+   (files, network, microphone, devices, location). Works in every
+   edition; reports only, never touches anti-cheat. Verified on the Asus
+   with real network: pending.
+8. Later for gamecheck: `--tighten` (narrow the Steam sandbox).
 
 ## Later
 
@@ -100,7 +104,6 @@ The Asus, updated to 0.1.22, boots cleanly (no text before the password).
   `us-acentos` (dead keys) for English (US) + Serbian (Latin).
 - Trim minimal's RAM under 600 MB.
 - Security review, server and tiling editions.
-- `gamecheck` (AreWeAntiCheatYet + ProtonDB, never bypass anti-cheat).
 - First big update: graphical Nexus app (Qt Quick), the minimalism look,
   the showcase tour.
 - NVIDIA: needs an NVIDIA machine to test on — none available, so it

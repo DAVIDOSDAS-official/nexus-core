@@ -56,6 +56,9 @@
 #include <nexus/system/profile_file.hpp>
 #include <nexus/system/dpkg_source.hpp>
 #include <nexus/system/version.hpp>
+#include <nexus/system/gamecheck.hpp>
+#include <nexus/system/json.hpp>
+#include <chrono>
 
 namespace {
 
@@ -71,6 +74,7 @@ void printUsage() {
         << "Usage:\n"
         << "    nexus                  this machine in a few lines\n"
         << "    nexus guide            how to work this system\n"
+        << "    nexus gamecheck <game>  will it run here, and what it can see\n"
         << "    nexus scan\n"
         << "    nexus what-provides <capability>\n"
         << "    nexus why <component>\n"
@@ -2255,6 +2259,240 @@ nexus::Finding checkServices() {
     f.total = result.failedCount;
     f.suggestion = "systemctl --failed";
     return f;
+}
+
+
+// ---------------------------------------------------------------------
+// nexus gamecheck <game>: will it run here, and what can it see.
+//
+// Reads public data with curl (ProtonDB, AreWeAntiCheatYet, the Steam
+// store search) and the Steam Flatpak's own permissions. Reports only:
+// it changes nothing, and a game whose anti-cheat blocks Linux is said
+// to be blocked, with no way around it offered.
+
+std::string fetchUrl(const std::string& url) {
+    if (!nexus::system::commandExists("curl")) {
+        return {};
+    }
+    // The URL is built here from fixed parts and urlEncode()d input,
+    // so it contains no quote; checked anyway.
+    if (url.find('\'') != std::string::npos) {
+        return {};
+    }
+    const auto result = nexus::system::runCommand(
+        "curl -fsSL --max-time 20 --retry 2 '" + url + "' 2>/dev/null",
+        false);
+    return result.ok ? result.text : std::string{};
+}
+
+// AreWeAntiCheatYet's list is a few megabytes and changes slowly:
+// kept for a day, and an older copy is used (and said to be used) when
+// the network is not there.
+std::string antiCheatList(std::string& note) {
+    std::string dir;
+    if (const char* cache = std::getenv("XDG_CACHE_HOME"); cache && *cache) {
+        dir = std::string(cache) + "/nexus";
+    } else if (const char* home = std::getenv("HOME"); home && *home) {
+        dir = std::string(home) + "/.cache/nexus";
+    }
+    const std::string path =
+        dir.empty() ? "" : dir + "/areweanticheatyet-games.json";
+
+    std::error_code ec;
+    bool fresh = false;
+    if (!path.empty() && std::filesystem::exists(path, ec)) {
+        const auto age = std::filesystem::file_time_type::clock::now() -
+                         std::filesystem::last_write_time(path, ec);
+        fresh = !ec && age < std::chrono::hours(24);
+    }
+
+    auto readFile = [](const std::string& file) {
+        std::ifstream in(file);
+        std::stringstream buffer;
+        buffer << in.rdbuf();
+        return buffer.str();
+    };
+
+    if (fresh) {
+        return readFile(path);
+    }
+
+    const std::string text = fetchUrl(
+        "https://raw.githubusercontent.com/AreWeAntiCheatYet/"
+        "AreWeAntiCheatYet/master/games.json");
+    if (!text.empty() && nexus::system::parseJson(text).error.empty()) {
+        if (!path.empty()) {
+            std::filesystem::create_directories(dir, ec);
+            std::ofstream out(path);
+            out << text;
+        }
+        return text;
+    }
+    if (!path.empty() && std::filesystem::exists(path, ec)) {
+        note = "(anti-cheat list from an older copy; the network did not answer)";
+        return readFile(path);
+    }
+    return {};
+}
+
+int commandGamecheck(const std::vector<std::string>& words) {
+    std::string typed;
+    for (const std::string& word : words) {
+        if (!typed.empty()) typed += " ";
+        typed += word;
+    }
+    if (typed.empty()) {
+        std::cerr << "Usage: nexus gamecheck <game name or Steam id>\n";
+        return 2;
+    }
+    if (!nexus::system::commandExists("curl")) {
+        std::cerr << "gamecheck needs curl to ask ProtonDB and"
+                     " AreWeAntiCheatYet.\n";
+        return 1;
+    }
+
+    // Which game. A number is taken as a Steam id.
+    std::string steamId;
+    std::string name = typed;
+    std::vector<nexus::system::SteamMatch> others;
+
+    if (std::all_of(typed.begin(), typed.end(),
+                    [](unsigned char c) { return std::isdigit(c); })) {
+        steamId = typed;
+    } else {
+        const auto matches = nexus::system::parseSteamSearch(fetchUrl(
+            "https://store.steampowered.com/api/storesearch/?term=" +
+            nexus::system::urlEncode(typed) + "&l=english&cc=US"));
+        const auto pick = nexus::system::pickSteamMatch(matches, typed);
+        if (!pick.id.empty()) {
+            steamId = pick.id;
+            name = pick.name;
+            for (const auto& m : matches) {
+                if (m.id != pick.id && others.size() < 4) others.push_back(m);
+            }
+        }
+    }
+
+    std::string listNote;
+    const std::string games = antiCheatList(listNote);
+    const auto antiCheat =
+        nexus::system::findAntiCheat(games, steamId, name);
+    if (steamId.empty() && antiCheat.found) {
+        // The store search failed or found nothing, but the anti-cheat
+        // list knows the game, often with its Steam id.
+        name = antiCheat.name;
+        steamId = antiCheat.steamId;
+    }
+
+    nexus::system::ProtonSummary proton;
+    bool protonAnswered = false;
+    if (!steamId.empty()) {
+        const std::string answer = fetchUrl(
+            "https://www.protondb.com/api/v1/reports/summaries/" + steamId +
+            ".json");
+        protonAnswered = !answer.empty();
+        proton = nexus::system::parseProtonSummary(answer);
+    }
+
+    if (steamId.empty() && !antiCheat.found) {
+        std::cout << "No game called \"" << typed << "\" was found on Steam"
+                     " or in the anti-cheat list.\n"
+                     "(Or the network did not answer. Try the exact name, or"
+                     " the Steam id\nfrom the game's store address.)\n";
+        return 1;
+    }
+
+    std::cout << name;
+    if (!steamId.empty()) std::cout << "  (Steam " << steamId << ")";
+    std::cout << "\n\n";
+
+    std::cout << "  Runs on Linux   ";
+    if (proton.found) {
+        std::string tier = proton.tier;
+        if (!tier.empty()) tier[0] = static_cast<char>(std::toupper(
+                                         static_cast<unsigned char>(tier[0])));
+        std::cout << tier << " on ProtonDB: "
+                  << nexus::system::describeTier(proton.tier);
+        if (proton.reports > 0) {
+            std::cout << " (" << proton.reports << " reports)";
+        }
+        std::cout << "\n";
+    } else if (!steamId.empty() && !protonAnswered) {
+        std::cout << "unknown: ProtonDB did not answer (network?)\n";
+    } else if (!steamId.empty()) {
+        std::cout << "no ProtonDB reports found\n";
+    } else {
+        std::cout << "not on Steam, so no ProtonDB reports\n";
+    }
+
+    std::cout << "  Anti-cheat      ";
+    if (antiCheat.found) {
+        std::string which;
+        for (const auto& a : antiCheat.anticheats) {
+            if (!which.empty()) which += ", ";
+            which += a;
+        }
+        std::cout << (which.empty() ? "yes" : which) << ": "
+                  << nexus::system::describeAntiCheatStatus(antiCheat.status)
+                  << "\n";
+        for (std::size_t i = 0; i < antiCheat.notes.size() && i < 2; ++i) {
+            std::cout << "                  note: " << antiCheat.notes[i]
+                      << "\n";
+        }
+    } else if (!games.empty()) {
+        std::cout << "none listed (AreWeAntiCheatYet tracks games that"
+                     " have one)\n";
+    } else {
+        std::cout << "unknown (the list could not be fetched)\n";
+    }
+    if (!listNote.empty()) {
+        std::cout << "                  " << listNote << "\n";
+    }
+
+    std::string verdict = nexus::system::gameVerdict(proton, antiCheat);
+    if (!proton.found && !steamId.empty() && !protonAnswered &&
+        verdict.rfind("Unknown", 0) == 0) {
+        verdict = "Unknown: ProtonDB could not be reached; try again later.";
+    }
+    std::cout << "  Verdict         " << verdict << "\n";
+
+    // What it can see: the Steam Flatpak's real permissions here.
+    std::cout << "\n  What Steam can see on this machine\n";
+    const auto perms = nexus::system::runCommand(
+        "flatpak info --show-permissions com.valvesoftware.Steam "
+        "2>/dev/null", false);
+    if (!perms.ok || perms.text.find("[Context]") == std::string::npos) {
+        std::cout << "    Steam is not installed here, so there is nothing"
+                     " to report.\n";
+        if (osReleaseValue("VARIANT_ID") == "minimal") {
+            std::cout << "    (The minimal edition has no gaming add-on;"
+                         " the KDE edition does.)\n";
+        } else {
+            std::cout << "    To install it: sudo nexus setup gaming"
+                         " --apply\n";
+        }
+    } else {
+        for (const auto& [what, answer] :
+             nexus::system::describeSandbox(perms.text)) {
+            std::string label = what;
+            while (label.size() < 14) label += ' ';
+            std::cout << "    " << label << answer << "\n";
+        }
+    }
+
+    if (!others.empty()) {
+        std::cout << "\n  Not the one? Also on Steam:";
+        for (const auto& m : others) {
+            std::cout << "\n    " << m.name << "  (nexus gamecheck " << m.id
+                      << ")";
+        }
+        std::cout << "\n";
+    }
+
+    std::cout << "\nSources: ProtonDB, AreWeAntiCheatYet, Steam store,"
+                 " and this machine's Flatpak settings.\n"
+                 "Nothing has been changed.\n";
+    return 0;
 }
 
 int commandHistory(const std::string& path) {
@@ -4746,6 +4984,14 @@ int main(int argc, char** argv) {
     }
 
     const std::string command = positional[0];
+
+    // Needs no package database: answered before the (slow) read of
+    // every installed and available package.
+    if (command == "gamecheck") {
+        return commandGamecheck(
+            std::vector<std::string>(positional.begin() + 1,
+                                     positional.end()));
+    }
 
     // These describe a machine other than this one, and none of them
     // can be answered from the installed set alone.
