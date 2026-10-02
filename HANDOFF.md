@@ -238,6 +238,18 @@ in the future (installer currently takes a whole disk). Proposal:
   the anti-cheat list's name; suggestions only if their name contains
   what was typed; non-Steam games show Heroic's Flatpak sandbox;
   Denied games skip the sandbox section.
+- **2 Oct, ISO internals** (from install.iso): menus in /EFI/BOOT/grub.cfg,
+  /boot/grub2/grub.cfg and images/efiboot.img::/EFI/BOOT/grub.cfg; all
+  entries already `quiet`; label Fedora-S-dvd-x86_64-44 used by search
+  -l, inst.stage2, inst.ks. Kickstart = osbuild.ks (%include
+  osbuild-base.ks: ostreecontainer + its own bootc switch %post) + ours.
+- **Patch 49 (script only):** build-installer adds
+  `systemd.show_status=auto rd.systemd.show_status=auto` to install
+  entries (not nomodeset/rescue) in the two disc menus via -map, and in
+  efiboot.img in place (`mcopy -i iso@@offset`, offset from xorriso
+  report_lba). -map of efiboot.img made xorriso drop El Torito ("not a
+  data file") — tested, so not done. Checks El Torito still present,
+  then implantisomd5. Requires mtools.
 - **Earlier test note:** fresh minimal ISO in VM (2 GB): desktop not black,
   mouse, `free -m` < 600 MB; install with Serbian keyboard → Alt+Shift
   works on the desktop; wallpaper appears; then the Asus; then website

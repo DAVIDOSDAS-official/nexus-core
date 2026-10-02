@@ -57,12 +57,12 @@ fi
 # that takes a quarter of an hour rather than after it.
 if [ "${TYPE}" = "anaconda-iso" ]; then
     missing=""
-    for tool in xorriso cpio implantisomd5; do
+    for tool in xorriso cpio implantisomd5 mcopy mtype; do
         command -v "${tool}" > /dev/null 2>&1 || missing="${missing} ${tool}"
     done
     if [ -n "${missing}" ]; then
         echo "Missing:${missing}. Install them once:" >&2
-        echo "    sudo apt install xorriso cpio isomd5sum" >&2
+        echo "    sudo apt install xorriso cpio isomd5sum mtools" >&2
         exit 1
     fi
 fi
@@ -252,13 +252,79 @@ if [ "${TYPE}" = "anaconda-iso" ]; then
     (cd "${WORK}/root" && find . | cpio -o -H newc --quiet | gzip -9) \
         > "${WORK}/product.img"
 
+    # The boot text. Every menu entry already has `quiet`, and the
+    # installer still scrolled two screens of systemd's "[ OK ]" lines
+    # before its first window (filmed in the VM, 1 October): that list
+    # is systemd's, not the kernel's. show_status=auto hides it and
+    # still prints a line when something hangs or fails, so a slow
+    # start does not look frozen. Not on the troubleshooting entries
+    # (basic graphics, rescue): there the text is the point.
+    #
+    # Three copies of the menu: /EFI/BOOT/grub.cfg and
+    # /boot/grub2/grub.cfg on the disc, and the one UEFI machines read,
+    # inside images/efiboot.img (a small FAT image). All three, or the
+    # change does nothing on most PCs.
+    #
+    # efiboot.img is not replaced like the other two: replacing it makes
+    # xorriso drop the UEFI boot record ("Cannot enable El Torito boot
+    # image ... not a data file"), which is an ISO that no longer boots
+    # on UEFI -- found testing this on 2 October. Its menu is edited in
+    # place in the finished ISO instead (mtools at the file's offset),
+    # so not one byte of the boot setup moves. See below.
+    QUIET="systemd.show_status=auto rd.systemd.show_status=auto"
+    quiet_menu() {
+        sed -i -E "/^[[:space:]]*linux .*inst\.stage2=/{/nomodeset|inst\.rescue|show_status/!s/\$/ ${QUIET}/}" "$1"
+    }
+    MAPS=()
+    mkdir -p "${WORK}/boot"
+    for menu in /EFI/BOOT/grub.cfg /boot/grub2/grub.cfg; do
+        local_copy="${WORK}/boot/$(echo "${menu}" | tr '/' '_')"
+        if xorriso -osirrox on -indev "${ISO}" -extract "${menu}" \
+                "${local_copy}" > /dev/null 2>&1 && [ -s "${local_copy}" ]; then
+            chmod u+w "${local_copy}"
+            quiet_menu "${local_copy}"
+            MAPS+=(-map "${local_copy}" "${menu}")
+        fi
+    done
+
     if ! xorriso -indev "${ISO}" -outdev "${ISO}.branded" \
             -map "${WORK}/product.img" /images/product.img \
+            "${MAPS[@]}" \
             -boot_image any replay > "${WORK}/xorriso.log" 2>&1; then
         cat "${WORK}/xorriso.log" >&2
         rm -f "${ISO}.branded"
         echo "Could not write the branded ISO. The unbranded one is" >&2
         echo "still there, and still shows Fedora's logo." >&2
+        exit 1
+    fi
+
+    # The UEFI menu, inside efiboot.img, in place: find where the file
+    # starts in the finished ISO and let mtools edit the FAT image there.
+    quieted=$(( ${#MAPS[@]} / 3 ))
+    lba="$(xorriso -indev "${ISO}.branded" -find /images/efiboot.img \
+            -exec report_lba -- 2> /dev/null \
+        | awk -F',' '/efiboot.img/ {gsub(/ /, "", $2); print $2; exit}')"
+    if [ -n "${lba}" ]; then
+        efi="${ISO}.branded@@$(( lba * 2048 ))"
+        if mtype -i "${efi}" ::/EFI/BOOT/grub.cfg > "${WORK}/efi-inner.cfg" \
+                2> /dev/null && grep -q 'inst.stage2=' "${WORK}/efi-inner.cfg"; then
+            quiet_menu "${WORK}/efi-inner.cfg"
+            if mcopy -o -i "${efi}" "${WORK}/efi-inner.cfg" ::/EFI/BOOT/grub.cfg \
+                    && mtype -i "${efi}" ::/EFI/BOOT/grub.cfg \
+                       | grep -q 'show_status=auto'; then
+                quieted=$(( quieted + 1 ))
+            fi
+        fi
+    fi
+    echo "Boot menus made quiet: ${quieted} of 3."
+
+    # The boot record must still be there. If anything above lost it,
+    # the ISO would not start on UEFI machines: refuse it.
+    if ! xorriso -indev "${ISO}.branded" -report_el_torito plain 2> /dev/null \
+            | grep -q 'img path.*/images/efiboot.img'; then
+        rm -f "${ISO}.branded"
+        echo "The branded ISO lost its UEFI boot record; not keeping it." >&2
+        echo "The unbranded one is still there." >&2
         exit 1
     fi
 

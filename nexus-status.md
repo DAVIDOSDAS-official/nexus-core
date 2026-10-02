@@ -19,7 +19,7 @@ Current version: **0.1.28** (patches 1–48). 525 tests pass.
 | Edition | Desktop | State |
 |---|---|---|
 | `kde` | KDE Plasma | Released (Preview 1) |
-| `minimal` | LXQt: login screen on Miriway, desktop on labwc | **Uploaded 2 Oct** (archive.org/details/nexus-core-minimal-preview1); website button next |
+| `minimal` | LXQt: login screen on Miriway, desktop on labwc | **Released 2 Oct** (archive.org/details/nexus-core-minimal-preview1, on the website) |
 | `server`, `tiling` | — | Parked, later |
 
 ## Add-ons (chosen at first boot, or `nexus setup <names>`)
@@ -65,10 +65,15 @@ The Asus, updated to 0.1.22, boots cleanly (no text before the password).
 
 ## Next steps
 
-1. Minimal ISO uploaded to archive.org (2 Oct): check the SHA1 there
-   matches `sha1sum ~/nexus-core-minimal-preview1.iso`, then add the
-   second download button on the website ("Minimal — for older
-   computers") with its sha256.
+1. Minimal released 2 Oct: archive.org item, website with an edition
+   chooser (KDE / Minimal), feedback form working (Netlify form
+   detection turned on).
+9. Patch 49 (build script only): installer boot text hidden
+   (`systemd.show_status=auto`) in all three boot menus — the two on the
+   disc and the one inside images/efiboot.img (edited in place with
+   mtools; replacing that file drops the UEFI boot record). Needs
+   `sudo apt install mtools`. To test with the next ISO, plus the
+   us-acentos keyboard check.
 2. Patch 41 (done): the ISO build falls back to skopeo by itself when
    podman's download breaks off.
 3. Patch 42 (0.1.23): gaming add-on (KDE edition) gains Heroic (Epic,
@@ -99,11 +104,12 @@ The Asus, updated to 0.1.22, boots cleanly (no text before the password).
 
 ## Later
 
-- Installer: don't pre-select any disk when there are several.
-- Give the ISO a Nexus name instead of "Fedora-S-dvd-x86_64-44".
-- Installer start shows a long `[ OK ]` list (Fedora's installer):
-  hide it with `quiet` in the ISO's boot entries (two grub.cfg copies,
-  one inside the EFI image).
+- ISO name "Fedora-S-dvd-x86_64-44": used 8× per menu (search,
+  inst.stage2, inst.ks) in three menus; renaming risks an installer that
+  cannot find itself, for a cosmetic gain. Left as is for now.
+- Several disks all pre-ticked: that is Anaconda's own default when the
+  kickstart names no disk; a kickstart cannot untick. Solve together
+  with dual boot (a real "which disk, what to keep" step).
 - Check why the installer set the disk-password keyboard to
   `us-acentos` (dead keys) for English (US) + Serbian (Latin).
 - Trim minimal's RAM under 600 MB.
