@@ -19,7 +19,7 @@ Current version: **0.1.28** (patches 1–48). 525 tests pass.
 | Edition | Desktop | State |
 |---|---|---|
 | `kde` | KDE Plasma | Released (Preview 1) |
-| `minimal` | LXQt: login screen on Miriway, desktop on labwc | **Ready** — tested 1 Oct, awaiting upload |
+| `minimal` | LXQt: login screen on Miriway, desktop on labwc | **Uploaded 2 Oct** (archive.org/details/nexus-core-minimal-preview1); website button next |
 | `server`, `tiling` | — | Parked, later |
 
 ## Add-ons (chosen at first boot, or `nexus setup <names>`)
@@ -65,9 +65,10 @@ The Asus, updated to 0.1.22, boots cleanly (no text before the password).
 
 ## Next steps
 
-1. Upload the minimal ISO to archive.org as
-   `nexus-core-minimal-preview1.iso`; add the second download button on
-   the website ("Minimal — for older computers") with its sha256.
+1. Minimal ISO uploaded to archive.org (2 Oct): check the SHA1 there
+   matches `sha1sum ~/nexus-core-minimal-preview1.iso`, then add the
+   second download button on the website ("Minimal — for older
+   computers") with its sha256.
 2. Patch 41 (done): the ISO build falls back to skopeo by itself when
    podman's download breaks off.
 3. Patch 42 (0.1.23): gaming add-on (KDE edition) gains Heroic (Epic,
@@ -107,10 +108,15 @@ The Asus, updated to 0.1.22, boots cleanly (no text before the password).
   `us-acentos` (dead keys) for English (US) + Serbian (Latin).
 - Trim minimal's RAM under 600 MB.
 - Security review, server and tiling editions.
-- First big update: graphical Nexus app (Qt Quick), the minimalism look,
-  the showcase tour.
+- First big update: graphical Nexus app (Qt Quick), the minimalism look
+  (clean, alive), and **showcase** — David, 2 Oct: "insane UI", Linux
+  showing off how good its interface can be. The two are different.
 - NVIDIA: needs an NVIDIA machine to test on — none available, so it
   waits until there is one.
-- greenboot, dual boot.
+- **Dual boot** (David, 2 Oct): a real option for people who accept
+  Windows on the same machine; the installer explains the trade-off once
+  and does not block it. Doctor's clock check already covers Windows'
+  local-time hardware clock.
+- greenboot.
 - The minimal edition does not offer gaming (decided 27 Sept: Steam
   needs more memory than that edition's machines have).
