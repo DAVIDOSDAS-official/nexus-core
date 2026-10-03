@@ -76,19 +76,27 @@ fi
 # never finishes (30 September: three tries, three failures). Then
 # skopeo, which retries each piece on its own: the system's skopeo if
 # it has --retry-times, otherwise skopeo as a container -- itself a
-# small download, tried until it arrives. skopeo writes a plain folder,
-# which podman loads and names. PULL=no uses the copy already here.
+# small download, tried until it arrives. skopeo keeps what it has
+# fetched, so a broken-off download carries on next time instead of
+# starting over. PULL=no uses the copy already here.
 fetch_with_skopeo() {
+    # A fixed folder, kept when a try breaks off: skopeo's "oci:" folder
+    # format skips every piece already downloaded, so each new try only
+    # fetches what is still missing. (The "dir:" format used before
+    # empties its folder first -- every try started from zero, and a
+    # 45-minute download that broke at the end was all lost, 3 October.)
+    # Pieces are saved under a temporary name and renamed only when
+    # complete, so a broken-off piece is never mistaken for a whole one.
     local dir
-    dir="$(mktemp -d /var/tmp/nexus-img.XXXXXX)"
+    dir="/var/tmp/nexus-download/$(echo "${IMAGE}" | tr '/:' '__')"
+    mkdir -p "${dir}"
 
+    local skopeo=(skopeo) mount=""
     if command -v skopeo > /dev/null 2>&1 \
             && skopeo copy --help 2>&1 | grep -q -- '--retry-times'; then
-        echo "Fetching with skopeo (retries each piece)."
-        skopeo copy --retry-times 10 "docker://${IMAGE}" "dir:${dir}/img" || {
-            rm -rf "${dir}"; return 1; }
+        echo "Fetching with skopeo into ${dir}."
     else
-        echo "Fetching with skopeo in a container (retries each piece)."
+        echo "Fetching with skopeo in a container into ${dir}."
         local got=no
         for _ in 1 2 3 4 5 6 7 8; do
             if podman pull quay.io/skopeo/stable:latest; then
@@ -98,11 +106,34 @@ fetch_with_skopeo() {
             sudo rm -rf /var/tmp/storage* 2> /dev/null || true
             sleep 5
         done
-        [ "${got}" = yes ] || { rm -rf "${dir}"; return 1; }
-        podman run --rm -v "${dir}:/out" quay.io/skopeo/stable:latest \
-            copy --retry-times 10 "docker://${IMAGE}" dir:/out/img || {
-            rm -rf "${dir}"; return 1; }
+        [ "${got}" = yes ] || return 1
+        skopeo=(podman run --rm -v "${dir}:/out" quay.io/skopeo/stable:latest)
+        mount=/out
     fi
+    local here="${mount:-${dir}}"
+
+    local try done=no
+    for try in $(seq 1 20); do
+        rm -f "${dir}"/oci/oci-put-blob* 2> /dev/null || true
+        if "${skopeo[@]}" copy --retry-times 10 \
+                "docker://${IMAGE}" "oci:${here}/oci:img"; then
+            done=yes
+            break
+        fi
+        echo "Download broke off (try ${try} of 20). The finished pieces" >&2
+        echo "are kept; trying again for the rest in 15 seconds." >&2
+        sleep 15
+    done
+    if [ "${done}" != yes ]; then
+        echo "Still incomplete. Running this again carries on from" >&2
+        echo "${dir} instead of starting over." >&2
+        return 1
+    fi
+
+    # podman of this age cannot read the "oci:" folder, so it is turned
+    # into a "dir:" folder here, on this disk (no download), and loaded.
+    rm -rf "${dir}/img"
+    "${skopeo[@]}" copy "oci:${here}/oci:img" "dir:${here}/img" || return 1
 
     # Only the folder's own name is removed afterwards. (podman untag
     # with no name removes every name, and an image with no name is
@@ -111,15 +142,25 @@ fetch_with_skopeo() {
     id="$(podman pull -q "dir:${dir}/img")" \
         && podman tag "${id}" "${IMAGE}" || status=1
     podman untag "${id}" "localhost${dir}/img" > /dev/null 2>&1 || true
-    rm -rf "${dir}"
+    [ "${status}" = 0 ] && sudo rm -rf "${dir}"
     return "${status}"
 }
 
 if [ "${PULL:-yes}" != no ] && [ "${IMAGE#localhost/}" = "${IMAGE}" ]; then
     echo "Fetching the latest ${IMAGE}."
-    if ! podman pull "${IMAGE}"; then
+    # A download skopeo left half done goes straight back to skopeo,
+    # which carries on from it; podman would start over.
+    if [ -d "/var/tmp/nexus-download/$(echo "${IMAGE}" | tr '/:' '__')/oci" ]; then
+        echo "Carrying on with the download that broke off last time."
+        pulled=no
+    elif podman pull "${IMAGE}"; then
+        pulled=yes
+    else
         echo "podman's download broke off; switching to skopeo." >&2
         sudo rm -rf /var/tmp/storage* 2> /dev/null || true
+        pulled=no
+    fi
+    if [ "${pulled}" = no ]; then
         if ! fetch_with_skopeo; then
             echo >&2
             echo "Could not fetch ${IMAGE}, even with retries. Nothing was" >&2
