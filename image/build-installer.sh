@@ -342,12 +342,25 @@ if [ "${TYPE}" = "anaconda-iso" ]; then
         exit 1
     fi
 
-    # The UEFI menu, inside efiboot.img, in place: find where the file
-    # starts in the finished ISO and let mtools edit the FAT image there.
+    # The UEFI menu, in place. UEFI machines do not read the
+    # images/efiboot.img file in the disc's file list: Fedora 44's ISO
+    # carries a second copy of it as a partition after the files, and
+    # both the UEFI boot record and the disk's partition table point
+    # there (osbuild's xorrisofs stage, -append_partition 2). xorriso
+    # copies that partition across as it is. So the menu is edited
+    # where the UEFI boot record points, in the finished ISO -- which
+    # is also the right place on discs that do use the file.
+    # (Patch 49 edited the file copy: counted 3 of 3, changed nothing
+    # UEFI reads, and its check looked for the file name in the boot
+    # record, which this ISO does not have, so it refused a good ISO.
+    # 3 October.)
+    uefi_images() {
+        xorriso -indev "$1" -report_el_torito plain 2> /dev/null \
+            | awk '/^El Torito boot img/ && $7 == "UEFI" {n++} END {print n+0}'
+    }
     quieted=$(( ${#MAPS[@]} / 3 ))
-    lba="$(xorriso -indev "${ISO}.branded" -find /images/efiboot.img \
-            -exec report_lba -- 2> /dev/null \
-        | awk -F',' '/efiboot.img/ {gsub(/ /, "", $2); print $2; exit}')"
+    lba="$(xorriso -indev "${ISO}.branded" -report_el_torito plain 2> /dev/null \
+        | awk '/^El Torito boot img/ && $7 == "UEFI" {print $NF; exit}')"
     if [ -n "${lba}" ]; then
         efi="${ISO}.branded@@$(( lba * 2048 ))"
         if mtype -i "${efi}" ::/EFI/BOOT/grub.cfg > "${WORK}/efi-inner.cfg" \
@@ -362,12 +375,15 @@ if [ "${TYPE}" = "anaconda-iso" ]; then
     fi
     echo "Boot menus made quiet: ${quieted} of 3."
 
-    # The boot record must still be there. If anything above lost it,
-    # the ISO would not start on UEFI machines: refuse it.
-    if ! xorriso -indev "${ISO}.branded" -report_el_torito plain 2> /dev/null \
-            | grep -q 'img path.*/images/efiboot.img'; then
+    # The boot record must be what it was: as many UEFI boot entries as
+    # the ISO osbuild made. If anything above lost one, the ISO would
+    # not start on UEFI machines: refuse it.
+    before="$(uefi_images "${ISO}")"
+    after="$(uefi_images "${ISO}.branded")"
+    if [ "${before}" = 0 ] || [ "${after}" != "${before}" ]; then
         rm -f "${ISO}.branded"
-        echo "The branded ISO lost its UEFI boot record; not keeping it." >&2
+        echo "The branded ISO lost its UEFI boot record (UEFI entries:" >&2
+        echo "${before} before, ${after} after); not keeping it." >&2
         echo "The unbranded one is still there." >&2
         exit 1
     fi
