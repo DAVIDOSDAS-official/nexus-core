@@ -1,0 +1,11 @@
+[Unit]
+Description=Nexus: look for updates once a day, after login
+
+[Timer]
+OnStartupSec=10min
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

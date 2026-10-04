@@ -59,6 +59,7 @@
 #include <nexus/system/version.hpp>
 #include <nexus/system/gamecheck.hpp>
 #include <nexus/system/language.hpp>
+#include <nexus/system/update.hpp>
 #include <nexus/system/json.hpp>
 #include <chrono>
 
@@ -78,6 +79,7 @@ void printUsage() {
         << "    nexus guide            how to work this system\n"
         << "    nexus gamecheck <game>  will it run here, and what it can see\n"
         << "    nexus language [list | add <name> | set <name>] [--apply]\n"
+        << "    nexus update [check] [--apply]   what is new; take it\n"
         << "    nexus scan\n"
         << "    nexus what-provides <capability>\n"
         << "    nexus why <component>\n"
@@ -1950,6 +1952,7 @@ struct Deployment {
 std::vector<Deployment> parseDeployments(const std::string& text) {
     std::vector<Deployment> out;
     std::string key;
+    bool inUpdate = false;
     std::istringstream lines(text);
     std::string line;
 
@@ -1977,10 +1980,23 @@ std::vector<Deployment> parseDeployments(const std::string& text) {
             d.image = start == std::string::npos ? "" : line.substr(start);
             out.push_back(std::move(d));
             key.clear();
+            inUpdate = false;
             continue;
         }
 
         if (out.empty()) {
+            continue;
+        }
+
+        // An update found by the automatic check is listed inside the
+        // booted deployment, with its own Version line. That is the
+        // version on offer, not the one running: skip it here (nexus
+        // update reads it).
+        if (line.find("AvailableUpdate:") != std::string::npos) {
+            inUpdate = true;
+            continue;
+        }
+        if (inUpdate) {
             continue;
         }
 
@@ -2155,8 +2171,8 @@ int commandSummary() {
             std::cout << "  Added       " << booted->layered.size()
                       << " package(s) on top of the image\n";
         }
-        std::cout << "  Updates     weekly; sudo rpm-ostree upgrade"
-                     " fetches the newest now\n";
+        std::cout << "  Updates     checked daily, never installed by "
+                     "themselves: nexus update\n";
     } else {
         std::cout << "  (Not an image-based system, or rpm-ostree did"
                      " not answer.)\n";
@@ -2903,9 +2919,253 @@ int commandLanguage(
         return 0;
     }
 
-    std::cerr << "Unknown: nexus language " << action
-              << "\nUse: nexus language [list | add <name> | set <name>]\n";
+    std::cerr << "Unknown: nexus language " << action << "\n";
+    // "set_RS.UTF-8@latin": a space lost after set (Asus, 4 October).
+    for (const std::string verb : {"set", "add"}) {
+        if (action.size() > verb.size() && action.rfind(verb, 0) == 0) {
+            std::string rest = action.substr(verb.size());
+            if (rest[0] == '_' || rest[0] == '-') {
+                rest = rest.substr(1);
+            }
+            std::cerr << "Did you mean: nexus language " << verb << " "
+                      << (verb == "set" && action[verb.size()] == '_'
+                              ? "<language>_" + rest
+                              : rest)
+                      << " ?\n";
+            return 2;
+        }
+    }
+    std::cerr << "Use: nexus language [list | add <name> | set <name>]\n";
     return 2;
+}
+
+
+// nexus update: what is new for this machine, and taking it.
+// See system/include/nexus/system/update.hpp for how updates work here.
+int commandUpdate(
+    const std::vector<std::string>& words,
+    bool apply,
+    bool assumeYes,
+    const std::string& invocation
+) {
+    bool notify = false;
+    bool checkNow = false;
+    for (const std::string& word : words) {
+        if (word == "notify" || word == "--notify") {
+            notify = true;
+        } else if (word == "check" || word == "--check") {
+            checkNow = true;
+        } else {
+            std::cerr << "Unknown: nexus update " << word
+                      << "\nUse: nexus update [check] [--apply]\n";
+            return 2;
+        }
+    }
+
+    const bool image = nexus::system::commandExists("rpm-ostree") &&
+                       std::filesystem::exists("/run/ostree-booted");
+    const bool haveFlatpak = nexus::system::commandExists("flatpak");
+    const bool root = nexus::system::haveRootPrivileges();
+
+    // A fresh look at the registry needs the update service's
+    // permission (rpm-ostree asks for a password otherwise), so only
+    // when asked for, or as part of --apply.
+    if (image && (checkNow || apply)) {
+        if (!root) {
+            std::cout << "Checking right now needs root:\n    sudo "
+                      << invocation << "\n";
+            return 1;
+        }
+        std::cerr << "Asking for the newest Nexus version...\n";
+        nexus::system::runCommand(
+            "rpm-ostree upgrade --check >/dev/null 2>&1", false);
+    }
+
+    nexus::system::SystemUpdate system;
+    if (image) {
+        system = nexus::system::parseSystemUpdate(
+            nexus::system::runCommand("rpm-ostree status 2>/dev/null",
+                                      false).text);
+    }
+
+    std::vector<nexus::system::AppUpdate> apps;
+    if (haveFlatpak) {
+        apps = nexus::system::parseFlatpakUpdates(
+            nexus::system::runCommand(
+                "flatpak remote-ls --updates --app "
+                "--columns=application,version 2>/dev/null",
+                false).text);
+    }
+
+    const std::string summary = nexus::system::updateSummary(system, apps);
+
+    // From the daily timer, in the person's session: a notification
+    // when something new appears, once per new thing -- not every day
+    // for the same version. Silent otherwise.
+    if (notify) {
+        if (summary.empty() ||
+            !nexus::system::commandExists("notify-send")) {
+            return 0;
+        }
+        const char* home = std::getenv("HOME");
+        const std::string seenFile =
+            std::string(home ? home : "/tmp") + "/.cache/nexus/update-notified";
+        std::string seen;
+        {
+            std::ifstream in(seenFile);
+            std::getline(in, seen);
+        }
+        if (seen == summary) {
+            return 0;
+        }
+        std::filesystem::create_directories(
+            std::filesystem::path(seenFile).parent_path());
+        std::ofstream(seenFile) << summary << "\n";
+
+        auto quoted = [](const std::string& text) {
+            std::string out = "'";
+            for (char c : text) {
+                out += c == '\'' ? std::string("'\\''") : std::string(1, c);
+            }
+            return out + "'";
+        };
+        nexus::system::runCommand(
+            "notify-send -a Nexus -i system-software-update "
+            + quoted("Update available") + " "
+            + quoted(summary + ". Nothing is installed until you ask: "
+                     "open a terminal and run  nexus update"),
+            false);
+        return 0;
+    }
+
+    // The account.
+    if (image) {
+        const auto deployments = readDeployments();
+        for (const auto& d : deployments) {
+            if (d.booted) {
+                std::cout << "Running      Nexus " << d.version
+                          << (d.date.empty() ? "" : "  (" + dayOf(d.date) + ")")
+                          << "\n";
+            }
+        }
+        if (system.staged) {
+            std::cout << "Ready        " << system.stagedVersion
+                      << " is downloaded and waits for a restart\n";
+        }
+        if (system.available) {
+            std::cout << "New          " << system.version
+                      << (system.date.empty() ? "" : "  (" + dayOf(system.date) + ")")
+                      << "\n";
+            if (!system.diff.empty()) {
+                std::cout << "             " << system.diff << "\n";
+            }
+        } else if (!system.staged) {
+            std::cout << "System       up to date";
+            if (!system.lastCheck.empty()) {
+                std::cout << " (" << system.lastCheck << ")";
+            }
+            std::cout << "\n";
+        }
+        if (system.policy.empty() || system.policy == "disabled" ||
+            system.policy == "none") {
+            std::cout << "             the daily check is off; "
+                         "'sudo nexus update check' looks now\n";
+        }
+    }
+
+    if (haveFlatpak) {
+        if (apps.empty()) {
+            std::cout << "Apps         up to date\n";
+        } else {
+            std::cout << "Apps         " << apps.size() << " to update\n";
+            for (const auto& app : apps) {
+                std::cout << "                 " << app.id
+                          << (app.version.empty() ? "" : "  " + app.version)
+                          << "\n";
+            }
+        }
+    }
+
+    const bool anything = system.available || !apps.empty();
+
+    if (!apply) {
+        if (anything) {
+            std::cout << "\nNothing has been changed. To update:\n"
+                      << "    sudo nexus update --apply\n";
+        } else if (system.staged) {
+            std::cout << "\nRestart to use it: systemctl reboot\n";
+        }
+        return 0;
+    }
+
+    if (!anything) {
+        std::cout << "\nNothing to update.\n";
+        return 0;
+    }
+
+    if (!root) {
+        std::cout << "\nUpdating needs root. Re-run with sudo:\n    sudo "
+                  << invocation << "\n";
+        return 1;
+    }
+
+    if (image && system.available) {
+        std::cout << "\nThe system update is staged: it takes effect at the "
+                     "next restart,\nand the version running now stays "
+                     "in the boot menu to go back to.\n";
+    }
+
+    if (!assumeYes) {
+        std::cout << "\nProceed? [Y/n] ";
+        std::string answer;
+        std::getline(std::cin, answer);
+        if (!(answer.empty() || answer == "y" || answer == "Y" ||
+              answer == "yes")) {
+            std::cout << "Nothing has been changed.\n";
+            return 1;
+        }
+    }
+
+    nexus::system::TransactionRecord record;
+    record.when = nexus::system::currentTimestamp();
+    record.request = "update";
+    record.resolved = summary;
+    const std::string log = nexus::system::defaultTransactionLog();
+    const std::string marker = nexus::system::beginTransaction(log, record);
+
+    bool ok = true;
+
+    if (image && system.available) {
+        std::cout << "\nSystem: handing over to rpm-ostree.\n\n";
+        const auto ran = nexus::system::runCommand("rpm-ostree upgrade", true);
+        std::cout << ran.text << "\n";
+        ok = ok && ran.exitCode == 0;
+    }
+
+    if (!apps.empty()) {
+        std::cout << "\nApps: handing over to flatpak.\n\n";
+        const auto ran = nexus::system::runCommand(
+            "flatpak update -y --noninteractive", true);
+        std::cout << ran.text << "\n";
+        ok = ok && ran.exitCode == 0;
+    }
+
+    record.outcome = ok ? (image && system.available ? "staged" : "applied")
+                        : "failed";
+    record.succeeded = ok;
+    nexus::system::finishTransaction(log, marker, record);
+
+    if (!ok) {
+        std::cout << "\nSomething did not complete; the messages above are "
+                     "the tools' own.\nThe running system is unchanged.\n";
+        return 1;
+    }
+    if (image && system.available) {
+        std::cout << "\nDone. Restart when it suits you: systemctl reboot\n";
+    } else {
+        std::cout << "\nDone.\n";
+    }
+    return 0;
 }
 
 int commandGamecheck(const std::vector<std::string>& words) {
@@ -5625,6 +5885,13 @@ int main(int argc, char** argv) {
         return commandGamecheck(
             std::vector<std::string>(positional.begin() + 1,
                                      positional.end()));
+    }
+
+    if (command == "update") {
+        return commandUpdate(
+            std::vector<std::string>(positional.begin() + 1,
+                                     positional.end()),
+            apply, assumeYes, invocation);
     }
 
     if (command == "language") {

@@ -570,6 +570,32 @@ RUN set -eu; \
     grep -q "BEGIN PUBLIC KEY" /etc/pki/containers/nexus-core.pub; \
     python3 /usr/libexec/nexus/merge-policy
 
+# Updates: checked once a day, installed only when asked (decided
+# 4 October). Nothing is downloaded or changed until the person runs
+# `sudo nexus update --apply`, and the machine never restarts by itself.
+#
+# rpm-ostree's own daily check (AutomaticUpdatePolicy=check) records
+# what is new where `rpm-ostree status` -- and so `nexus update` -- can
+# read it without a password. bootc's timer is masked: it downloads,
+# applies and restarts on its own, and on a machine with any added
+# package it fails without a word ("cannot upgrade via bootc", Asus,
+# 4 October), so it was either a surprise restart or nothing at all.
+# The notification itself comes from a timer in the person's session,
+# in the desktop stage.
+RUN set -eu; \
+    conf=/etc/rpm-ostreed.conf; \
+    if [ -f "${conf}" ] && grep -q 'AutomaticUpdatePolicy=' "${conf}"; then \
+        sed -i 's/^#\?AutomaticUpdatePolicy=.*/AutomaticUpdatePolicy=check/' "${conf}"; \
+    elif [ -f "${conf}" ] && grep -q '^\[Daemon\]' "${conf}"; then \
+        sed -i '/^\[Daemon\]/a AutomaticUpdatePolicy=check' "${conf}"; \
+    else \
+        printf '[Daemon]\nAutomaticUpdatePolicy=check\n' >> "${conf}"; \
+    fi; \
+    grep -q '^AutomaticUpdatePolicy=check$' "${conf}"; \
+    systemctl enable rpm-ostreed-automatic.timer; \
+    systemctl mask bootc-fetch-apply-updates.timer; \
+    echo "Updates: daily check, applied only when asked."
+
 # The wallpapers: one per profile, all of them in the picker.
 #
 # Below the packages and above Nexus, because a picture changes less
@@ -658,6 +684,15 @@ COPY --from=builder /build/cli/nexus /usr/bin/nexus
 COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
 COPY image/first-boot/nexus-first-boot.service \
      /usr/lib/systemd/system/nexus-first-boot.service
+
+# The daily "update available" notification, in each person's session
+# (see "Updates" in the os stage). notify-send comes from libnotify.
+COPY image/updates/nexus-update-notify.service \
+     image/updates/nexus-update-notify.timer \
+     /usr/lib/systemd/user/
+RUN dnf install -y --setopt=install_weak_deps=False libnotify \
+    && dnf clean all \
+    && systemctl --global enable nexus-update-notify.timer
 COPY components/profiles /usr/share/nexus/profiles
 COPY components/aliases /usr/share/nexus/aliases
 COPY image/identity.sh /usr/libexec/nexus/identity

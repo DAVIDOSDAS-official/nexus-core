@@ -26,6 +26,7 @@ add_library(nexus_system
     src/json.cpp
     src/gamecheck.cpp
     src/language.cpp
+    src/update.cpp
     src/rpm_source.cpp
     src/rpm_repo.cpp
     src/rpm_database.cpp

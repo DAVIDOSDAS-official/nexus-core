@@ -1,0 +1,9 @@
+[Unit]
+Description=Nexus: say when an update is available
+Documentation=man:nexus(1)
+# Runs in the person's session, so the notification reaches their
+# desktop. It only reads and notifies; nothing is installed.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/nexus update notify
