@@ -712,10 +712,11 @@ FROM desktop-packages AS desktop
 ARG NEXUS_VERSION
 ARG NEXUS_PROFILE
 
-# What `nexus update` shows as the new version. The image's own
-# org.opencontainers.image.version is Fedora's (44.2026...), the same
-# for every Nexus build of a week, and tells nobody what changed.
-LABEL nexus.version="${NEXUS_VERSION}"
+# What `nexus update` shows as the new version comes from the
+# nexus.version label, added by the build command (--label) from
+# CMakeLists.txt: NEXUS_VERSION is empty here on purpose (see above),
+# so a LABEL written here came out empty in 0.1.32 and the Asus saw
+# "a newer Nexus image" instead of a number (4 October).
 
 # The daily "update available" notification, in each person's session
 # (see "Updates" in the os stage). Switched on in /usr, which every

@@ -3037,7 +3037,10 @@ int commandUpdate(
             return out + "'";
         };
         nexus::system::runCommand(
-            "notify-send -a Nexus -i system-software-update "
+            // -t 0: it stays until it is clicked away. A notification
+            // that vanishes while nobody looks is one nobody saw
+            // (Asus, 4 October). `nexus update` says the same any time.
+            "notify-send -a Nexus -t 0 -i system-software-update "
             + quoted("Update available") + " "
             + quoted(summary + ". Nothing is installed until you ask: "
                      "open a terminal and run  nexus update"),

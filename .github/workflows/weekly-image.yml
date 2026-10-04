@@ -147,7 +147,12 @@ jobs:
         run: |
           FEDORA="$(sed -n 's/^ARG FEDORA_VERSION=//p' image/Containerfile)"
           podman pull "quay.io/fedora/fedora-bootc:${FEDORA}"
+          # The Nexus version, for `nexus update` on machines (the
+          # image's own version label is Fedora's).
+          VERSION="$(sed -n 's/^ *VERSION \([0-9][0-9.]*\)$/\1/p' CMakeLists.txt | head -n 1)"
+          test -n "${VERSION}"
           podman build --target desktop \
+              --label nexus.version="${VERSION}" \
               --build-arg NEXUS_PROFILE="${PROFILE}" \
               --build-arg NEXUS_COMMIT="$(git rev-parse --short HEAD)" \
               --build-arg REFRESH="$(date -u +%Y%m%d)" \

@@ -42,6 +42,8 @@ else
     echo "Not a git repository; the image will report 'unknown'." >&2
 fi
 
+VERSION="$(sed -n 's/^ *VERSION \([0-9][0-9.]*\)$/\1/p' "${ROOT}/CMakeLists.txt" | head -n 1)"
+
 for stage in builder base desktop gaming final; do
     echo
     echo "=== building stage: ${stage} ==="
@@ -49,6 +51,7 @@ for stage in builder base desktop gaming final; do
     podman build \
         --target "${stage}" \
         --tag "${TAG}:${stage}" \
+        --label nexus.version="${VERSION}" \
         --build-arg NEXUS_COMMIT="${NEXUS_COMMIT}" \
         --file "${ROOT}/image/Containerfile" \
         "${ROOT}"
