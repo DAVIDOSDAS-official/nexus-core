@@ -5,7 +5,7 @@ Description=Nexus: look for updates once a day, after login
 OnStartupSec=10min
 OnCalendar=daily
 Persistent=true
-RandomizedDelaySec=30min
+RandomizedDelaySec=5min
 
 [Install]
 WantedBy=timers.target
