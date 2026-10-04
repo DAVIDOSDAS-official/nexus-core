@@ -125,6 +125,37 @@ void printUsage() {
         << "only reads and explains.\n";
 }
 
+// True when two names differ by at most two letters (added, removed
+// or changed) -- a typo, not a different word. Short names need to be
+// closer: one letter off in a three-letter name is another name.
+bool closeSpelling(const std::string& a, const std::string& b) {
+    const std::size_t limit = std::min(a.size(), b.size()) >= 6 ? 2 : 1;
+
+    if (a == b ||
+        (a.size() > b.size() ? a.size() - b.size() : b.size() - a.size())
+            > limit) {
+        return false;
+    }
+
+    std::vector<std::size_t> previous(b.size() + 1), current(b.size() + 1);
+
+    for (std::size_t j = 0; j <= b.size(); ++j) {
+        previous[j] = j;
+    }
+
+    for (std::size_t i = 1; i <= a.size(); ++i) {
+        current[0] = i;
+        for (std::size_t j = 1; j <= b.size(); ++j) {
+            const std::size_t change =
+                previous[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1);
+            current[j] = std::min({previous[j] + 1, current[j - 1] + 1, change});
+        }
+        previous.swap(current);
+    }
+
+    return previous[b.size()] <= limit;
+}
+
 const Component* find(
     const std::vector<Component>& components,
     const std::string& id
@@ -164,7 +195,37 @@ const Component* find(
         return nullptr;
     }
 
-    std::cout << "Unknown component: " << id << "\n";
+    // A name typed from memory gets close: "terminal" finds
+    // qterminal, "geogabra" finds geogebra. Only installed packages
+    // are searched, so say that too -- the commonest reason for no
+    // answer is that it is simply not on this machine.
+    std::vector<std::string> near;
+
+    for (const Component& component : components) {
+        const std::string& name = component.name();
+        const bool contains =
+            id.size() >= 3 && name.find(id) != std::string::npos;
+
+        if (contains || closeSpelling(name, id)) {
+            if (std::find(near.begin(), near.end(), name) == near.end()) {
+                near.push_back(name);
+            }
+        }
+
+        if (near.size() >= 6) {
+            break;
+        }
+    }
+
+    std::cout << "No installed package is called " << id << ".\n";
+
+    if (!near.empty()) {
+        std::cout << "Did you mean:";
+        for (const std::string& name : near) {
+            std::cout << " " << name;
+        }
+        std::cout << "?\n";
+    }
 
     return nullptr;
 }
@@ -334,6 +395,9 @@ int commandWhatProvides(
     return 0;
 }
 
+enum class PackageOrigin { Image, Added, Unknown };
+PackageOrigin packageOrigin(const std::string& name);
+
 int commandWhy(
     const std::vector<Component>& components,
     const std::string& id
@@ -372,9 +436,28 @@ int commandWhy(
     }
 
     if (dependents.empty()) {
-        std::cout
-            << "Nothing installed depends on it.\n"
-            << "It was requested directly or is no longer needed.\n";
+        std::cout << "Nothing installed depends on it.\n";
+
+        // On a Nexus machine every package either came with the image
+        // or was added afterwards, and the two are kept differently:
+        // an update replaces the first and keeps the second.
+        switch (packageOrigin(target->name())) {
+            case PackageOrigin::Added:
+                std::cout
+                    << "You added it (nexus install or rpm-ostree "
+                       "install); updates keep it.\n";
+                break;
+            case PackageOrigin::Image:
+                std::cout
+                    << "It is part of the Nexus image: it came with the "
+                       "system, and updates bring it along.\n";
+                break;
+            case PackageOrigin::Unknown:
+                std::cout
+                    << "It was requested directly or is no longer "
+                       "needed.\n";
+                break;
+        }
         return 0;
     }
 
@@ -614,6 +697,17 @@ bool findComposition(
         }
 
         if (found == nullptr) {
+            // Left out of this edition on purpose: say why, rather than
+            // "unknown", which reads as a typo or a bug.
+            if (one == "gaming") {
+                std::cerr
+                    << "The gaming add-on is in the KDE edition only.\n"
+                    << "This edition leaves it out: Steam needs more "
+                       "memory than the computers it is made for.\n"
+                    << "'nexus gamecheck <game>' still works here.\n";
+                return false;
+            }
+
             std::cerr << "Unknown profile: " << one << "\n";
 
             // Somebody typing a name from memory gets it close.
@@ -626,7 +720,7 @@ bool findComposition(
                     profile.name.find(one) != std::string::npos ||
                     one.find(profile.name) != std::string::npos;
 
-                if (contains) {
+                if (contains || closeSpelling(profile.name, one)) {
                     near.push_back(profile.name);
                 }
             }
@@ -1937,6 +2031,28 @@ std::vector<Deployment> readDeployments() {
         return {};
     }
     return parseDeployments(status.text);
+}
+
+// Whether a package came with the image or was added on this machine.
+// Unknown on a system that is not an image (no deployments to read).
+PackageOrigin packageOrigin(const std::string& name) {
+    const auto deployments = readDeployments();
+
+    for (const Deployment& deployment : deployments) {
+        if (!deployment.booted) {
+            continue;
+        }
+
+        for (const std::string& layered : deployment.layered) {
+            if (layered == name) {
+                return PackageOrigin::Added;
+            }
+        }
+
+        return PackageOrigin::Image;
+    }
+
+    return PackageOrigin::Unknown;
 }
 
 std::string osReleaseValue(const std::string& name) {
@@ -4085,6 +4201,31 @@ int commandContainerInstall(
     return 0;
 }
 
+// The add-ons named after "setup", as one comma-separated list.
+// Every word after "setup" is part of it, and commas, spaces and empty
+// entries are all the same separator.
+std::string setupChoice(const std::vector<std::string>& positional) {
+    std::string chosen;
+    for (std::size_t word = 1; word < positional.size(); ++word) {
+        std::string entry;
+        const std::string text = positional[word] + ",";
+        for (const char c : text) {
+            if (c == ',' || c == ' ' || c == '\t') {
+                if (!entry.empty()) {
+                    if (!chosen.empty()) {
+                        chosen += ",";
+                    }
+                    chosen += entry;
+                    entry.clear();
+                }
+            } else {
+                entry += c;
+            }
+        }
+    }
+    return chosen;
+}
+
 int commandSetup(
     const nexus::AliasTable& aliases,
     const std::vector<Component>& installed,
@@ -5029,6 +5170,25 @@ int main(int argc, char** argv) {
                                      positional.end()));
     }
 
+    // A misspelt or missing add-on is answered before every package in
+    // every repository is read -- that read takes a while, and its
+    // "Loaded 79339 available packages" line then sat on top of an
+    // error that had nothing to do with it (VM, 3 October).
+    if (command == "setup") {
+        const std::string chosen = setupChoice(positional);
+
+        if (!chosen.empty()) {
+            const auto loaded =
+                nexus::system::parseProfileDirectory(profileDir);
+            nexus::Composition composition;
+
+            if (!loaded.profiles.empty() &&
+                !findComposition(loaded.profiles, chosen, composition)) {
+                return 1;
+            }
+        }
+    }
+
     // These describe a machine other than this one, and none of them
     // can be answered from the installed set alone.
     //
@@ -5800,24 +5960,7 @@ int main(int argc, char** argv) {
             // it. Every word after "setup" is part of the list, and
             // commas, spaces and empty entries are all the same
             // separator.
-            std::string chosen;
-            for (std::size_t word = 1; word < positional.size(); ++word) {
-                std::string entry;
-                const std::string text = positional[word] + ",";
-                for (const char c : text) {
-                    if (c == ',' || c == ' ' || c == '\t') {
-                        if (!entry.empty()) {
-                            if (!chosen.empty()) {
-                                chosen += ",";
-                            }
-                            chosen += entry;
-                            entry.clear();
-                        }
-                    } else {
-                        entry += c;
-                    }
-                }
-            }
+            const std::string chosen = setupChoice(positional);
 
             return commandSetup(
                 aliases, installed, universe, hardware, profileDir,

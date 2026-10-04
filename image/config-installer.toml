@@ -81,6 +81,18 @@ enable = [
 # typed on another layout is a "wrong passphrase" that is not wrong.
 # Choose the keyboard before the disk in the installer for that reason.
 #
+# The installer turns the chosen layouts into the console keymap
+# through systemd's table, and with two layouts it can land on the
+# wrong row: English (US) + Serbian (Latin) gave "us-acentos", a US
+# keyboard where ' " ` ~ ^ wait for a second key (VM, 3 October). The
+# disk password is typed on the desktop layout in the installer and on
+# the console keymap at every start, so a password with a quote in it
+# could stop working. The second %post sets the console keymap to the
+# table's row for the first layout chosen, exactly (no variant means
+# the row with none), in /etc/vconsole.conf and the boot arguments,
+# and leaves it alone when there is no exact row. No backslashes in
+# it: this is a TOML string. What it did: /var/log/nexus-install-keyboard.log.
+#
 # The installer may preselect a guess from the IP address (Fedora's
 # GeoIP service). It is only a preselection on a screen the person
 # confirms. After installing, automatic lookups are off unless turned
@@ -149,5 +161,71 @@ with open("/tmp/nexus-storage.ks", "w") as out:
 
 %post --erroronfail
 bootc switch --mutate-in-place --enforce-container-sigpolicy --transport registry @NEXUS_IMAGE@
+%end
+
+%post --interpreter=/usr/bin/python3 --log=/var/log/nexus-install-keyboard.log
+# The console keyboard -- the one the disk password is typed on at
+# every start -- must match the first keyboard layout chosen in the
+# installer. See the comment above [customizations...kickstart].
+import os
+import shlex
+import subprocess
+
+def read(path):
+    try:
+        with open(path) as f:
+            return f.read().splitlines()
+    except OSError:
+        return []
+
+xlayout = ""
+xvariant = ""
+for line in read("/etc/X11/xorg.conf.d/00-keyboard.conf"):
+    words = shlex.split(line, comments=True)
+    if len(words) == 3 and words[0] == "Option":
+        if words[1] == "XkbLayout":
+            xlayout = words[2].split(",")[0]
+        elif words[1] == "XkbVariant":
+            xvariant = words[2].split(",")[0]
+
+keymap = ""
+conf = read("/etc/vconsole.conf")
+for line in conf:
+    if line.startswith("KEYMAP="):
+        keymap = line.split("=", 1)[1].strip().strip(chr(34))
+
+wanted = ""
+for line in read("/usr/share/systemd/kbd-model-map"):
+    fields = line.split()
+    if len(fields) < 4 or fields[0].startswith("#"):
+        continue
+    if fields[1] == xlayout and fields[3] == (xvariant or "-"):
+        wanted = fields[0]
+        break
+
+print("desktop layout:", xlayout or "?", "variant:", xvariant or "none")
+print("console keymap:", keymap or "?", "matching row:", wanted or "none")
+
+# Only a keymap this system actually has.
+present = False
+for top, dirs, files in os.walk("/usr/lib/kbd/keymaps"):
+    if wanted + ".map.gz" in files or wanted + ".map" in files:
+        present = True
+        break
+if wanted and not present:
+    print("no keymap file for", wanted)
+
+if xlayout and keymap and wanted and present and wanted != keymap:
+    with open("/etc/vconsole.conf", "w") as f:
+        for line in conf:
+            if line.startswith("KEYMAP="):
+                line = "KEYMAP=" + chr(34) + wanted + chr(34)
+            f.write(line + chr(10))
+    done = subprocess.run(["ostree", "admin", "instutil", "set-kargs", "--merge",
+                           "--replace=vconsole.keymap=" + wanted])
+    print("changed to", wanted, "(boot arguments:",
+          "ok" if done.returncode == 0 else "failed", ")")
+else:
+    print("left as it is")
 %end
 """
