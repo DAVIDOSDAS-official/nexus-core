@@ -80,3 +80,86 @@ TEST(UpdateTest, SummarisesForANotification) {
     EXPECT_EQ(updateSummary(SystemUpdate{}, {{"org.a.b", ""}}),
               "1 app update");
 }
+
+static const char* kRunning =
+    "State: idle\n"
+    "Deployments:\n"
+    "\xe2\x97\x8f ostree-image-signed:docker://ghcr.io/x/nexus-core:minimal\n"
+    "                   Digest: sha256:7551\n"
+    "                  Version: 44.20261002.0 (2026-10-04T13:19:59Z)\n"
+    "\n"
+    "  ostree-image-signed:docker://ghcr.io/x/nexus-core:minimal\n"
+    "                   Digest: sha256:3706\n"
+    "                  Version: 44.20261002.0 (2026-10-04T11:24:47Z)\n";
+
+// skopeo inspect as the Asus printed it, 4 October (shortened).
+static const char* kInspect = R"({
+    "Name": "ghcr.io/x/nexus-core",
+    "Digest": "sha256:9999",
+    "Created": "2026-10-05T14:18:53.528859441Z",
+    "Labels": {
+        "containers.bootc": "1",
+        "nexus.version": "0.1.32",
+        "org.opencontainers.image.version": "44.20261002.0"
+    },
+    "Layers": ["sha256:bb9f"]
+})";
+
+TEST(UpdateTest, ReadsWhatTheMachineRuns) {
+    const auto u = parseSystemUpdate(kRunning);
+    EXPECT_EQ(u.origin, "ghcr.io/x/nexus-core:minimal");
+    EXPECT_EQ(u.digest, "sha256:7551");
+    EXPECT_FALSE(u.staged);
+}
+
+TEST(UpdateTest, ImageReferenceDropsTheTransport) {
+    EXPECT_EQ(imageReference("ostree-image-signed:docker://ghcr.io/a/b:c"),
+              "ghcr.io/a/b:c");
+    EXPECT_EQ(imageReference("ostree-unverified-registry:docker://q/r:s"),
+              "q/r:s");
+    EXPECT_EQ(imageReference("fedora:fedora/44/x86_64/silverblue"), "");
+}
+
+TEST(UpdateTest, ANewDigestOnTheRegistryIsAnUpdate) {
+    auto u = parseSystemUpdate(kRunning);
+    const auto remote = parseImageInspect(kInspect);
+    ASSERT_TRUE(remote.ok);
+    EXPECT_EQ(remote.nexusVersion, "0.1.32");
+    compareWithRegistry(u, remote);
+    EXPECT_TRUE(u.available);
+    EXPECT_EQ(u.version, "0.1.32");
+    EXPECT_EQ(updateSummary(u, {}), "Nexus 0.1.32");
+}
+
+TEST(UpdateTest, TheSameDigestIsUpToDate) {
+    auto u = parseSystemUpdate(kRunning);
+    RemoteImage same;
+    same.ok = true;
+    same.digest = "sha256:7551";
+    compareWithRegistry(u, same);
+    EXPECT_FALSE(u.available);
+}
+
+TEST(UpdateTest, AStagedDigestIsNotOfferedTwice) {
+    auto u = parseSystemUpdate(
+        "Deployments:\n"
+        "  ostree-image-signed:docker://ghcr.io/x/y:z\n"
+        "                   Staged: yes\n"
+        "                   Digest: sha256:9999\n"
+        "\xe2\x97\x8f ostree-image-signed:docker://ghcr.io/x/y:z\n"
+        "                   Digest: sha256:7551\n");
+    EXPECT_TRUE(u.staged);
+    EXPECT_EQ(u.stagedDigest, "sha256:9999");
+    compareWithRegistry(u, parseImageInspect(kInspect));
+    EXPECT_FALSE(u.available);
+}
+
+TEST(UpdateTest, NoLabelStillSaysSomethingReadable) {
+    auto u = parseSystemUpdate(kRunning);
+    RemoteImage remote;
+    remote.ok = true;
+    remote.digest = "sha256:8888";
+    compareWithRegistry(u, remote);
+    EXPECT_EQ(updateSummary(u, {}), "A new Nexus version");
+    EXPECT_FALSE(parseImageInspect("not json").ok);
+}

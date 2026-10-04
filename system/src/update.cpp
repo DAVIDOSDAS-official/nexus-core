@@ -1,5 +1,7 @@
 #include <nexus/system/update.hpp>
 
+#include <nexus/system/json.hpp>
+
 #include <sstream>
 
 namespace nexus::system {
@@ -30,7 +32,10 @@ SystemUpdate parseSystemUpdate(const std::string& statusText) {
     std::string line;
     bool inUpdate = false;
     bool inDeployments = false;
+    bool booted = false;
     std::string deploymentVersion;
+    std::string deploymentDigest;
+    bool deploymentStaged = false;
 
     while (std::getline(lines, line)) {
         const std::string text = trim(line);
@@ -55,6 +60,12 @@ SystemUpdate parseSystemUpdate(const std::string& statusText) {
         if (startsDeployment(line)) {
             inUpdate = false;
             deploymentVersion.clear();
+            deploymentDigest.clear();
+            deploymentStaged = false;
+            booted = line.rfind("\xe2\x97\x8f", 0) == 0;
+            if (booted) {
+                out.origin = imageReference(trim(line.substr(3)));
+            }
             continue;
         }
 
@@ -89,13 +100,61 @@ SystemUpdate parseSystemUpdate(const std::string& statusText) {
 
         if (key == "Version") {
             deploymentVersion = value.substr(0, value.find(" ("));
+        } else if (key == "Digest") {
+            deploymentDigest = value;
+            if (booted) {
+                out.digest = value;
+            }
+            if (deploymentStaged) {
+                out.stagedDigest = value;
+            }
         } else if (key == "Staged" && value == "yes") {
             out.staged = true;
+            deploymentStaged = true;
             out.stagedVersion = deploymentVersion;
+            out.stagedDigest = deploymentDigest;
         }
     }
 
     return out;
+}
+
+std::string imageReference(const std::string& origin) {
+    const std::string marker = "docker://";
+    const auto at = origin.find(marker);
+    if (at == std::string::npos) {
+        return {};
+    }
+    return trim(origin.substr(at + marker.size()));
+}
+
+RemoteImage parseImageInspect(const std::string& json) {
+    RemoteImage out;
+    const auto parsed = parseJson(json);
+    if (!parsed.error.empty()) {
+        return out;
+    }
+    out.digest = parsed.value["Digest"].asString();
+    out.created = parsed.value["Created"].asString();
+    out.nexusVersion = parsed.value["Labels"]["nexus.version"].asString();
+    out.ok = out.digest.rfind("sha256:", 0) == 0;
+    return out;
+}
+
+void compareWithRegistry(SystemUpdate& system, const RemoteImage& remote) {
+    if (!remote.ok || system.digest.empty()) {
+        return;
+    }
+    if (remote.digest == system.stagedDigest) {
+        return;   // already downloaded; waiting for a restart
+    }
+    if (remote.digest != system.digest) {
+        system.available = true;
+        system.version = remote.nexusVersion.empty()
+            ? std::string("a new image")
+            : remote.nexusVersion;
+        system.date = remote.created;
+    }
 }
 
 std::vector<AppUpdate> parseFlatpakUpdates(const std::string& text) {
@@ -126,8 +185,10 @@ std::string updateSummary(const SystemUpdate& system,
                           const std::vector<AppUpdate>& apps) {
     std::string out;
     if (system.available) {
-        out = "Nexus " + (system.version.empty() ? std::string("update")
-                                                 : system.version);
+        const bool numbered = !system.version.empty() &&
+            system.version[0] >= '0' && system.version[0] <= '9';
+        out = numbered ? "Nexus " + system.version
+                       : std::string("A new Nexus version");
     }
     if (!apps.empty()) {
         if (!out.empty()) {

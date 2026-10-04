@@ -574,27 +574,35 @@ RUN set -eu; \
 # 4 October). Nothing is downloaded or changed until the person runs
 # `sudo nexus update --apply`, and the machine never restarts by itself.
 #
-# rpm-ostree's own daily check (AutomaticUpdatePolicy=check) records
-# what is new where `rpm-ostree status` -- and so `nexus update` -- can
-# read it without a password. bootc's timer is masked: it downloads,
-# applies and restarts on its own, and on a machine with any added
-# package it fails without a word ("cannot upgrade via bootc", Asus,
-# 4 October), so it was either a surprise restart or nothing at all.
-# The notification itself comes from a timer in the person's session,
-# in the desktop stage.
+# The check is Nexus's own: a timer in each person's session (desktop
+# stage) compares the image this machine runs with the one on the
+# registry and sends a notification. rpm-ostree's automatic check is
+# off: on an image-based machine it looks only at added packages,
+# refreshing every repository's metadata each day to do it, and it
+# missed a new Nexus image (Asus, 4 October). bootc's timer is masked:
+# it downloads, applies and restarts on its own, and on a machine with
+# any added package it fails without a word ("cannot upgrade via
+# bootc", Asus, 4 October).
 RUN set -eu; \
     conf=/etc/rpm-ostreed.conf; \
     if [ -f "${conf}" ] && grep -q 'AutomaticUpdatePolicy=' "${conf}"; then \
-        sed -i 's/^#\?AutomaticUpdatePolicy=.*/AutomaticUpdatePolicy=check/' "${conf}"; \
-    elif [ -f "${conf}" ] && grep -q '^\[Daemon\]' "${conf}"; then \
-        sed -i '/^\[Daemon\]/a AutomaticUpdatePolicy=check' "${conf}"; \
-    else \
-        printf '[Daemon]\nAutomaticUpdatePolicy=check\n' >> "${conf}"; \
+        sed -i 's/^#\?AutomaticUpdatePolicy=.*/AutomaticUpdatePolicy=none/' "${conf}"; \
     fi; \
-    grep -q '^AutomaticUpdatePolicy=check$' "${conf}"; \
-    systemctl enable rpm-ostreed-automatic.timer; \
+    systemctl disable rpm-ostreed-automatic.timer 2> /dev/null || true; \
     systemctl mask bootc-fetch-apply-updates.timer; \
-    echo "Updates: daily check, applied only when asked."
+    echo "Updates: checked by Nexus, applied only when asked."
+
+# The boot menu: five seconds instead of Fedora's one, so somebody can
+# see it and pick the version before an update (David, Asus,
+# 4 October: "a user will need to be hella fast"). Fedora's grub.cfg is
+# generated and may be rewritten by its updates; the custom.cfg it
+# reads at the end is ours. Written once, at the first start of this
+# image; a person who changes or removes the line keeps their choice.
+COPY image/boot-menu/nexus-boot-menu /usr/libexec/nexus/boot-menu
+COPY image/boot-menu/nexus-boot-menu.service \
+     /usr/lib/systemd/system/nexus-boot-menu.service
+RUN chmod 0755 /usr/libexec/nexus/boot-menu \
+    && systemctl enable nexus-boot-menu.service
 
 # The wallpapers: one per profile, all of them in the picker.
 #
@@ -684,15 +692,6 @@ COPY --from=builder /build/cli/nexus /usr/bin/nexus
 COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
 COPY image/first-boot/nexus-first-boot.service \
      /usr/lib/systemd/system/nexus-first-boot.service
-
-# The daily "update available" notification, in each person's session
-# (see "Updates" in the os stage). notify-send comes from libnotify.
-COPY image/updates/nexus-update-notify.service \
-     image/updates/nexus-update-notify.timer \
-     /usr/lib/systemd/user/
-RUN dnf install -y --setopt=install_weak_deps=False libnotify \
-    && dnf clean all \
-    && systemctl --global enable nexus-update-notify.timer
 COPY components/profiles /usr/share/nexus/profiles
 COPY components/aliases /usr/share/nexus/aliases
 COPY image/identity.sh /usr/libexec/nexus/identity
@@ -712,6 +711,26 @@ FROM desktop-packages AS desktop
 
 ARG NEXUS_VERSION
 ARG NEXUS_PROFILE
+
+# What `nexus update` shows as the new version. The image's own
+# org.opencontainers.image.version is Fedora's (44.2026...), the same
+# for every Nexus build of a week, and tells nobody what changed.
+LABEL nexus.version="${NEXUS_VERSION}"
+
+# The daily "update available" notification, in each person's session
+# (see "Updates" in the os stage). Switched on in /usr, which every
+# update replaces whole, rather than /etc, which is merged. (0.1.31 put
+# this in the server stage by mistake; desktops never got it.)
+# notify-send comes from libnotify.
+COPY image/updates/nexus-update-notify.service \
+     image/updates/nexus-update-notify.timer \
+     /usr/lib/systemd/user/
+RUN set -eu; \
+    mkdir -p /usr/lib/systemd/user/timers.target.wants; \
+    ln -sf ../nexus-update-notify.timer \
+        /usr/lib/systemd/user/timers.target.wants/nexus-update-notify.timer; \
+    rpm -q libnotify > /dev/null || \
+        { dnf install -y --setopt=install_weak_deps=False libnotify && dnf clean all; }
 
 COPY --from=builder /build/cli/nexus /usr/bin/nexus
 COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot

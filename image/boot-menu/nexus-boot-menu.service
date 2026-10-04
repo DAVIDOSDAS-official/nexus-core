@@ -1,0 +1,11 @@
+[Unit]
+Description=Nexus: five seconds at the boot menu
+ConditionPathExists=!/var/lib/nexus/boot-menu-set
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nexus/boot-menu
+
+[Install]
+WantedBy=multi-user.target

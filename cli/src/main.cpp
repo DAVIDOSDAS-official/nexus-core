@@ -79,7 +79,7 @@ void printUsage() {
         << "    nexus guide            how to work this system\n"
         << "    nexus gamecheck <game>  will it run here, and what it can see\n"
         << "    nexus language [list | add <name> | set <name>] [--apply]\n"
-        << "    nexus update [check] [--apply]   what is new; take it\n"
+        << "    nexus update [--apply]   what is new; take it\n"
         << "    nexus scan\n"
         << "    nexus what-provides <capability>\n"
         << "    nexus why <component>\n"
@@ -2957,7 +2957,7 @@ int commandUpdate(
             checkNow = true;
         } else {
             std::cerr << "Unknown: nexus update " << word
-                      << "\nUse: nexus update [check] [--apply]\n";
+                      << "\nUse: nexus update [--apply]\n";
             return 2;
         }
     }
@@ -2967,25 +2967,32 @@ int commandUpdate(
     const bool haveFlatpak = nexus::system::commandExists("flatpak");
     const bool root = nexus::system::haveRootPrivileges();
 
-    // A fresh look at the registry needs the update service's
-    // permission (rpm-ostree asks for a password otherwise), so only
-    // when asked for, or as part of --apply.
-    if (image && (checkNow || apply)) {
-        if (!root) {
-            std::cout << "Checking right now needs root:\n    sudo "
-                      << invocation << "\n";
-            return 1;
-        }
-        std::cerr << "Asking for the newest Nexus version...\n";
-        nexus::system::runCommand(
-            "rpm-ostree upgrade --check >/dev/null 2>&1", false);
-    }
-
+    // What the machine runs, then what the registry has now. Comparing
+    // the two fingerprints needs no password and downloads nothing but
+    // the image's description. ("check" is accepted for habit: every
+    // run looks fresh.)
+    (void)checkNow;
     nexus::system::SystemUpdate system;
+    bool reached = false;
     if (image) {
         system = nexus::system::parseSystemUpdate(
             nexus::system::runCommand("rpm-ostree status 2>/dev/null",
                                       false).text);
+        if (!system.origin.empty() &&
+            nexus::system::commandExists("skopeo")) {
+            const auto remote = nexus::system::parseImageInspect(
+                nexus::system::runCommand(
+                    "skopeo inspect --no-tags 'docker://" + system.origin +
+                    "' 2>/dev/null", false).text);
+            reached = remote.ok;
+            nexus::system::compareWithRegistry(system, remote);
+            // The weekly build makes a new image even when Nexus itself
+            // did not change: same version, newer Fedora packages.
+            if (system.available && system.version == NEXUS_VERSION) {
+                system.version = std::string(NEXUS_VERSION) +
+                    ", rebuilt with Fedora's latest updates";
+            }
+        }
     }
 
     std::vector<nexus::system::AppUpdate> apps;
@@ -3043,8 +3050,11 @@ int commandUpdate(
         const auto deployments = readDeployments();
         for (const auto& d : deployments) {
             if (d.booted) {
-                std::cout << "Running      Nexus " << d.version
-                          << (d.date.empty() ? "" : "  (" + dayOf(d.date) + ")")
+                // The tool's own version is the image's: both are built
+                // together. d.version is Fedora's base number.
+                std::cout << "Running      Nexus " << NEXUS_VERSION
+                          << (d.date.empty() ? ""
+                                  : "  (built " + dayOf(d.date) + ")")
                           << "\n";
             }
         }
@@ -3053,23 +3063,22 @@ int commandUpdate(
                       << " is downloaded and waits for a restart\n";
         }
         if (system.available) {
-            std::cout << "New          " << system.version
-                      << (system.date.empty() ? "" : "  (" + dayOf(system.date) + ")")
+            const bool numbered = !system.version.empty() &&
+                std::isdigit(static_cast<unsigned char>(system.version[0]));
+            std::cout << "New          "
+                      << (numbered ? "Nexus " + system.version
+                                   : std::string("a newer Nexus image"))
+                      << (system.date.empty() ? ""
+                              : "  (built " + dayOf(system.date) + ")")
                       << "\n";
             if (!system.diff.empty()) {
                 std::cout << "             " << system.diff << "\n";
             }
         } else if (!system.staged) {
-            std::cout << "System       up to date";
-            if (!system.lastCheck.empty()) {
-                std::cout << " (" << system.lastCheck << ")";
-            }
-            std::cout << "\n";
-        }
-        if (system.policy.empty() || system.policy == "disabled" ||
-            system.policy == "none") {
-            std::cout << "             the daily check is off; "
-                         "'sudo nexus update check' looks now\n";
+            std::cout << (reached
+                ? "System       up to date (checked just now)\n"
+                : "System       could not reach the registry to compare "
+                  "(offline?)\n");
         }
     }
 

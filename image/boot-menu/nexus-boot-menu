@@ -1,0 +1,41 @@
+#!/bin/sh
+# Five seconds at the boot menu instead of Fedora's one.
+#
+# The menu is where an earlier version can be picked after a bad
+# update, and at one second nobody new finds it (Asus, 4 October).
+# Fedora's /boot/grub2/grub.cfg sets "timeout=1" and is generated, so
+# it is left alone; it reads /boot/grub2/custom.cfg at the end, and a
+# timeout set there wins. Written once per machine (the marker in
+# /var/lib/nexus): somebody who changes or deletes the line keeps
+# their choice, and Nexus does not put it back.
+set -eu
+
+marker=/var/lib/nexus/boot-menu-set
+custom=/boot/grub2/custom.cfg
+
+[ -e "${marker}" ] && exit 0
+[ -f /boot/grub2/grub.cfg ] || exit 0
+grep -q 'custom.cfg' /boot/grub2/grub.cfg || exit 0
+
+# /boot may be mounted read-only; open it for this one write only.
+reopen=no
+if ! touch /boot/grub2/.nexus-write-test 2> /dev/null; then
+    mount -o remount,rw /boot || exit 0
+    reopen=yes
+fi
+rm -f /boot/grub2/.nexus-write-test
+
+if ! grep -qs '^set timeout=' "${custom}"; then
+    {
+        echo '# Nexus: 5 seconds to choose at the boot menu (Fedora: 1).'
+        echo '# The menu lists earlier versions to start after a bad update.'
+        echo '# Change the number to taste; Nexus will not change it again.'
+        echo 'set timeout=5'
+    } >> "${custom}"
+    echo "Boot menu: 5 seconds (${custom})."
+fi
+
+[ "${reopen}" = yes ] && mount -o remount,ro /boot
+
+mkdir -p /var/lib/nexus
+touch "${marker}"
