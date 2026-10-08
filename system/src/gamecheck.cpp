@@ -293,6 +293,76 @@ describeSandbox(const std::string& permissions) {
     return out;
 }
 
+std::vector<std::pair<std::string, std::string>>
+describeIdentifiers(const std::vector<IdentifierProbe>& probes) {
+    struct Wording {
+        const char* key;
+        const char* what;
+        const char* readable;   // when an ordinary program can read it
+        const char* protectedText;
+    };
+    // In the order a person would think of them.
+    const Wording words[] = {
+        {"mac", "Network card",
+         "readable: its hardware address, unique to the card",
+         "protected"},
+        {"disk", "Disks",
+         "readable: model and serial number of each disk",
+         "protected"},
+        {"machine-id", "Machine ID",
+         "readable: made at install, new after a reinstall",
+         "protected"},
+        {"screen", "Screen",
+         "readable: the screen's own information, with a serial if it has one",
+         "protected"},
+        {"cpu", "Processor",
+         "model only: x86 processors have no serial a program can read",
+         "protected"},
+        {"board", "Motherboard serials",
+         "readable",
+         "protected: root only, and no game here runs as root"},
+        {"tpm", "TPM security chip",
+         "readable",
+         "protected: root only. Windows kernel anti-cheats ban by it;"
+         " those games do not run on Linux"},
+    };
+
+    std::vector<std::pair<std::string, std::string>> out;
+    for (const Wording& w : words) {
+        for (const IdentifierProbe& p : probes) {
+            if (p.key != w.key) continue;
+            if (!p.present) {
+                out.emplace_back(w.what, "none on this computer");
+            } else {
+                out.emplace_back(w.what,
+                                 p.readable ? w.readable : w.protectedText);
+            }
+            break;
+        }
+    }
+    return out;
+}
+
+bool sandboxAllows(const std::string& permissions, const std::string& key,
+                   const std::string& value) {
+    std::string section;
+    std::istringstream in(permissions);
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.front() == '[') {
+            section = line;
+            continue;
+        }
+        if (section != "[Context]") continue;
+        const auto eq = line.find('=');
+        if (eq == std::string::npos || line.substr(0, eq) != key) continue;
+        for (const std::string& item : splitList(line.substr(eq + 1))) {
+            if (item == value) return true;
+        }
+    }
+    return false;
+}
+
 std::string urlEncode(const std::string& text) {
     static const char* hex = "0123456789ABCDEF";
     std::string out;

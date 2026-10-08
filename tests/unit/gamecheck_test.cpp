@@ -128,3 +128,34 @@ TEST(GamecheckTest, HomeAccessIsAllFiles) {
 TEST(GamecheckTest, EncodesSearchTerms) {
     EXPECT_EQ(urlEncode("Elden Ring: Č"), "Elden%20Ring%3A%20%C4%8C");
 }
+
+TEST(GamecheckTest, IdentifiersSayWhatAnOrdinaryProgramCanRead) {
+    const auto lines = describeIdentifiers({
+        {"tpm", true, false},
+        {"mac", true, true},
+        {"board", true, false},
+        {"disk", false, false},
+        {"cpu", true, true},
+    });
+    ASSERT_EQ(lines.size(), 5u);
+    // In a fixed order, whatever order the probes came in.
+    EXPECT_EQ(lines[0].first, "Network card");
+    EXPECT_NE(lines[0].second.find("readable"), std::string::npos);
+    EXPECT_EQ(lines[1].first, "Disks");
+    EXPECT_EQ(lines[1].second, "none on this computer");
+    EXPECT_EQ(lines[2].first, "Processor");
+    EXPECT_EQ(lines[3].first, "Motherboard serials");
+    EXPECT_EQ(lines[3].second.rfind("protected", 0), 0u);
+    EXPECT_EQ(lines[4].first, "TPM security chip");
+    EXPECT_EQ(lines[4].second.rfind("protected", 0), 0u);
+}
+
+TEST(GamecheckTest, ReadsSandboxContextValues) {
+    const std::string perms =
+        "[Context]\nshared=network;ipc;\ndevices=all;\n"
+        "[Session Bus Policy]\nshared=nothing\n";
+    EXPECT_TRUE(sandboxAllows(perms, "shared", "network"));
+    EXPECT_TRUE(sandboxAllows(perms, "devices", "all"));
+    EXPECT_FALSE(sandboxAllows(perms, "shared", "nothing"));
+    EXPECT_FALSE(sandboxAllows("[Context]\nshared=ipc;\n", "shared", "network"));
+}

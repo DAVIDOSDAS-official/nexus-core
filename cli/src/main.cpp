@@ -78,6 +78,7 @@ void printUsage() {
         << "    nexus                  this machine in a few lines\n"
         << "    nexus guide            how to work this system\n"
         << "    nexus gamecheck <game>  will it run here, and what it can see\n"
+        << "    nexus gamecheck --identifiers  what a game could recognise this computer by\n"
         << "    nexus language [list | add <name> | set <name>] [--apply]\n"
         << "    nexus update [--apply]   what is new; take it\n"
         << "    nexus scan\n"
@@ -3180,6 +3181,133 @@ int commandUpdate(
     return 0;
 }
 
+
+// What an ordinary program could read on this machine, by file
+// permissions only: "others" may read it. Run under sudo, a program
+// can read everything, which is not what a game gets, so the
+// permission bits are the answer rather than a test read. No value is
+// read or printed (the screen's information is only measured).
+std::vector<nexus::system::IdentifierProbe> probeIdentifiers() {
+    namespace fs = std::filesystem;
+    auto worldReadable = [](const fs::path& p) {
+        std::error_code ec;
+        const auto st = fs::status(p, ec);
+        if (ec) return false;
+        return (st.permissions() & fs::perms::others_read) != fs::perms::none;
+    };
+    auto exists = [](const fs::path& p) {
+        std::error_code ec;
+        return fs::exists(p, ec);
+    };
+    std::vector<nexus::system::IdentifierProbe> out;
+    std::error_code ec;
+
+    {   // Network cards other than loopback and virtual ones.
+        nexus::system::IdentifierProbe p{"mac"};
+        for (const auto& e : fs::directory_iterator("/sys/class/net", ec)) {
+            const std::string name = e.path().filename().string();
+            if (name == "lo" || !exists(e.path() / "device")) continue;
+            p.present = true;
+            p.readable = p.readable || worldReadable(e.path() / "address");
+        }
+        out.push_back(p);
+    }
+    {   // Disk names with serials: /dev/disk/by-id, and NVMe's own file.
+        nexus::system::IdentifierProbe p{"disk"};
+        const fs::path byId = "/dev/disk/by-id";
+        for (const auto& e : fs::directory_iterator(byId, ec)) {
+            const std::string name = e.path().filename().string();
+            if (name.rfind("ata-", 0) == 0 || name.rfind("nvme-", 0) == 0 ||
+                name.rfind("scsi-", 0) == 0 || name.rfind("wwn-", 0) == 0) {
+                p.present = true;
+                p.readable = p.readable || worldReadable(byId);
+            }
+        }
+        for (const auto& e : fs::directory_iterator("/sys/class/nvme", ec)) {
+            if (exists(e.path() / "serial")) {
+                p.present = true;
+                p.readable = p.readable || worldReadable(e.path() / "serial");
+            }
+        }
+        out.push_back(p);
+    }
+    {
+        nexus::system::IdentifierProbe p{"machine-id"};
+        p.present = exists("/etc/machine-id");
+        p.readable = worldReadable("/etc/machine-id");
+        out.push_back(p);
+    }
+    {   // A connected screen has a non-empty EDID.
+        nexus::system::IdentifierProbe p{"screen"};
+        for (const auto& e : fs::directory_iterator("/sys/class/drm", ec)) {
+            const fs::path edid = e.path() / "edid";
+            if (!exists(edid)) continue;
+            std::ifstream in(edid, std::ios::binary);
+            if (in.peek() == std::ifstream::traits_type::eof()) continue;
+            p.present = true;
+            p.readable = p.readable || worldReadable(edid);
+        }
+        out.push_back(p);
+    }
+    {
+        nexus::system::IdentifierProbe p{"cpu"};
+        p.present = true;
+        p.readable = true;
+        out.push_back(p);
+    }
+    {
+        nexus::system::IdentifierProbe p{"board"};
+        for (const char* f : {"/sys/class/dmi/id/product_serial",
+                              "/sys/class/dmi/id/board_serial",
+                              "/sys/class/dmi/id/product_uuid"}) {
+            if (!exists(f)) continue;
+            p.present = true;
+            p.readable = p.readable || worldReadable(f);
+        }
+        out.push_back(p);
+    }
+    {
+        nexus::system::IdentifierProbe p{"tpm"};
+        for (const char* f : {"/dev/tpm0", "/dev/tpmrm0"}) {
+            if (!exists(f)) continue;
+            p.present = true;
+            p.readable = p.readable || worldReadable(f);
+        }
+        out.push_back(p);
+    }
+    return out;
+}
+
+// The section itself. `permissions` is the launcher's Flatpak
+// permissions, or empty when there is no launcher to ask.
+void printIdentifiers(const std::string& launcher,
+                      const std::string& permissions) {
+    std::cout << "\n  What a game here can recognise this computer by\n";
+    for (const auto& [what, answer] :
+         nexus::system::describeIdentifiers(probeIdentifiers())) {
+        std::string label = what;
+        while (label.size() < 21) label += ' ';
+        std::cout << "    " << label << answer << "\n";
+    }
+    if (!permissions.empty()) {
+        const bool net =
+            nexus::system::sandboxAllows(permissions, "shared", "network");
+        const bool dev =
+            nexus::system::sandboxAllows(permissions, "devices", "all");
+        std::cout << "    Inside " << launcher << "'s sandbox: "
+                  << (net ? "it shares the network, so it sees the network"
+                            " card;"
+                          : "no network, so not the network card;")
+                  << "\n      "
+                  << (dev ? "it has all devices, so it sees the disks;"
+                          : "no devices, so not the disks;")
+                  << " Flatpak gives every app the machine ID.\n";
+    }
+    std::cout << "    Nexus only reports these. It does not hide or change"
+                 " them: what an\n    anti-cheat may see is between the game"
+                 " and its player.\n";
+}
+
 int commandGamecheck(const std::vector<std::string>& words) {
     std::string typed;
     for (const std::string& word : words) {
@@ -3187,8 +3315,20 @@ int commandGamecheck(const std::vector<std::string>& words) {
         typed += word;
     }
     if (typed.empty()) {
-        std::cerr << "Usage: nexus gamecheck <game name or Steam id>\n";
+        std::cerr << "Usage: nexus gamecheck <game name or Steam id>\n"
+                     "       nexus gamecheck --identifiers\n";
         return 2;
+    }
+    // The machine on its own, no game and no network.
+    if (typed == "--identifiers" || typed == "identifiers") {
+        const auto perms = nexus::system::runCommand(
+            "flatpak info --show-permissions com.valvesoftware.Steam"
+            " 2>/dev/null", false);
+        printIdentifiers("Steam",
+            perms.ok && perms.text.find("[Context]") != std::string::npos
+                ? perms.text : std::string());
+        std::cout << "\nNothing has been changed.\n";
+        return 0;
     }
     if (!nexus::system::commandExists("curl")) {
         std::cerr << "gamecheck needs curl to ask ProtonDB and"
@@ -3359,6 +3499,9 @@ int commandGamecheck(const std::vector<std::string>& words) {
                 std::cout << "    " << label << answer << "\n";
             }
         }
+        const bool haveLauncher =
+            perms.ok && perms.text.find("[Context]") != std::string::npos;
+        printIdentifiers(launcher, haveLauncher ? perms.text : std::string());
     }
 
     if (!others.empty()) {
@@ -3371,7 +3514,7 @@ int commandGamecheck(const std::vector<std::string>& words) {
     }
 
     std::cout << "\nSources: ProtonDB, AreWeAntiCheatYet, Steam store,"
-                 " and this machine's Flatpak settings.\n"
+                 " and this machine's Flatpak\nsettings and file permissions.\n"
                  "Nothing has been changed.\n";
     return 0;
 }

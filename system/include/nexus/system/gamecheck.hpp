@@ -70,6 +70,32 @@ std::string gameVerdict(const ProtonSummary& proton,
 std::vector<std::pair<std::string, std::string>>
 describeSandbox(const std::string& permissions);
 
+// What a game could recognise this machine by.
+//
+// Anti-cheats ban machines, not only accounts: Valorant's Windows
+// anti-cheat reads the TPM chip, which on AMD Ryzen sits inside the
+// processor, so a resold processor carries the ban (asked about on
+// 4 October). On Linux a game runs as an ordinary program, so what
+// matters is which identifiers an ordinary program can read here.
+// Nexus reports them and never changes or hides one: what an anti-cheat
+// sees is between the game and its player.
+//
+// The CLI looks at the machine (file permissions, never the values,
+// which are not printed anywhere) and passes in what it found.
+struct IdentifierProbe {
+    std::string key;      // mac, disk, machine-id, screen, board, tpm, cpu
+    bool present = false; // this machine has it
+    bool readable = false;// an ordinary program running as you can read it
+};
+
+std::vector<std::pair<std::string, std::string>>
+describeIdentifiers(const std::vector<IdentifierProbe>& probes);
+
+// Whether a Flatpak's permissions list a value under a [Context] key,
+// e.g. ("shared", "network") or ("devices", "all").
+bool sandboxAllows(const std::string& permissions, const std::string& key,
+                   const std::string& value);
+
 std::string urlEncode(const std::string& text);
 
 }  // namespace nexus::system
