@@ -32,6 +32,7 @@ add_library(nexus_system
     src/rpm_database.cpp
     src/alias_file.cpp
     src/compression.cpp
+    src/catalogue.cpp
 )
 
 target_include_directories(nexus_system

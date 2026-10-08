@@ -99,10 +99,14 @@ ARG NEXUS_PROFILE=kde
 # in the shipped layer.
 FROM quay.io/fedora/fedora-bootc:${FEDORA_VERSION} AS builder
 
+# Qt 6 for Nexus Shop. Only its development files live here; the
+# desktop stages already have the libraries (LXQt and KDE use them).
 RUN dnf install -y \
         cmake \
         gcc-c++ \
         make \
+        qt6-qtbase-devel \
+        qt6-qtdeclarative-devel \
     && dnf clean all
 
 COPY . /src
@@ -118,6 +122,7 @@ ARG NEXUS_COMMIT=unknown
 RUN cmake -S /src -B /build \
         -DCMAKE_BUILD_TYPE=Release \
         -DNEXUS_BUILD_TESTS=OFF \
+        -DNEXUS_BUILD_SHOP=ON \
         -DNEXUS_COMMIT_OVERRIDE="${NEXUS_COMMIT}" \
     && cmake --build /build --parallel
 
@@ -734,6 +739,25 @@ RUN set -eu; \
         { dnf install -y --setopt=install_weak_deps=False libnotify && dnf clean all; }
 
 COPY --from=builder /build/cli/nexus /usr/bin/nexus
+
+# Nexus Shop (0.1.37: step 1, reading only). Desktops only: this is
+# the desktop stage, not base, which starts the same way. Its app
+# lists: Fedora's from appstream-data (14 MB), Flathub's downloaded by
+# the Shop itself once a day (flatpak update --appstream, no
+# password). The Qt libraries are already here for the desktop; the
+# rpm -q only makes sure, as for libnotify above.
+COPY --from=builder /build/gui/shop/nexus-shop /usr/bin/nexus-shop
+COPY image/shop/nexus-shop.desktop /usr/share/applications/nexus-shop.desktop
+COPY image/shop/nexus-shop.svg /usr/share/icons/hicolor/scalable/apps/nexus-shop.svg
+RUN set -eu; \
+    missing=""; \
+    for package in appstream-data qt6-qtdeclarative; do \
+        rpm -q "${package}" > /dev/null || missing="${missing} ${package}"; \
+    done; \
+    if [ -n "${missing}" ]; then \
+        dnf install -y --setopt=install_weak_deps=False ${missing} && dnf clean all; \
+    fi; \
+    rpm -q appstream-data qt6-qtdeclarative
 COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
 COPY image/first-boot/nexus-first-boot.service \
      /usr/lib/systemd/system/nexus-first-boot.service

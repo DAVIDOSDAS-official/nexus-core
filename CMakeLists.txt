@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # the image reads it from the binary (image/identity.sh), and
 # publish.sh reads it from the image. Change it here, commit, build.
 project(NexusCore
-    VERSION 0.1.36
+    VERSION 0.1.37
     DESCRIPTION "A modular Linux operating system platform"
     LANGUAGES CXX
 )
@@ -43,6 +43,14 @@ add_subdirectory(cli)
 
 add_dependencies(nexus nexus_version_header)
 target_include_directories(nexus PRIVATE "${NEXUS_VERSION_DIR}")
+
+# Nexus Shop needs Qt 6; the tool does not. The image builds it, a
+# plain checkout does not unless asked.
+option(NEXUS_BUILD_SHOP "Build Nexus Shop (needs Qt 6)" OFF)
+
+if(NEXUS_BUILD_SHOP)
+    add_subdirectory(gui/shop)
+endif()
 
 # Tests need GoogleTest, which a deployment image has no reason to
 # carry. Building the tool and testing the tool are different jobs.

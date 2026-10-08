@@ -1,0 +1,14 @@
+<RCC>
+    <qresource prefix="/shop">
+        <file>qml/qmldir</file>
+        <file>qml/Theme.qml</file>
+        <file>qml/Main.qml</file>
+        <file>qml/HomePage.qml</file>
+        <file>qml/ListPage.qml</file>
+        <file>qml/AppPage.qml</file>
+        <file>qml/AppTile.qml</file>
+        <file>qml/AppIcon.qml</file>
+        <file>qml/Chip.qml</file>
+        <file>qml/NavButton.qml</file>
+    </qresource>
+</RCC>

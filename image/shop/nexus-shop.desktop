@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Nexus Shop
+GenericName=App store
+Comment=Apps from Flathub and Fedora, side by side, with what each would do to this computer
+Exec=nexus-shop
+Icon=nexus-shop
+Terminal=false
+Categories=System;PackageManager;
+Keywords=apps;install;software;store;flatpak;flathub;

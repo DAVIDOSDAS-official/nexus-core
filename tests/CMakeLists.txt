@@ -47,6 +47,7 @@ add_executable(component_test
     unit/gamecheck_test.cpp
     unit/language_test.cpp
     unit/update_test.cpp
+    unit/catalogue_test.cpp
 )
 
 target_link_libraries(component_test
