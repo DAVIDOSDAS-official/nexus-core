@@ -3340,6 +3340,16 @@ int commandGamecheck(const std::vector<std::string>& words) {
     std::string steamId;
     std::string name = typed;
     std::vector<nexus::system::SteamMatch> others;
+    // The store answers with something for almost anything typed:
+    // "minecraft" gave Minecraft Dungeons II (Asus, 8 October), and
+    // Minecraft itself is not on Steam. Say so when the name differs.
+    bool closestOnly = false;
+    auto lowerCopy = [](std::string t) {
+        for (char& c : t) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        return t;
+    };
 
     if (std::all_of(typed.begin(), typed.end(),
                     [](unsigned char c) { return std::isdigit(c); })) {
@@ -3352,6 +3362,7 @@ int commandGamecheck(const std::vector<std::string>& words) {
         if (!pick.id.empty()) {
             steamId = pick.id;
             name = pick.name;
+            closestOnly = lowerCopy(pick.name) != lowerCopy(typed);
             // Only names that contain what was typed: the store's
             // search also answers with things like "Pure Farming 2018 -
             // Gomselmash Palesse CS-200" for "counter-strike 2".
@@ -3400,6 +3411,8 @@ int commandGamecheck(const std::vector<std::string>& words) {
     if (steamId.empty() && !antiCheat.found) {
         std::cout << "No game called \"" << typed << "\" was found on Steam"
                      " or in the anti-cheat list.\n"
+                     "It may be a phone or console game, or sold only by its"
+                     " maker.\n"
                      "(Or the network did not answer. Try the exact name, or"
                      " the Steam id\nfrom the game's store address.)\n";
         return 1;
@@ -3407,7 +3420,14 @@ int commandGamecheck(const std::vector<std::string>& words) {
 
     std::cout << name;
     if (!steamId.empty()) std::cout << "  (Steam " << steamId << ")";
-    std::cout << "\n\n";
+    std::cout << "\n";
+    if (closestOnly && !antiCheat.found) {
+        std::cout << "  The closest name on Steam to \"" << typed
+                  << "\"; no game there has exactly that name.\n"
+                     "  Some games are sold only by their makers, or only"
+                     " on phones or consoles.\n";
+    }
+    std::cout << "\n";
 
     std::cout << "  Runs on Linux   ";
     if (proton.found) {

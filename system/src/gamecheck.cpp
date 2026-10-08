@@ -323,8 +323,8 @@ describeIdentifiers(const std::vector<IdentifierProbe>& probes) {
          "protected: root only, and no game here runs as root"},
         {"tpm", "TPM security chip",
          "readable",
-         "protected: root only. Windows kernel anti-cheats ban by it;"
-         " those games do not run on Linux"},
+         "protected: root only. Windows kernel anti-cheats ban\n"
+         "                         by it; those games do not run on Linux"},
     };
 
     std::vector<std::pair<std::string, std::string>> out;
