@@ -295,3 +295,18 @@ TEST(CatalogueTest, RestartAndKindInPlainWords) {
     EXPECT_EQ(sourceKind(rpm), "System package");
     EXPECT_EQ(sourceRestart(rpm), "needed once");
 }
+
+TEST(CatalogueTest, FlatpakIdsOnly) {
+    EXPECT_TRUE(isFlatpakId("com.obsproject.Studio"));
+    EXPECT_TRUE(isFlatpakId("org.gnome.Calculator"));
+    EXPECT_TRUE(isFlatpakId("io.github.some_one.App-Name"));
+    EXPECT_FALSE(isFlatpakId("obs"));
+    EXPECT_FALSE(isFlatpakId("com.obs"));
+    EXPECT_FALSE(isFlatpakId("com..obs.Studio"));
+    EXPECT_FALSE(isFlatpakId(".com.obs.Studio"));
+    EXPECT_FALSE(isFlatpakId("com.obs.Studio."));
+    EXPECT_FALSE(isFlatpakId("com.obs.-Studio"));
+    EXPECT_FALSE(isFlatpakId("com.obs.Studio; rm -rf ~"));
+    EXPECT_FALSE(isFlatpakId("com.obs.Stu'dio"));
+    EXPECT_FALSE(isFlatpakId(""));
+}

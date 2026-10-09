@@ -554,4 +554,27 @@ SourceSuggestion suggestSource(const ShopEntry& entry) {
     return suggestion;
 }
 
+bool isFlatpakId(const std::string& id) {
+    if (id.empty() || id.size() > 255) {
+        return false;
+    }
+    int parts = 1;
+    char previous = '.';
+    for (char c : id) {
+        if (c == '.') {
+            if (previous == '.') {
+                return false;  // empty part, or a leading dot
+            }
+            parts += 1;
+        } else if (!(std::isalnum(static_cast<unsigned char>(c)) ||
+                     c == '_' || c == '-')) {
+            return false;
+        } else if (previous == '.' && c == '-') {
+            return false;  // a part may not start with -
+        }
+        previous = c;
+    }
+    return previous != '.' && parts >= 3;
+}
+
 }

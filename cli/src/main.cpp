@@ -60,6 +60,7 @@
 #include <nexus/system/gamecheck.hpp>
 #include <nexus/system/language.hpp>
 #include <nexus/system/update.hpp>
+#include <nexus/system/catalogue.hpp>
 #include <nexus/system/json.hpp>
 #include <chrono>
 
@@ -81,6 +82,7 @@ void printUsage() {
         << "    nexus gamecheck --identifiers  what a game could recognise this computer by\n"
         << "    nexus language [list | add <name> | set <name>] [--apply]\n"
         << "    nexus update [--apply]   what is new; take it\n"
+        << "    nexus app install|remove <flathub id> [--apply]\n"
         << "    nexus scan\n"
         << "    nexus what-provides <capability>\n"
         << "    nexus why <component>\n"
@@ -2941,6 +2943,114 @@ int commandLanguage(
 }
 
 
+// nexus app install|remove <id>: one Flathub app, for Nexus Shop
+// and for anyone at a terminal.
+//
+// Flatpak, system-wide, from Flathub. It needs no sudo: Flatpak's
+// own helper lets the person at the machine install and remove apps
+// (Asus, 9 October: no password asked). Written in history like
+// every other change, which is why the Shop goes through here rather
+// than calling flatpak itself.
+int commandApp(
+    const std::vector<std::string>& words,
+    bool apply
+) {
+    if (words.size() != 2 ||
+        (words[0] != "install" && words[0] != "remove")) {
+        std::cerr << "Use: nexus app install <id> [--apply]\n"
+                     "     nexus app remove <id> [--apply]\n"
+                     "The id is Flathub's, like com.obsproject.Studio.\n";
+        return 2;
+    }
+    const bool install = words[0] == "install";
+    const std::string& id = words[1];
+
+    if (!nexus::system::isFlatpakId(id)) {
+        std::cerr << "\"" << id << "\" is not a Flathub app id "
+                     "(they look like com.obsproject.Studio).\n";
+        return 2;
+    }
+    if (!nexus::system::commandExists("flatpak")) {
+        std::cout << "flatpak is not installed on this system.\n";
+        return 1;
+    }
+
+    const bool present = nexus::system::runCommand(
+        "flatpak info --system '" + id + "' >/dev/null 2>&1", false)
+        .exitCode == 0;
+
+    if (install && present) {
+        std::cout << id << " is already installed.\n";
+        return 0;
+    }
+    if (!install && !present) {
+        std::cout << id << " is not installed (system-wide).\n";
+        return 0;
+    }
+
+    if (install) {
+        std::cout << "Install " << id << " from Flathub\n"
+                  << "  Kind       Flatpak app, system-wide\n"
+                  << "  Restart    not needed\n"
+                  << "  System     the image is not changed\n"
+                  << "  Also       the runtime it needs, if not here yet "
+                     "(shared with other apps)\n";
+    } else {
+        std::cout << "Remove " << id << "\n"
+                  << "  Your files in ~/.var/app/" << id
+                  << " are kept.\n";
+    }
+
+    const std::string command = install
+        ? "flatpak install --system --noninteractive flathub '" + id + "'"
+        : "flatpak uninstall --system --noninteractive '" + id + "'";
+
+    if (!apply) {
+        std::cout << "\nWhat it would run:\n    " << command
+                  << "\n\nNothing has been changed. Add --apply to do it.\n";
+        return 0;
+    }
+
+    if (install) {
+        const std::string remote =
+            std::filesystem::exists("/usr/share/nexus/flathub.flatpakrepo")
+                ? "/usr/share/nexus/flathub.flatpakrepo"
+                : "https://dl.flathub.org/repo/flathub.flatpakrepo";
+        nexus::system::runCommand(
+            "flatpak remote-add --system --if-not-exists flathub '" +
+            remote + "'");
+    }
+
+    nexus::system::TransactionRecord record;
+    record.kind = install ? nexus::system::TransactionKind::Install
+                          : nexus::system::TransactionKind::Remove;
+    record.when = nexus::system::currentTimestamp();
+    record.request = std::string("app ") + words[0] + " " + id;
+    record.resolved = "Flathub: " + id + " (Flatpak app)";
+    record.packages = {id};
+    const std::string log = nexus::system::defaultTransactionLog();
+    const std::string marker = nexus::system::beginTransaction(log, record);
+
+    std::cout << "\nHanding over to flatpak.\n\n" << std::flush;
+    // Not captured: Flatpak prints its progress, and the first app can
+    // bring a runtime of a gigabyte. Silence for minutes looks like a
+    // hang, in a terminal and in the Shop.
+    const int status =
+        std::system(nexus::system::inPlainLocale(command).c_str());
+    const bool ok = status == 0;
+
+    record.outcome = ok ? (install ? "installed" : "removed") : "failed";
+    record.succeeded = ok;
+    record.exitCode = status;
+    nexus::system::finishTransaction(log, marker, record);
+
+    std::cout << (ok ? (install ? "\nInstalled. Nothing to restart.\n"
+                                : "\nRemoved.\n")
+                     : "\nflatpak did not complete; its messages are "
+                       "above. Nothing else was changed.\n");
+    return ok ? 0 : 1;
+}
+
 // nexus update: what is new for this machine, and taking it.
 // See system/include/nexus/system/update.hpp for how updates work here.
 int commandUpdate(
@@ -2951,11 +3061,17 @@ int commandUpdate(
 ) {
     bool notify = false;
     bool checkNow = false;
+    // For Nexus Shop: the same answer as below, one fact per line,
+    // fields split by tabs. Read by a program, so never translated
+    // and never reworded without changing the Shop with it.
+    bool lines = false;
     for (const std::string& word : words) {
         if (word == "notify" || word == "--notify") {
             notify = true;
         } else if (word == "check" || word == "--check") {
             checkNow = true;
+        } else if (word == "--lines") {
+            lines = true;
         } else {
             std::cerr << "Unknown: nexus update " << word
                       << "\nUse: nexus update [--apply]\n";
@@ -3007,6 +3123,33 @@ int commandUpdate(
 
     const std::string summary = nexus::system::updateSummary(system, apps);
 
+    if (lines) {
+        if (image) {
+            for (const auto& d : readDeployments()) {
+                if (d.booted) {
+                    std::cout << "running\t" << NEXUS_VERSION << "\t"
+                              << (d.date.empty() ? "" : dayOf(d.date))
+                              << "\n";
+                }
+            }
+            if (system.staged) {
+                std::cout << "staged\t" << system.stagedVersion << "\n";
+            }
+            std::cout << "system\t"
+                      << (system.available ? "new"
+                          : reached ? "current" : "unreachable")
+                      << "\t" << system.version << "\t"
+                      << (system.date.empty() ? "" : dayOf(system.date))
+                      << "\t" << system.diff << "\n";
+        } else {
+            std::cout << "system\tnot-image\t\t\t\n";
+        }
+        for (const auto& app : apps) {
+            std::cout << "app\t" << app.id << "\t" << app.version << "\n";
+        }
+        return 0;
+    }
+
     // From the daily timer, in the person's session: a notification
     // when something new appears, once per new thing -- not every day
     // for the same version. Silent otherwise.
@@ -3043,8 +3186,11 @@ int commandUpdate(
             // (Asus, 4 October). `nexus update` says the same any time.
             "notify-send -a Nexus -t 0 -i system-software-update "
             + quoted("Update available") + " "
-            + quoted(summary + ". Nothing is installed until you ask: "
-                     "open a terminal and run  nexus update"),
+            + quoted(summary + ". Nothing is installed until you ask: " +
+                     (nexus::system::commandExists("nexus-shop")
+                          ? std::string("open Nexus Shop, Updates")
+                          : std::string("open a terminal and run  "
+                                        "nexus update"))),
             false);
         return 0;
     }
@@ -6067,6 +6213,13 @@ int main(int argc, char** argv) {
             std::vector<std::string>(positional.begin() + 1,
                                      positional.end()),
             apply, assumeYes, invocation);
+    }
+
+    if (command == "app") {
+        return commandApp(
+            std::vector<std::string>(positional.begin() + 1,
+                                     positional.end()),
+            apply);
     }
 
     if (command == "language") {

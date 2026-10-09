@@ -2,6 +2,8 @@
 
 #include <nexus/system/compression.hpp>
 #include <nexus/system/process.hpp>
+#include <nexus/system/transaction_log.hpp>
+#include <nexus/system/update.hpp>
 
 #include <QClipboard>
 #include <QDateTime>
@@ -14,6 +16,8 @@
 
 #include <algorithm>
 #include <map>
+
+#include <malloc.h>
 
 using nexus::system::CatalogueApp;
 using nexus::system::ShopEntry;
@@ -87,6 +91,39 @@ Shop::Shop(QObject* parent) : QObject(parent) {
 Shop::~Shop() {
     if (worker_.joinable()) {
         worker_.join();
+    }
+    if (checker_.joinable()) {
+        checker_.join();
+    }
+    if (job_ != nullptr) {
+        // A change in progress is left to finish on its own: killing
+        // flatpak half-way is worse than letting it complete.
+        job_->disconnect(this);
+        job_->setParent(nullptr);
+    }
+}
+
+void Shop::readInstalled(QSet<QString>& flatpaks,
+                         QHash<QString, QString>& names,
+                         QSet<QString>& packages) const {
+    flatpaks.clear();
+    names.clear();
+    packages.clear();
+    const auto listed = nexus::system::runCommand(
+        "flatpak list --app --columns=application,name 2>/dev/null", false);
+    for (const auto& line : listed.lines) {
+        const QStringList fields = q(line).split('\t');
+        const QString id = fields.value(0).trimmed();
+        if (id.isEmpty()) {
+            continue;
+        }
+        flatpaks.insert(id);
+        names.insert(id, fields.value(1).trimmed());
+    }
+    const auto rpms = nexus::system::runCommand(
+        "rpm -qa --qf '%{NAME}\\n' 2>/dev/null", false);
+    for (const auto& line : rpms.lines) {
+        packages.insert(q(line).trimmed());
     }
 }
 
@@ -167,16 +204,8 @@ void Shop::load() {
     loaded->entries = nexus::system::groupCatalogue(loaded->apps);
 
     // What is already here, to say "Installed" instead of offering it.
-    const auto flatpaks = nexus::system::runCommand(
-        "flatpak list --app --columns=application 2>/dev/null", false);
-    for (const auto& line : flatpaks.lines) {
-        loaded->installedFlatpaks.insert(q(line).trimmed());
-    }
-    const auto packages = nexus::system::runCommand(
-        "rpm -qa --qf '%{NAME}\\n' 2>/dev/null", false);
-    for (const auto& line : packages.lines) {
-        loaded->installedPackages.insert(q(line).trimmed());
-    }
+    readInstalled(loaded->installedFlatpaks, loaded->flatpakNames,
+                  loaded->installedPackages);
 
     Loaded* handed = loaded.release();
     QMetaObject::invokeMethod(this, [this, handed] { finish(handed); },
@@ -187,7 +216,11 @@ void Shop::finish(Loaded* loaded) {
     data_.reset(loaded);
     sources_ = data_->sources;
     loading_ = false;
+    // Reading the lists held 77 MB of XML for a second; hand the freed
+    // memory back to the system rather than keep it for nothing.
+    ::malloc_trim(0);
     emit changed();
+    checkUpdates();
 }
 
 QStringList Shop::categories() const {
@@ -369,16 +402,245 @@ QVariantMap Shop::details(const QString& key) const {
                    : QStringLiteral("volunteers, reviewed by Flathub"))
             : QStringLiteral("Fedora's packagers, signed by Fedora");
         row["installed"] = installed(*offer);
+        row["appId"] = flathub ? q(offer->package) : QString();
+        row["flathub"] = flathub;
         // What to type until the Shop installs by itself (step 2).
         // Fedora packages go through nexus, which shows its plan and
         // changes nothing without --apply.
         row["command"] = flathub
-            ? QStringLiteral("flatpak install flathub ") + q(offer->package)
-            : QStringLiteral("nexus install ") + q(offer->package);
+            ? QStringLiteral("nexus app install ") + q(offer->package) +
+                  QStringLiteral(" --apply")
+            : QStringLiteral("sudo nexus install ") + q(offer->package) +
+                  QStringLiteral(" --apply");
         offers << row;
     }
     map["offers"] = offers;
     return map;
+}
+
+// ---------------------------------------------------------------- updates
+
+int Shop::updateCount() const {
+    int count = updates_.value("apps").toList().size();
+    if (updates_.value("system").toString() == "new") {
+        count += 1;
+    }
+    return count;
+}
+
+void Shop::checkUpdates() {
+    if (checking_.exchange(true)) {
+        return;
+    }
+    if (checker_.joinable()) {
+        checker_.join();
+    }
+    QVariantMap state = updates_;
+    state["state"] = QStringLiteral("checking");
+    updates_ = state;
+    emit updatesChanged();
+
+    // The same check as `nexus update`, so the Shop and the terminal
+    // can never disagree. A few seconds: it asks the registry.
+    checker_ = std::thread([this] {
+        const auto ran = nexus::system::runCommand(
+            "nexus update --lines 2>/dev/null", false, false);
+        auto* lines = new nexus::system::UpdateLines(
+            nexus::system::parseUpdateLines(ran.text));
+        const bool ok = ran.ran && ran.exitCode == 0;
+        QMetaObject::invokeMethod(this, [this, lines, ok] {
+            std::unique_ptr<nexus::system::UpdateLines> owned(lines);
+            QVariantMap state;
+            state["state"] = ok ? QStringLiteral("ready")
+                                : QStringLiteral("error");
+            state["running"] = q(owned->running);
+            state["runningDay"] = q(owned->runningDay);
+            state["staged"] = q(owned->staged);
+            state["system"] = q(owned->system);
+            state["version"] = q(owned->version);
+            state["day"] = q(owned->day);
+            state["diff"] = q(owned->diff);
+            QVariantList apps;
+            for (const auto& app : owned->apps) {
+                QVariantMap row;
+                const QString id = q(app.id);
+                row["id"] = id;
+                row["version"] = q(app.version);
+                row["name"] = id;
+                row["icon"] = QString();
+                if (const ShopEntry* entry = find(id.toLower())) {
+                    const QVariantMap brief = summary(*entry);
+                    row["name"] = brief.value("name");
+                    row["icon"] = brief.value("icon");
+                } else if (data_ && data_->flatpakNames.contains(id)) {
+                    row["name"] = data_->flatpakNames.value(id);
+                }
+                apps << row;
+            }
+            state["apps"] = apps;
+            updates_ = state;
+            checking_ = false;
+            emit updatesChanged();
+        }, Qt::QueuedConnection);
+    });
+}
+
+// ------------------------------------------------------------------ jobs
+
+void Shop::runJob(const QString& title, const QString& program,
+                  const QStringList& arguments) {
+    if (job_ != nullptr) {
+        return;  // one change at a time
+    }
+    jobTitle_ = title;
+    jobLog_.clear();
+    jobResult_.clear();
+
+    job_ = new QProcess(this);
+    job_->setProcessChannelMode(QProcess::MergedChannels);
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.insert("LC_ALL", "C.UTF-8");
+    job_->setProcessEnvironment(environment);
+
+    connect(job_, &QProcess::readyRead, this, [this] {
+        // Flatpak redraws its progress line with \r; each redraw is
+        // shown as the newest line.
+        QString text = QString::fromLocal8Bit(job_->readAll());
+        text.replace('\r', '\n');
+        jobLog_ += text;
+        QStringList lines = jobLog_.split('\n');
+        lines.removeAll(QString());
+        if (lines.size() > 200) {
+            lines = lines.mid(lines.size() - 200);
+        }
+        jobLog_ = lines.join('\n');
+        emit jobChanged();
+    });
+    connect(job_, &QProcess::finished, this,
+            [this](int code, QProcess::ExitStatus status) {
+        const bool ok = status == QProcess::NormalExit && code == 0;
+        // pkexec answers 126 when the password window was closed.
+        if (code == 126 || code == 127) {
+            jobResult_ = QStringLiteral("cancelled");
+        } else {
+            jobResult_ = ok ? QStringLiteral("done")
+                            : QStringLiteral("failed");
+        }
+        job_->deleteLater();
+        job_ = nullptr;
+        if (data_) {
+            readInstalled(data_->installedFlatpaks, data_->flatpakNames,
+                          data_->installedPackages);
+        }
+        emit jobChanged();
+        emit changed();
+        checkUpdates();
+    });
+    connect(job_, &QProcess::errorOccurred, this,
+            [this](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart || job_ == nullptr) {
+            return;
+        }
+        jobLog_ += QStringLiteral("\nCould not start: ") + job_->program();
+        jobResult_ = QStringLiteral("failed");
+        job_->deleteLater();
+        job_ = nullptr;
+        emit jobChanged();
+    });
+
+    emit jobChanged();
+    job_->start(program, arguments);
+}
+
+void Shop::install(const QString& appId) {
+    if (!nexus::system::isFlatpakId(appId.toStdString())) {
+        return;
+    }
+    runJob(QStringLiteral("Installing ") + appId, QStringLiteral("nexus"),
+           {"app", "install", appId, "--apply"});
+}
+
+void Shop::remove(const QString& appId) {
+    if (!nexus::system::isFlatpakId(appId.toStdString())) {
+        return;
+    }
+    runJob(QStringLiteral("Removing ") + appId, QStringLiteral("nexus"),
+           {"app", "remove", appId, "--apply"});
+}
+
+void Shop::updateEverything() {
+    // The system half needs root; pkexec asks for the password in a
+    // window, the same as sudo asks in a terminal.
+    runJob(QStringLiteral("Updating"), QStringLiteral("pkexec"),
+           {"nexus", "update", "--apply", "--yes"});
+}
+
+void Shop::clearJob() {
+    if (job_ != nullptr) {
+        return;
+    }
+    jobTitle_.clear();
+    jobLog_.clear();
+    jobResult_.clear();
+    emit jobChanged();
+}
+
+void Shop::launch(const QString& appId) const {
+    if (nexus::system::isFlatpakId(appId.toStdString())) {
+        QProcess::startDetached(QStringLiteral("flatpak"),
+                                {"run", appId});
+    }
+}
+
+// ------------------------------------------------------- installed, history
+
+QVariantList Shop::installedApps() const {
+    QVariantList list;
+    if (!data_) {
+        return list;
+    }
+    QStringList ids = data_->installedFlatpaks.values();
+    std::sort(ids.begin(), ids.end(), [this](const QString& a, const QString& b) {
+        return QString::compare(data_->flatpakNames.value(a, a),
+                                data_->flatpakNames.value(b, b),
+                                Qt::CaseInsensitive) < 0;
+    });
+    for (const QString& id : ids) {
+        QVariantMap item;
+        if (const ShopEntry* entry = find(id.toLower())) {
+            item = summary(*entry);
+        } else {
+            item["key"] = QString();
+            item["name"] = data_->flatpakNames.value(id, id);
+            item["summary"] = QString();
+            item["icon"] = QString();
+        }
+        item["appId"] = id;
+        list << item;
+    }
+    return list;
+}
+
+QVariantList Shop::history() const {
+    QVariantList list;
+    auto records = nexus::system::readAllTransactions();
+    std::sort(records.begin(), records.end(),
+              [](const auto& a, const auto& b) { return a.when > b.when; });
+    for (const auto& record : records) {
+        QVariantMap row;
+        const QDateTime when =
+            QDateTime::fromString(q(record.when), Qt::ISODate).toLocalTime();
+        row["when"] = when.isValid()
+            ? QLocale(QLocale::English).toString(when, "d MMMM, HH:mm")
+            : q(record.when);
+        row["what"] = q(record.request);
+        row["resolved"] = q(record.resolved);
+        row["outcome"] = record.unfinished ? QStringLiteral("never finished")
+                                           : q(record.outcome);
+        row["ok"] = record.succeeded && !record.unfinished;
+        list << row;
+    }
+    return list;
 }
 
 void Shop::copyText(const QString& text) const {

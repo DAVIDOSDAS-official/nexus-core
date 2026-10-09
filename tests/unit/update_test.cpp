@@ -163,3 +163,33 @@ TEST(UpdateTest, NoLabelStillSaysSomethingReadable) {
     EXPECT_EQ(updateSummary(u, {}), "A new Nexus version");
     EXPECT_FALSE(parseImageInspect("not json").ok);
 }
+
+TEST(UpdateTest, ReadsTheLinesTheShopReads) {
+    const auto u = parseUpdateLines(
+        "running\t0.1.38\t9 October\n"
+        "staged\t0.1.39\n"
+        "system\tnew\t0.1.39, rebuilt with Fedora's latest updates\t"
+        "10 October\t12 upgraded\n"
+        "app\torg.videolan.VLC\t3.0.21\n"
+        "app\tcom.obsproject.Studio\t\n"
+        "future\tsomething a newer nexus prints\n"
+        "\n");
+    EXPECT_EQ(u.running, "0.1.38");
+    EXPECT_EQ(u.runningDay, "9 October");
+    EXPECT_EQ(u.staged, "0.1.39");
+    EXPECT_EQ(u.system, "new");
+    EXPECT_EQ(u.version, "0.1.39, rebuilt with Fedora's latest updates");
+    EXPECT_EQ(u.day, "10 October");
+    EXPECT_EQ(u.diff, "12 upgraded");
+    ASSERT_EQ(u.apps.size(), 2u);
+    EXPECT_EQ(u.apps[0].id, "org.videolan.VLC");
+    EXPECT_EQ(u.apps[0].version, "3.0.21");
+    EXPECT_EQ(u.apps[1].version, "");
+}
+
+TEST(UpdateTest, LinesFromAMachineThatIsNotImageBased) {
+    const auto u = parseUpdateLines("system\tnot-image\t\t\t\n");
+    EXPECT_EQ(u.system, "not-image");
+    EXPECT_TRUE(u.apps.empty());
+    EXPECT_EQ(parseUpdateLines("").system, "");
+}

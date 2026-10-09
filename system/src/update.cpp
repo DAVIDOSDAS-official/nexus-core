@@ -200,4 +200,48 @@ std::string updateSummary(const SystemUpdate& system,
     return out;
 }
 
+UpdateLines parseUpdateLines(const std::string& text) {
+    UpdateLines result;
+    std::size_t start = 0;
+
+    while (start < text.size()) {
+        std::size_t end = text.find('\n', start);
+        if (end == std::string::npos) {
+            end = text.size();
+        }
+        const std::string line = text.substr(start, end - start);
+        start = end + 1;
+
+        std::vector<std::string> fields;
+        std::size_t from = 0;
+        for (;;) {
+            const std::size_t tab = line.find('\t', from);
+            fields.push_back(line.substr(from, tab == std::string::npos
+                ? std::string::npos : tab - from));
+            if (tab == std::string::npos) {
+                break;
+            }
+            from = tab + 1;
+        }
+        auto field = [&](std::size_t index) {
+            return index < fields.size() ? fields[index] : std::string();
+        };
+
+        if (fields[0] == "running") {
+            result.running = field(1);
+            result.runningDay = field(2);
+        } else if (fields[0] == "staged") {
+            result.staged = field(1);
+        } else if (fields[0] == "system") {
+            result.system = field(1);
+            result.version = field(2);
+            result.day = field(3);
+            result.diff = field(4);
+        } else if (fields[0] == "app" && !field(1).empty()) {
+            result.apps.push_back(AppUpdate{field(1), field(2)});
+        }
+    }
+    return result;
+}
+
 }

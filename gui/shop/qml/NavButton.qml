@@ -6,7 +6,7 @@ AbstractButton {
     id: root
     property bool current: false
     hoverEnabled: true
-    implicitHeight: 40
+    implicitHeight: 36
     implicitWidth: 200
     leftPadding: 14
     background: Rectangle {

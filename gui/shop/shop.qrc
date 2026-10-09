@@ -10,5 +10,11 @@
         <file>qml/AppIcon.qml</file>
         <file>qml/Chip.qml</file>
         <file>qml/NavButton.qml</file>
+        <file>qml/Button2.qml</file>
+        <file>qml/JobPanel.qml</file>
+        <file>qml/ConfirmDialog.qml</file>
+        <file>qml/UpdatesPage.qml</file>
+        <file>qml/InstalledPage.qml</file>
+        <file>qml/HistoryPage.qml</file>
     </qresource>
 </RCC>

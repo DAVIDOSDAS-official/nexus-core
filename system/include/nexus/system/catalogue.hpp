@@ -98,4 +98,9 @@ SourceSuggestion suggestSource(const ShopEntry& entry);
 std::string sourceKind(const CatalogueApp& app);   // "Flatpak app"...
 std::string sourceRestart(const CatalogueApp& app); // on this system
 
+// Whether text is shaped like a Flatpak app id (com.obsproject.Studio):
+// letters, digits, _ and -, at least three parts. It goes into a
+// command line, so anything else is refused rather than quoted.
+bool isFlatpakId(const std::string& id);
+
 }

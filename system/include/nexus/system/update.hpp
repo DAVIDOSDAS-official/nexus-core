@@ -72,4 +72,25 @@ std::vector<AppUpdate> parseFlatpakUpdates(const std::string& text);
 std::string updateSummary(const SystemUpdate& system,
                           const std::vector<AppUpdate>& apps);
 
+// What `nexus update --lines` prints, read back by Nexus Shop. One
+// fact per line, tab-separated, first field the kind of line:
+//   running <version> <day>
+//   staged  <version>
+//   system  new|current|unreachable|not-image <version> <day> <diff>
+//   app     <id> <version>
+// Unknown kinds are skipped, so a newer nexus can add lines without
+// breaking an older Shop.
+struct UpdateLines {
+    std::string running;
+    std::string runningDay;
+    std::string staged;
+    std::string system;   // empty when no system line was printed
+    std::string version;
+    std::string day;
+    std::string diff;
+    std::vector<AppUpdate> apps;
+};
+
+UpdateLines parseUpdateLines(const std::string& text);
+
 }

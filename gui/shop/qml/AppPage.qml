@@ -10,6 +10,9 @@ Flickable {
     property string key: ""
     property var app: key.length > 0 ? shop.details(key) : ({})
     signal back()
+    signal installApp(string appId, string name, string who)
+    signal removeApp(string appId, string name)
+    Connections { target: shop; function onChanged() { if (root.key.length > 0) root.app = shop.details(root.key) } }
 
     contentWidth: width
     contentHeight: column.implicitHeight + 64
@@ -159,46 +162,63 @@ Flickable {
                         Text { text: "Restart"; color: Theme.dim; font.pixelSize: 13 }
                         Text { text: modelData.restart; color: modelData.restart === "not needed" ? Theme.text : Theme.warn; font.pixelSize: 13 }
                     }
+                    // Flathub: the Shop does it.
                     RowLayout {
-                        visible: !modelData.installed
-                        Layout.fillWidth: true
+                        visible: modelData.flathub
                         spacing: 10
-                        Rectangle {
-                            Layout.fillWidth: true
-                            implicitHeight: 38
-                            radius: 8
-                            color: Theme.bg
-                            border.color: Theme.line
-                            TextEdit {
-                                anchors.fill: parent
-                                anchors.leftMargin: 12
-                                verticalAlignment: TextEdit.AlignVCenter
-                                text: modelData.command
-                                readOnly: true
-                                selectByMouse: true
-                                color: Theme.bright
-                                font.family: Theme.mono
-                                font.pixelSize: 13
-                            }
+                        Button2 {
+                            visible: !modelData.installed
+                            text: "Install from Flathub"
+                            primary: modelData.suggested
+                            enabled: !shop.jobRunning
+                            onClicked: root.installApp(modelData.appId, root.app.name, modelData.who)
                         }
-                        Button {
-                            id: copy
-                            text: "Copy"
-                            implicitHeight: 38
-                            onClicked: { shop.copyText(modelData.command); text = "Copied" }
-                            contentItem: Text { text: copy.text; color: Theme.bright; font.pixelSize: 13; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                            background: Rectangle { radius: 8; color: copy.hovered ? Theme.lineStrong : Theme.line }
+                        Button2 { visible: modelData.installed; text: "Open"; primary: true; onClicked: shop.launch(modelData.appId) }
+                        Button2 { visible: modelData.installed; text: "Remove"; danger: true; enabled: !shop.jobRunning; onClicked: root.removeApp(modelData.appId, root.app.name) }
+                    }
+                    // Fedora: it joins the system image, which needs the
+                    // password and a restart; from a terminal for now.
+                    ColumnLayout {
+                        visible: !modelData.flathub && !modelData.installed
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text {
+                            text: "Joins the system image: needs your password, and works after the next restart. From a terminal for now:"
+                            color: Theme.dim
+                            font.pixelSize: 13
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: 38
+                                radius: 8
+                                color: Theme.bg
+                                border.color: Theme.line
+                                TextEdit {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 12
+                                    verticalAlignment: TextEdit.AlignVCenter
+                                    text: modelData.command
+                                    readOnly: true
+                                    selectByMouse: true
+                                    color: Theme.bright
+                                    font.family: Theme.mono
+                                    font.pixelSize: 13
+                                }
+                            }
+                            Button2 {
+                                id: copy
+                                text: "Copy"
+                                onClicked: { shop.copyText(modelData.command); text = "Copied" }
+                            }
                         }
                     }
                 }
             }
-        }
-        Text {
-            text: "The Shop does not install yet: that comes next. Until then, copy the command and paste it in a terminal. Nothing above has changed this computer."
-            color: Theme.dim
-            font.pixelSize: 13
-            wrapMode: Text.WordWrap
-            Layout.fillWidth: true
         }
 
         // Screenshots, from the catalogue's web addresses. They need

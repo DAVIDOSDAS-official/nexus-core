@@ -6,7 +6,7 @@ import "."
 ApplicationWindow {
     id: window
     width: 1120
-    height: 740
+    height: 800
     minimumWidth: 640
     minimumHeight: 480
     visible: true
@@ -23,6 +23,57 @@ ApplicationWindow {
     function openApp(key) {
         stack.push(appPage, { key: key })
     }
+    function openPage(name) {
+        search.text = ""
+        section = name
+        stack.pop(null)
+        if (name === "updates") stack.push(updatesPage)
+        else if (name === "installed") stack.push(installedPage)
+        else if (name === "history") stack.push(historyPage)
+    }
+    function confirmInstall(appId, name, who) {
+        confirm.ask({
+            title: "Install " + name + "?",
+            subtitle: "From Flathub, packaged by " + who + ".",
+            will: ["Download " + name + " and the shared runtime it needs, if this computer does not have it yet",
+                   "Hand the work to Flatpak, which checks Flathub's signature",
+                   "Write it in History"],
+            wont: ["change the system image", "need a restart", "ask for your password"],
+            command: "nexus app install " + appId + " --apply",
+            actionText: "Install",
+            onAccept: function() { shop.install(appId) }
+        })
+    }
+    function confirmRemove(appId, name) {
+        confirm.ask({
+            title: "Remove " + name + "?",
+            subtitle: "Your own files it saved (in ~/.var/app/" + appId + ") are kept.",
+            will: ["Remove the app", "Write it in History"],
+            wont: ["touch the system image", "need a restart"],
+            command: "nexus app remove " + appId + " --apply",
+            actionText: "Remove",
+            dangerous: true,
+            onAccept: function() { shop.remove(appId) }
+        })
+    }
+    function confirmUpdate() {
+        const u = shop.updates
+        const will = []
+        if (u.system === "new") will.push("Download Nexus " + u.version + " and set it up for the next restart; the version running now stays in the boot menu")
+        if ((u.apps || []).length > 0) will.push("Update " + u.apps.length + " app(s); they are ready at once")
+        will.push("Write it in History")
+        confirm.ask({
+            title: "Update everything?",
+            subtitle: "Asks for your password once: the system part needs it.",
+            will: will,
+            wont: ["restart the computer", "change anything you did not see here"],
+            command: "pkexec nexus update --apply --yes",
+            actionText: "Update",
+            onAccept: function() { shop.updateEverything() }
+        })
+    }
+
+    Component.onCompleted: if (shop.startPage === "updates") openPage("updates")
     function openCategory(name) {
         search.text = ""
         section = name
@@ -65,7 +116,7 @@ ApplicationWindow {
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 16
-                spacing: 4
+                spacing: 2
 
                 RowLayout {
                     spacing: 10
@@ -86,6 +137,14 @@ ApplicationWindow {
                 }
 
                 NavButton { text: "Home"; current: window.section === "home"; Layout.fillWidth: true; onClicked: window.goHome() }
+                NavButton {
+                    text: shop.updateCount > 0 ? "Updates  (" + shop.updateCount + ")" : "Updates"
+                    current: window.section === "updates"
+                    Layout.fillWidth: true
+                    onClicked: window.openPage("updates")
+                }
+                NavButton { text: "Installed"; current: window.section === "installed"; Layout.fillWidth: true; enabled: !shop.loading; onClicked: window.openPage("installed") }
+                NavButton { text: "History"; current: window.section === "history"; Layout.fillWidth: true; onClicked: window.openPage("history") }
                 Text { text: "EXPLORE"; color: Theme.dim; font.pixelSize: 11; font.bold: true; Layout.topMargin: 14; Layout.leftMargin: 14; Layout.bottomMargin: 4 }
                 Repeater {
                     model: shop.categories
@@ -175,6 +234,8 @@ ApplicationWindow {
                 replaceEnter: shop.motion ? slideIn : null
                 replaceExit: shop.motion ? fadeOut : null
             }
+
+            JobPanel { Layout.fillWidth: true }
         }
     }
 
@@ -202,6 +263,27 @@ ApplicationWindow {
     }
     Component {
         id: appPage
-        AppPage { onBack: stack.pop() }
+        AppPage {
+            onBack: stack.pop()
+            onInstallApp: (appId, name, who) => window.confirmInstall(appId, name, who)
+            onRemoveApp: (appId, name) => window.confirmRemove(appId, name)
+        }
     }
+    Component {
+        id: updatesPage
+        UpdatesPage { onUpdateAll: window.confirmUpdate() }
+    }
+    Component {
+        id: installedPage
+        InstalledPage {
+            onOpenApp: (key) => window.openApp(key)
+            onRemoveApp: (appId, name) => window.confirmRemove(appId, name)
+        }
+    }
+    Component {
+        id: historyPage
+        HistoryPage {}
+    }
+
+    ConfirmDialog { id: confirm }
 }
