@@ -48,6 +48,27 @@ if [ -x /usr/bin/labwc ] && [ -d /usr/share/lxqt/wayland/labwc ]; then
     set_compositor /etc/xdg/lxqt/session.conf
 fi
 
+# The brightness keys (David, 9 October: "click the light button 100
+# times", and no bar on screen). nexus-brightness takes bigger steps
+# and shows where it is. Both places LXQt reads the keys from: labwc's
+# rc.xml, copied into each new user's ~/.config at first login, and
+# globalkeyshortcuts.conf for the X11 session. Users who already have
+# their copy are changed once by nexus-brightness-keys.service.
+for keys in /usr/share/lxqt/wayland/labwc/rc.xml; do
+    [ -f "${keys}" ] || continue
+    sed -i \
+        -e 's|command="lxqt-config-brightness -i"|command="nexus-brightness up"|' \
+        -e 's|command="lxqt-config-brightness -d"|command="nexus-brightness down"|' \
+        "${keys}"
+    echo "Brightness keys in ${keys}: $(grep -c nexus-brightness "${keys}") changed"
+done
+if [ -f /usr/share/lxqt/globalkeyshortcuts.conf ]; then
+    sed -i \
+        -e 's|^Exec=lxqt-config-brightness, -i$|Exec=nexus-brightness, up|' \
+        -e 's|^Exec=lxqt-config-brightness, -d$|Exec=nexus-brightness, down|' \
+        /usr/share/lxqt/globalkeyshortcuts.conf
+fi
+
 panel=/etc/xdg/lxqt/panel.conf
 [ -f "${panel}" ] || exit 0
 grep -q '^\[quicklaunch\]' "${panel}" || exit 0

@@ -1,0 +1,110 @@
+#!/bin/sh
+#
+# The brightness keys on the minimal edition.
+#
+#   nexus-brightness up | down   one step, and a bar showing where it is
+#   nexus-brightness keys        point this user's labwc keys here
+#
+# LXQt's own (lxqt-config-brightness -i/-d) moves 2% a press: the Asus
+# went 18815 -> 18430 -> 18045 of 19200 (9 October), fifty presses from
+# dark to bright, and nothing on screen said where it was. Here: twelve
+# steps, closer together at the dark end where the eye notices more,
+# never fully black, and a notification with a bar that each press
+# replaces instead of stacking.
+#
+# Set through systemd-logind (SetBrightness), which lets the person at
+# the machine change their own screen without a password and without
+# any extra package.
+
+set -u
+
+levels="5 10 15 20 30 40 50 60 70 80 90 100"
+
+backlight() {
+    for dir in "${NEXUS_BACKLIGHT:-/sys/class/backlight}"/*; do
+        if [ -r "${dir}/max_brightness" ] && [ -r "${dir}/brightness" ]; then
+            echo "${dir}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+step() {
+    dir=$(backlight) || exit 0
+    name=${dir##*/}
+    max=$(cat "${dir}/max_brightness")
+    now=$(cat "${dir}/brightness")
+    [ "${max}" -gt 0 ] || exit 0
+    percent=$(( (now * 100 + max / 2) / max ))
+
+    new=""
+    if [ "$1" = up ]; then
+        new=100
+        for level in ${levels}; do
+            if [ "${level}" -gt "${percent}" ]; then
+                new=${level}
+                break
+            fi
+        done
+    else
+        new=5
+        for level in ${levels}; do
+            if [ "${level}" -lt "${percent}" ]; then
+                new=${level}
+            fi
+        done
+    fi
+
+    busctl call org.freedesktop.login1 /org/freedesktop/login1/session/auto \
+        org.freedesktop.login1.Session SetBrightness ssu \
+        backlight "${name}" "$(( max * new / 100 ))" > /dev/null || exit 1
+
+    show "${new}"
+}
+
+# A bar in one line: LXQt's notifications show text, not progress bars
+# (tested on the Asus, 9 October). Each press replaces the last one.
+show() {
+    command -v notify-send > /dev/null || return 0
+    filled=$(( ($1 + 5) / 10 ))
+    bar=""
+    i=0
+    while [ "${i}" -lt 10 ]; do
+        if [ "${i}" -lt "${filled}" ]; then bar="${bar}█"; else bar="${bar}░"; fi
+        i=$(( i + 1 ))
+    done
+
+    idfile="${XDG_RUNTIME_DIR:-/tmp}/nexus-brightness.id"
+    last=$(cat "${idfile}" 2>/dev/null || echo 0)
+    case "${last}" in ''|*[!0-9]*) last=0 ;; esac
+
+    # transient and low: a brightness change is not something to find
+    # later under the bell.
+    notify-send -a Brightness -i display-brightness -u low -t 1500 \
+        -h boolean:transient:true -h int:value:"$1" \
+        -r "${last}" -p "☀  ${bar}  $1%" > "${idfile}.new" 2>/dev/null &&
+        mv "${idfile}.new" "${idfile}"
+}
+
+# Existing users carry their own copy of labwc's keys
+# (~/.config/lxqt/labwc/rc.xml, made at their first login), so changing
+# the image's copy reaches only new users. This changes the two lines
+# in theirs, once, and tells a running labwc to read it again.
+keys() {
+    rc="${HOME}/.config/lxqt/labwc/rc.xml"
+    [ -f "${rc}" ] || exit 0
+    grep -q 'lxqt-config-brightness -[id]' "${rc}" || exit 0
+    sed -i \
+        -e 's|command="lxqt-config-brightness -i"|command="nexus-brightness up"|' \
+        -e 's|command="lxqt-config-brightness -d"|command="nexus-brightness down"|' \
+        "${rc}"
+    pkill -HUP -x -U "$(id -u)" labwc 2>/dev/null || true
+    echo "Brightness keys now use nexus-brightness (${rc})."
+}
+
+case "${1:-}" in
+    up|down) step "$1" ;;
+    keys) keys ;;
+    *) echo "usage: nexus-brightness up | down | keys" >&2; exit 2 ;;
+esac

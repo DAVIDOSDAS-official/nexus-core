@@ -1,0 +1,10 @@
+[Unit]
+Description=Point the brightness keys at nexus-brightness (once per user)
+ConditionPathExists=%h/.config/lxqt/labwc/rc.xml
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/nexus-brightness keys
+
+[Install]
+WantedBy=default.target

@@ -1,248 +1,43 @@
---- HANDOFF.md	2026-10-04 16:27:36.310850027 +0000
-+++ HANDOFF.md	2026-10-08 18:51:49.890946990 +0000
-@@ -1,9 +1,10 @@
--# Nexus-CORE — where things stand
-+# Nexus-CORE — status
- 
--Updated 4 October 2026. Paste this at the start of a new session; it is
-+Updated 8 October 2026. Paste this at the start of a new session; it is
+--- HANDOFF.md	2026-10-08 18:51:55.706735284 +0000
++++ HANDOFF.md	2026-10-09 16:54:36.293365144 +0000
+@@ -3,7 +3,7 @@
+ Updated 8 October 2026. Paste this at the start of a new session; it is
  written for someone picking the project up cold.
  
--**Version 0.1.32** (patches 1–56). **542 automated tests**, all passing.
-+**Version 0.1.37** (patches 1–61). **554 automated tests**, all passing.
-+**Preview 2 released 8 Oct 2026** (both editions, 0.1.34).
+-**Version 0.1.37** (patches 1–61). **554 automated tests**, all passing.
++**Version 0.1.38** (patches 1–62). **554 automated tests**, all passing.
+ **Preview 2 released 8 Oct 2026** (both editions, 0.1.34).
  
  ## What it is
- 
-@@ -23,104 +24,166 @@
- 
- | Edition | Desktop | Release |
- |---|---|---|
--| KDE | KDE Plasma | Preview 1, 27 Sept — archive.org/details/nexus-core-preview1 |
--| Minimal | LXQt on labwc (login screen on Miriway) | Preview 1, 2 Oct — archive.org/details/nexus-core-minimal-preview1 |
-+| KDE | KDE Plasma | Preview 1 (0.1.16), 27 Sept — archive.org/details/nexus-core-preview1 |
-+| Minimal | LXQt on labwc (login screen on Miriway) | Preview 1 (0.1.22), 2 Oct — archive.org/details/nexus-core-minimal-preview1 |
- | Server, tiling | — | parked |
- 
--- Website: https://nexus-core-davidosdas.netlify.app (edition chooser,
--  feedback form). Version 2 of the site, with local fonts and security
--  headers, is ready to deploy as a whole folder.
-+- Website: https://nexus-core-davidosdas.netlify.app. Version 3 is
-+  deployed (5 Oct): edition chooser, feedback form, interactive demos
-+  (simulations, labelled as such), local fonts, security headers.
-+  Scripts must live in `.js` files: the security headers block scripts
-+  written inside the HTML.
- - Images: `ghcr.io/davidosdas-official/nexus-core:kde` and `:minimal`,
-   signed with cosign, built by GitHub Actions weekly and on "Run
--  workflow".
-+  workflow" (both editions each run). Each image carries a
-+  `nexus.version` label (set by the build command from CMakeLists.txt).
- 
--## The commands
-+## Preview 2 — released 8 October
- 
--| Command | What it does |
--|---|---|
--| `nexus` | this machine in a few lines |
--| `nexus doctor` | health: clock, memory, storage, services, packages |
--| `nexus history` | what changed and when, with system versions |
--| `nexus install <thing>` | plain-words preview: source, size, add-on, restart |
--| `nexus setup <add-ons>` | media, school, development, vpn, security, gaming (KDE only) |
--| `nexus why <package>` | why it is here; image or added; "did you mean" |
--| `nexus gamecheck <game>` | ProtonDB, anti-cheat status, what the launcher can see; reports only |
--| `nexus language` | language vs keyboard; list / add / set |
--| `nexus update` | what is new (system + apps), `--apply` to take it |
-+| Step | Minimal | KDE |
-+|---|---|---|
-+| Image 0.1.34 built | yes | yes |
-+| ISO built ("Boot menus made quiet: 3 of 3") | yes | yes |
-+| VM: disk-password keyboard plain `us` for English + Serbian | **yes** (log: "console keymap: us-acentos ... changed to us") | **yes** (password `test'test1` unlocked) |
-+| VM: installer boots without the long `[ OK ]` list | **yes** (5 Oct) | "3 of 3" at build; not filmed |
-+| sha256 | 194f80f80fbc1636fc6f9c3e2b6e8bd1417086b6251c6f7acece347f05c8be15 | b852af8b5c7f868c9943f5bea5f00f8cf1f844a065b6b4171c0381946afeb1b3 |
-+| Upload: archive.org/details/nexus-core-minimal-preview2, …/nexus-core-preview2 | done (2.8 G) | done (3.1 G) |
-+| Website v4 (release.js, release notes) | deployed | deployed |
-+
-+ISOs are kept in `~/nexus-isos/` (the build moves and later deletes
-+`output/`). Names: `nexus-core-minimal-preview2.iso`,
-+`nexus-core-preview2.iso`.
-+
-+## Every command
-+
-+Nothing changes without `--apply` (and `sudo`); everything else only reads.
-+
-+**Everyday**
-+- `nexus` — this machine in a few lines
-+- `nexus guide` (or `help`), `nexus --help`, `nexus --version`
-+- `nexus doctor` — health: clock, memory, storage, services, packages
-+- `nexus history` — what changed and when, with system versions
-+- `nexus update` / `sudo nexus update --apply` — what is new; take it
-+
-+**Language**
-+- `nexus language` — language, keyboard and packs side by side
-+- `nexus language list` — the 101 languages Fedora offers
-+- `nexus language add <name>` — fonts, spell checker; `--apply`
-+- `nexus language set <name or locale>` — menus and formats; `--apply`
-+
-+**Add-ons and installing**
-+- `nexus setup [add-ons]` — media, school, development, vpn, security, gaming (KDE)
-+- `nexus install <thing>` — plain-words preview; `--apply`
-+- `nexus options <thing>` — every way to get it, with costs
-+- `nexus plan <thing>`, `nexus remove <package>`, `nexus source <package>`,
-+  `nexus container <package> [--from-distro d]`
-+
-+**Understanding the system**
-+- `nexus why <package>` — image, added by you, or needed by something
-+- `nexus inspect <package>`, `nexus what-provides <capability>`
-+- `nexus largest [count] [--unused]`, `nexus services [--all]`
-+- `nexus hardware`, `nexus secureboot`
-+- `nexus scan`, `nexus gaps [kind]`, `nexus conflicts`
-+
-+**Games**: `nexus gamecheck <name or Steam id>`, `nexus gamecheck --identifiers` — reports only.
-+
-+**Nexus Shop** (window, desktops only): `nexus-shop`, or "Nexus Shop" in the menu.
-+
-+**VPN**: `nexus vpn keys`, `nexus vpn config --address A --peer-key K --endpoint H:P`
-+
-+**Profiles (image building)**: `nexus profile list | show <name> | check <names>`,
-+`nexus image <profile>`, `nexus solve <capability>`
-+
-+**Options**: `--apply`, `--yes`, `--explain`, `--commands`,
-+`--with-available`, `--with-flatpak`, `--from <source>`, `--arch <arch>`
-+(plus developer options for reading other systems' package data).
- 
- ## How updates work (decided 4 Oct)
- 
- Checked once a day, **installed only when asked**, never a restart by
- itself.
- 
--- A timer in each person's session (`nexus-update-notify`) compares the
--  image the machine runs with the registry's (both fingerprints, via
--  skopeo; no password) and sends a notification once per new version.
--- `sudo nexus update --apply` stages the new system version (it takes
--  effect at the next restart; the old one stays in the boot menu) and
--  updates Flatpak apps.
--- Fedora's `bootc-fetch-apply-updates.timer` is masked: it restarts by
--  itself, and fails silently on any machine with added packages.
--  rpm-ostree's automatic check is off: on an image-based machine it
--  missed a new Nexus image.
-+- A timer in each person's session (`nexus-update-notify`, 10–15 min
-+  after login, then daily) compares the image the machine runs with the
-+  registry's (fingerprints via skopeo; no password) and sends a
-+  notification once per new version. It stays until closed.
-+- Weekly rebuilds with the same Nexus version show as
-+  "Nexus 0.1.34, rebuilt with Fedora's latest updates".
-+- `sudo nexus update --apply` stages the new system version (in effect
-+  at the next restart; the old one stays in the boot menu) and updates
-+  Flatpak apps.
-+- Fedora's `bootc-fetch-apply-updates.timer` is masked (it restarts by
-+  itself, and fails silently with added packages); rpm-ostree's
-+  automatic check is off (it missed new Nexus images).
- - The boot menu waits 5 seconds (Fedora: 1), written once to
-   `/boot/grub2/custom.cfg`.
-+- Missed notifications: the bell by the clock keeps the last 10 on
-+  minimal (LXQt's own feature); KDE has its own bell.
- 
- ## Tested on real hardware
- 
--**Asus laptop** (3.6 GB RAM, Secure Boot on), minimal edition:
--login, desktop, battery, wallpaper, Alt+Shift us / Serbian Latin,
--add-ons, `nexus language set sr_RS.UTF-8@latin` (menus switched,
--keyboard untouched), update notification, gamecheck (Elden Ring,
--CS2, Fortnite).
--
--**VM** (2 GB): installer, first boot, add-ons, labwc session, keyboard.
--
--## Waiting for a test
--
--- **Patch 56 (0.1.32)** on the Asus: `nexus update` reads the registry;
--  the notification timer is listed by `systemctl --user list-timers`;
--  the boot menu shows for 5 seconds after the second restart.
--- **The next minimal ISO**, in a VM:
--  - installer boot without the long `[ OK ]` list (patches 49–52; the
--    UEFI menu lives in an appended partition, edited in place);
--  - disk-password keyboard plain `us` for English + Serbian (patch 53;
--    log in `/var/log/nexus-install-keyboard.log`).
-+**Asus laptop** (3.6 GB RAM, Secure Boot on), minimal edition: login,
-+desktop, battery, wallpaper, Alt+Shift us / Serbian Latin, add-ons,
-+`nexus language set sr_RS.UTF-8@latin` (menus switched, keyboard
-+untouched), `nexus update` and the daily notification, the 5-second
-+boot menu, gamecheck (Elden Ring, CS2, Fortnite).
-+
-+**VM** (2 GB): installer, first boot, add-ons, labwc session, keyboard,
-+disk-password keymap fix (0.1.34 ISO, 5 Oct).
- 
- ## Next
- 
--1. gamecheck: "what a game here can identify this machine by"
--   (readable: MAC, disk serials, machine-id; root-only: DMI serials,
--   TPM). Reports only; never touches anti-cheat.
--2. **Nexus Shop**: a graphical app on `nexus update` and
--   `nexus install`. Updates as notifications, one button. When
--   something is missing, it searches known sources only (Fedora, RPM
--   Fusion, Flathub with its verified badge; official GitHub releases
--   marked as checked by nobody but the author) — never a random
--   installer. Good on minimal; the full show on KDE; looks that follow
--   the add-on (gaming, development).
--3. Showcase ("insane UI", Linux showing off) and the minimalism look.
-+1. A short Preview 2 video / post (optional).
-+2. Done (0.1.35–0.1.36, verified on the Asus 8 Oct): `nexus gamecheck
-+   --identifiers` and a section in every gamecheck: network card, disks,
-+   machine ID, screen readable; motherboard serials and TPM root-only
-+   (matches `ls -l`). Reports only. Non-exact Steam matches are labelled.
-+3. **Nexus Shop** (design: the "Nexus Shop mockups" canvas, 8 Oct).
-+   - Step 1, 0.1.37 (patch 61), **waiting for a test on the Asus**:
-+     Home (Nexus picks, categories), search across Flathub and Fedora,
-+     app pages with every source side by side and "Nexus suggests"
-+     with reasons. Reads only; shows the command to install.
-+     Qt Quick (QML); motion on KDE only. Measured here: ~110 MB while
-+     open (43 MB of it shared Qt libraries), lists read in ~1 s.
-+   - Data: Fedora's list from `appstream-data` (in the image, 14 MB;
-+     written once per Fedora release), Flathub's downloaded by the
-+     Shop once a day with `flatpak update --appstream` (no password,
-+     tested on the Asus; 107 MB on disk with icons). The versions in
-+     the lists are the developer's latest notes, never shown as what
-+     would be installed.
-+   - Real data (8 Oct): Flathub 3,310 apps (2,188 verified), Fedora
-+     1,098, 458 in both. Steam, GeoGebra and Minecraft Launcher on
-+     Flathub are packaged by volunteers, not the developer.
-+   - Step 2: install and remove through `nexus install`, Updates
-+     (system + Flatpak, one button), History, Installed, Sources;
-+     the update notification opens the Shop. Also Fedora Flatpaks
-+     and RPM Fusion lists.
- 4. Dual boot as a real, explained option.
--5. Later: trim minimal under 600 MB RAM, security review, server and
-+5. Showcase ("insane UI", Linux showing off) and the minimalism look.
-+6. Later: trim minimal under 600 MB RAM, security review, server and
+@@ -139,7 +139,8 @@
+    machine ID, screen readable; motherboard serials and TPM root-only
+    (matches `ls -l`). Reports only. Non-exact Steam matches are labelled.
+ 3. **Nexus Shop** (design: the "Nexus Shop mockups" canvas, 8 Oct).
+-   - Step 1, 0.1.37 (patch 61), **waiting for a test on the Asus**:
++   - Step 1, 0.1.37 (patch 61), **works on the Asus** (9 Oct; 185 MB
++     while open there, used memory 709 → 864 MB: trim in step 2):
+      Home (Nexus picks, categories), search across Flathub and Fedora,
+      app pages with every source side by side and "Nexus suggests"
+      with reasons. Reads only; shows the command to install.
+@@ -158,9 +159,18 @@
+      (system + Flatpak, one button), History, Installed, Sources;
+      the update notification opens the Shop. Also Fedora Flatpaks
+      and RPM Fusion lists.
+-4. Dual boot as a real, explained option.
+-5. Showcase ("insane UI", Linux showing off) and the minimalism look.
+-6. Later: trim minimal under 600 MB RAM, security review, server and
++4. **Brightness keys** (0.1.38, patch 62), waiting for a test: LXQt's
++   moved 2% a press (385 of 19200 on the Asus) with nothing on screen.
++   `nexus-brightness up|down`: 12 steps (5…100%, closer at the dark
++   end, never black) through logind's SetBrightness (no password, no
++   package), and a one-line bar as a notification that each press
++   replaces (LXQt notifications show text, not progress bars).
++   Existing users' labwc keys changed once by a user unit.
++   - Decided 9 Oct: GameVox not preinstalled (not on Flathub, beta,
++     licence not stated). The Shop shows it if it reaches Flathub.
++5. Dual boot as a real, explained option.
++6. Showcase ("insane UI", Linux showing off) and the minimalism look.
++7. Later: trim minimal under 600 MB RAM, security review, server and
     tiling editions, greenboot, NVIDIA (needs NVIDIA hardware).
  
  ## Lessons worth keeping
- 
--- Test on the real thing. Stand-in tests passed for every one of the
--  bugs the Asus and the VM found this week.
--- In VM instructions, never use key combinations the host computer
--  uses itself (Ctrl+Alt+F3 switched the host, not the VM).
--- Paste `sudo` commands one at a time: the password prompt swallows
--  the lines pasted after it.
-+- Test on the real thing: stand-in tests passed for every bug the Asus
-+  and the VM found.
-+- In VM instructions, never use key combinations the host uses itself
-+  (Ctrl+Alt+F3 switched the host, not the VM).
-+- Paste `sudo` commands one at a time: the password prompt swallows the
-+  lines pasted after it.
- - A clock set in the past makes rpm skip packages signed "after" it;
-   doctor checks the clock.
- - LXQt picks its compositor from the first `session.conf` with a
-   `compositor=` line; labwc takes keyboard layouts from
-   `~/.config/lxqt/labwc/environment`.
--- `podman untag` without a name removes every name, and the next prune
-+- `podman untag` without a name removes every name; the next prune
-   deletes the image.
- - Fedora 44 ISOs keep the UEFI boot menu in an appended partition, not
-   in `images/efiboot.img`.
-+- rpm-ostree's `--check` does not see new container images; compare
-+  digests with the registry instead.
-+- The Containerfile has two stages that start the same way (server and
-+  desktop); check which one an edit lands in.
- 
- ## Rules
- 

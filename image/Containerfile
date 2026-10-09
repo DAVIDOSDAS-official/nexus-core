@@ -749,6 +749,17 @@ COPY --from=builder /build/cli/nexus /usr/bin/nexus
 COPY --from=builder /build/gui/shop/nexus-shop /usr/bin/nexus-shop
 COPY image/shop/nexus-shop.desktop /usr/share/applications/nexus-shop.desktop
 COPY image/shop/nexus-shop.svg /usr/share/icons/hicolor/scalable/apps/nexus-shop.svg
+
+# The brightness keys (0.1.38): bigger steps and a bar on screen. The
+# keys themselves are pointed here by lxqt-defaults (new users) and by
+# this user unit, once, for users who already had their own copy.
+COPY image/brightness/nexus-brightness /usr/bin/nexus-brightness
+COPY image/brightness/nexus-brightness-keys.service /usr/lib/systemd/user/
+RUN set -eu; \
+    chmod 0755 /usr/bin/nexus-brightness; \
+    mkdir -p /usr/lib/systemd/user/default.target.wants; \
+    ln -sf ../nexus-brightness-keys.service \
+        /usr/lib/systemd/user/default.target.wants/nexus-brightness-keys.service
 RUN set -eu; \
     missing=""; \
     for package in appstream-data qt6-qtdeclarative; do \
