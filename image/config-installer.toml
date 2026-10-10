@@ -33,7 +33,10 @@ enable = [
 # looks at the machine first:
 #
 #   - exactly one internal disk (not USB, not removable, not read-only,
-#     20 GiB or more): that disk is erased and encrypted, as before;
+#     20 GiB or more) with nothing on it: it is used and encrypted;
+#   - one disk with anything on it (another system, files): nothing is
+#     erased; the Installation Destination screen asks, and offers to
+#     install next to what is there (dual boot);
 #   - none, or more than one: nothing is decided, and the installer's
 #     Installation Destination screen asks the person which disk, and
 #     whether to encrypt it.
@@ -143,6 +146,33 @@ for line in listing.splitlines():
 
 lines = ["# Written by the Nexus %pre at install time; see /tmp/nexus-disk.log."]
 
+# Something already on the disk -- Windows, another Linux, an earlier
+# Nexus, anybody's files -- is never erased by a decision made here.
+# The person sees the installer's Installation Destination screen,
+# which shows what is there and offers to use free space, shrink a
+# partition, or delete: installing next to another system (dual boot)
+# starts there. Only a disk with no filesystem on it at all is taken
+# without asking. (0.1.42: before, the only internal disk was always
+# erased, and with it a Windows that was the only thing on it.)
+def in_use(disk):
+    found = subprocess.run(
+        ["lsblk", "-n", "-P", "-o", "NAME,TYPE,FSTYPE,LABEL", "/dev/" + disk],
+        capture_output=True, text=True).stdout
+    used = []
+    for row in found.splitlines():
+        f = dict(t.split("=", 1) for t in shlex.split(row) if "=" in t)
+        if f.get("FSTYPE"):
+            used.append(f.get("NAME", "") + " " + f.get("FSTYPE", "") +
+                        (" " + f["LABEL"] if f.get("LABEL") else ""))
+    return used
+
+if len(disks) == 1 and in_use(disks[0]):
+    print(disks[0], "already holds:")
+    for item in in_use(disks[0]):
+        print("   ", item)
+    print("Nothing is erased automatically: the installer asks.")
+    disks = disks + ["(in use)"]
+
 if len(disks) == 1:
     disk = disks[0]
     lines += [
@@ -152,7 +182,7 @@ if len(disks) == 1:
         "autopart --type=lvm --encrypted --luks-version=luks2",
     ]
     print("Installing to the only internal disk:", disk)
-else:
+elif "(in use)" not in disks:
     print(len(disks), "internal disks: the installer asks which one.")
 
 with open("/tmp/nexus-storage.ks", "w") as out:

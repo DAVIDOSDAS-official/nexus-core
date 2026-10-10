@@ -1,789 +1,252 @@
-# Nexus-CORE — where things stand
+# Nexus-CORE — status
 
-Paste this at the start of a new session. Written for someone picking
-the project up cold. Supersedes every earlier HANDOFF, `NEXUS-STATE.md`
-and `CAPABILITIES.md`.
+Updated 10 October 2026. Paste this at the start of a new session; it is
+written for someone picking the project up cold.
 
-**Machines**
-- **Acer** (Pop!_OS 22.04, podman 3.4) — builds. Repo at
-  `~/Documents/nexus-core`.
-- **Asus** — the test machine. 3.6 GB RAM, Intel UHD 600, QCA9377
-  wifi, Secure Boot enforcing. Nexus **0.1.6** from GHCR,
-  encrypted (LUKS), with aircrack-ng, gamemode, gobuster, john, nmap
-  and radare2 layered, plus mesa-vulkan-drivers and steam (25 Sept);
-  `rhgb quiet` added by hand.
-- **No NVIDIA hardware anywhere.** Matters for the NVIDIA plan.
-- **VM** — qemu on the Acer, for anything that does not need hardware.
+**Version 0.1.42** (patches 1–66). **559 automated tests**, all passing.
+**Preview 2 released 8 Oct 2026** (both editions, 0.1.34).
 
-**Registry:** `ghcr.io/davidosdas-official/nexus-core-testing:kde`
-(was `:minimalism` until patch 33)
-— **public**. The real name, `nexus-core`, has never been pushed; its
-first push is the actual release.
+## What it is
 
-**Last session:** 21–27 September 2026 (Preview 1 released 27 Sept). **0.1.28** (patches 1–48); weekly signed builds from GitHub Actions.
-Signed updates enforced on the Asus. **513 tests** (510 pass, 3 skipped).
+Two things built together:
 
----
+- **`nexus`**, a C++ tool that explains the system instead of hiding it.
+  You ask for a capability ("a web browser"), it shows every way to get
+  one and what each costs, checks the plan with the real package
+  manager, then hands the work over. **Nexus decides and explains;
+  dnf, rpm-ostree and flatpak do the work.** Nothing changes without
+  `--apply`.
+- **Nexus-CORE**, a Fedora 44 bootc image built around it: signed
+  images, updates that can be undone from the boot menu, add-ons chosen
+  at first boot.
 
-## In one paragraph
+## Released
 
-A capability-based decision layer for Linux package management: you
-ask for a *web browser*, not `firefox`; Nexus shows every way to get
-one with what each costs, verifies the plan against the real package
-manager, and hands the work over. **Nexus decides and explains; apt,
-dnf and rpm-ostree do the work.** There is also a distribution built
-from it: a Fedora 44 bootc image whose package list is generated from a
-profile, installed from an ISO, updated from GHCR.
-
----
-
-## 26 September, evening — patch 33 (0.1.15)
-
-- **Weekly pipeline green** (run #4, 14m46s): key check, tests, build,
-  publish, sign. Asus upgraded from it and still shows
-  `ostree-image-signed`. The key secret is uploaded with
-  `gh secret set COSIGN_PRIVATE_KEY -R DAVIDOSDAS-official/nexus-core
-  < ~/.config/nexus-signing/cosign.key` (never pasted by hand).
-- **Website** rewritten (Preview download, checksum, release notes,
-  known limits, Netlify feedback form). One `RELEASE` block at the top
-  holds link / size / sha256 / date. David hosts it on Netlify.
-- **Decisions:** minimalism = KDE made to feel like Hyprland (later);
-  ship the Preview now; the graphical Nexus app, minimalism look and
-  showcase tour arrive as the first big update. David's doctor
-  dashboard picture is the target for `nexus doctor` (real values only).
-- **Patch 33:**
-  - The image's own profile `minimalism` is now **`kde`**: tag `:kde`,
-    `VARIANT_ID=kde`, `image/generated/kde.rpm.list`. `minimalism` is
-    free for the future look add-on. Existing machines must switch once
-    (`bootc switch --enforce-container-sigpolicy ...:kde`).
-  - First boot offers **media, development, gaming, school, security,
-    vpn**. `basic` is gone (became media); kde and showcase not listed.
-  - media: VLC **Flatpak** (codecs + hardware decoding inside, no RPM
-    Fusion layering and so no version drift), Elisa, Cisco's
-    mozilla-openh264. school: LibreOffice Writer/Calc/Impress,
-    Thunderbird, Xournal++, KTouch, hunspell-en, GeoGebra (Flatpak).
-    development: + cmake, ninja, python3-pip, distrobox. vpn: +
-    plasma-nm-openvpn. gaming: + mangohud, gamescope.
-  - **`image/check-add-ons.sh`**, run by the weekly build before
-    publishing: inside the built image, with the machines' repos, every
-    offered add-on must resolve (`nexus setup X --with-available`, no
-    `[missing]` except gpu-vendor). A retired package name now fails
-    the build instead of a stranger's first boot.
-  - **Installer disk:** `clearpart --all` erased every disk, USB backup
-    drives included. A Python `%pre` now picks the disk: exactly one
-    internal disk (not USB/removable/read-only, >= 20 GiB) -> erased and
-    encrypted as before; none or several -> the installer asks (and
-    encryption is the "Encrypt my data" box). Log: /tmp/nexus-disk.log.
-    Tested against six simulated machines; kickstart passes ksvalidator.
-  - Wallpapers: David renames `basic.png` -> `media.png` and
-    `minimalism.png` -> `kde.png` in image/artwork/wallpapers.
-- **Still before release:** VM test of the new installer (one disk, two
-  disks, USB disk attached), publish under `nexus-core` (public repo,
-  `IMAGE_NAME` variable), release ISO hosted on SourceForge (GitHub
-  limits files to 2 GB), fill the website's RELEASE block.
-
----
-
-## Patch 35 (0.1.17) — the minimal edition, first build
-
-Decided 27 Sept (David): minimal = **LXQt**, **Firefox**, add-ons media,
-school, development, vpn, security (**no gaming**). Dual boot is wanted
-in the future (installer currently takes a whole disk). Proposal:
-`minimal-edition.md`.
-
-- `minimal.profile`: LXQt on **labwc** (Wayland), SDDM with its greeter
-  on Weston (`sddm-wayland-generic`), lxqt-session/panel/runner/
-  policykit/notificationd/powermanagement/globalkeys/qtplugin/themes,
-  qterminal, pcmanfm-qt, featherpad, qpdfview, lximage-qt,
-  lxqt-archiver, lxqt-config, screengrab, pipewire + pipewire-pulseaudio,
-  network-manager-applet, pavucontrol-qt, xdg-desktop-portal-lxqt,
-  breeze icons, Firefox. Aliases added (rpm and dpkg).
-- `image/generated/minimal.rpm.list` **written by hand** from the
-  Prefers lines (the generator needs Fedora repos). Names not all
-  verified: lxqt-labwc-session is confirmed in F44; a wrong name fails
-  the minimal build with "No match for argument" and nothing publishes.
-- Weekly workflow is a **matrix** (kde, minimal), fail-fast off: a
-  broken minimal build does not stop the KDE edition.
-- Add-ons are picked per edition from `/usr/share/nexus/profile-pool`.
-- zram-generator-defaults in **both** editions. sddm-breeze only with
-  Plasma. X11 session entries hidden when there is no X server.
-- Wallpaper applier handles LXQt (`pcmanfm-qt --set-wallpaper`).
-- First boot writes XKB_DEFAULT_* to /etc/environment when labwc is
-  present (labwc ignores localectl); Alt+Shift switches. **Unverified**
-  until the VM test.
-- **Patch 36 (0.1.18):** every minimal package name verified against
-  Fedora 44 by David (`dnf repoquery` in the nexus-core:kde container).
-  Added from Fedora's own LXQt group: breeze-cursor-theme,
-  lxqt-menu-data, upower (battery), gvfs (trash, USB), xdg-user-dirs,
-  lxqt-sudo, nm-connection-editor, sddm-themes (login theme: maldives
-  when there is no Breeze). Fedora's LXQt defaults to the Miriway
-  compositor; we keep labwc because it takes several keyboard layouts
-  and a switch key from XKB_DEFAULT_*. Revisit if labwc disappoints.
-- **VM test of 0.1.18 (28 Sept, 2 GB RAM):** first boot offered the
-  right five add-ons and installed development+school+media (17/17);
-  themed SDDM login; LXQt desktop, menu, Nexus wallpaper, Firefox,
-  QTerminal; **581 MB used** after login (target < 600); zram 1.9 GB.
-  Problems: mouse dead at login and poor on the desktop; the desktop
-  ran **Miriway**, not labwc (Fedora picks it through the one-line file
-  /usr/share/lxqt/wayland/default-compositor); empty quick-launch
-  ("Drop application icons here"); "No battery!" and first-run pop-ups.
-  Keyboard carry-over reached the session (XKB_DEFAULT_LAYOUT=us) but
-  English was chosen, so switching was not tested.
-- **Patch 37 (0.1.19):** `image/lxqt-defaults.sh` points
-  default-compositor at labwc and fills the panel's quick launch
-  (Firefox, PCManFM-Qt, QTerminal); first boot writes
-  /etc/xdg/lxqt/lxqt-powermanagement.conf from the hardware (battery
-  and lid watchers only if present, runCheckLevel=1).
-- **Asus on :minimal (28 Sept):** login screen took **no mouse on real
-  hardware** (Weston greeter, sddm-wayland-generic); the VM on 0.1.19
-  (labwc) gave a black desktop. Rolled back to KDE from the boot menu
-  (works). LXQt's Miriway wrapper sets MIRIWAY_CONFIG_DIR=lxqt, i.e.
-  ~/.config/lxqt/miriway-shell.config; docs are not in the image.
-- **Patch 38 (0.1.20):** back to **exactly Fedora's LXQt setup**:
-  Miriway for the desktop (lxqt-wayland-session-default-compositor-
-  miriway) and the login screen (sddm-wayland-miriway); labwc, Weston
-  and the default-compositor rewrite are gone. Keyboard: first boot
-  writes MIR_SERVER_KEYMAP (layout+variant+options, e.g.
-  rs,us+latin,+grp:alt_shift_toggle) to /etc/environment, plus the XKB_
-  lines. Lesson: follow the distribution's tested defaults unless a
-  test says otherwise.
-- **Asus on 0.1.20 (29 Sept):** works (mouse, panel, battery), but
-  MIR_SERVER_KEYMAP in /etc/environment **killed the login screen**
-  (black after logout), and Miriway has no keymap setting at all.
-  Layered `labwc lxqt-labwc-session`, chose labwc in Session Settings:
-  desktop + mouse fine; layouts via ~/.config/lxqt/labwc/environment
-  (XKB_DEFAULT_LAYOUT=us,rs / VARIANT=,latin / OPTIONS=grp:alt_shift_toggle)
-  **work** (after `labwc --reconfigure` or a new login).
-  startlxqtwayland facts: compositor= read from ~/.config/lxqt then
-  $XDG_CONFIG_DIRS/lxqt/session.conf; none set → a first-run chooser
-  (probable cause of the 0.1.19 VM black screen); labwc folder copied
-  from /usr/share/lxqt/wayland/labwc only if missing.
-- **Patch 39 (0.1.21):** login screen stays Miriway (sddm-wayland-
-  miriway); desktop is labwc (lxqt-labwc-session). lxqt-defaults sets
-  compositor=labwc in /etc/xdg/lxqt/session.conf. First boot: nothing
-  in /etc/environment any more (old keyboard lines removed); copies
-  LXQt's labwc folder into each home (uid 1000+) and /etc/skel and adds
-  the installer's layouts (Alt+Shift when several). `nexus setup a, b`
-  accepts spaces. Wallpaper record per desktop (wallpaper-applied for
-  Plasma, wallpaper-applied-lxqt for LXQt).
-- **VM, fresh 0.1.21 install (30 Sept):** installer, first boot,
-  `media, school` (9/9), login, desktop, wallpaper, keyboard file all
-  fine; 621 MB used. **But the session ran Miriway**, not labwc:
-  Fedora's lxqt-session ships /etc/lxqt/session.conf with
-  compositor=miriway, and LXQt's search order is ~/.config, /etc,
-  /etc/xdg, /usr/share -- so /etc beat our /etc/xdg. (The Asus ran
-  labwc only because of the user's own session.conf.)
-- **Patch 40 (0.1.22):** lxqt-defaults sets compositor=labwc in
-  /etc/lxqt/session.conf as well as /etc/xdg. build-installer pulls a
-  registry image itself (3 tries; on failure prints the skopeo
-  commands; PULL=no uses the local copy). The Acer's podman 3.4.4
-  can't resume broken downloads; skopeo `--retry-times 10` to `dir:`,
-  then `podman pull dir:` + `podman tag`, works.
-- **1 Oct:** fresh VM install of 0.1.22 (ISO sha256 6fff8598…): labwc
-  by itself, Alt+Shift → č. **Minimal edition ready.** Asus on 0.1.22
-  boots cleanly. Note: `vconsole.keymap=us-acentos` on that install
-  (English US + Serbian Latin) — dead keys at the LUKS prompt; check.
-  VM tip: `rm -f /tmp/nexus-test.qcow2 && qemu-img create` wipes the
-  installed VM; boot an installed VM without `-cdrom … -boot d`.
-- **Patch 41 (no version change, host script only):** build-installer
-  tries podman, then skopeo (system skopeo with --retry-times, else the
-  skopeo container, fetched with retries), loads the dir and tags it
-  (untag only the dir's own name — bare `podman untag` drops every
-  name and the next prune deletes the image). Prints nexus --version.
-- **Patch 42 (0.1.23):** gaming.profile adds heroic
-  (com.heroicgameslauncher.hgl), lutris (net.lutris.Lutris),
-  protonup-qt (net.davidotek.pupgui2) as Flatpaks. check-add-ons does
-  not check Flatpak ids, so they were checked by hand on Flathub.
-  NVIDIA parked: no NVIDIA hardware to test. Minimal ISO 0.1.22 checked
-  (sha256 6fff8598…), to archive.org as nexus-core-minimal-preview1.
-- **1 Oct, clock:** Asus clock was days behind (NTP off). rpm skips
-  packages whose signature is newer than the clock ("not alive"); the
-  rpm-ostree deployment made then kept a package list without firefox,
-  hunspell, libmaxminddb → doctor FAIL, `why firefox` unknown, the
-  "Verifying a signature" warning. Fixed: `timedatectl set-ntp true` +
-  upgrade to 0.1.23. Asus RTC is in local time (LocalRTC=yes).
-- **Patch 43:** workflow Tests step: apt Acquire timeouts/retries,
-  timeout-minutes 20.
-- **Patch 44 (0.1.24):** bare `nexus` summary (parses `rpm-ostree
-  status` text: booted/rollback, Version (date), LayeredPackages);
-  doctor: Clock (rpm "not alive" / build time ahead / NTP off /
-  LocalRTC), Memory (/proc/meminfo), Storage (/var, /boot via
-  statvfs), Services (failed units); Model finding removed (still in
-  `nexus gaps`); dependency FAILs downgraded to "not judged" while the
-  clock is behind. history: "System versions" block; staged records
-  whose package is layered in the booted deployment show [applied].
-- **Patch 45 (0.1.25):** Asus check of 0.1.24 fine except: /boot
-  (2 GB) warned at 1.6 GB free — /boot now judged by share only (<15%
-  warn); two builds on one day share a Version, so rollback says
-  "an earlier build from the same day".
-- **Patch 46 (0.1.26):** commandInstall preview rewritten: name +
-  `dnf -q info --available` Summary/Repository, Asked for, New, Download
-  /On disk (sum of repo metadata sizes), Add-on (profiles requiring the
-  capability; notes its Flatpak mapping), Restart (ostree-booted), one
-  "Checked" line (lists under --explain), Proceed? [Y/n] (Enter = yes).
-  Setup passes an empty profile dir → no dnf query/add-on lines per item.
-  Tested on Ubuntu metadata (vlc: 36 packages, 7 MB); dnf path untested.
-- **Patch 47 (0.1.27):** gamecheck. New system/src/json.cpp (small
-  JSON reader, depth-limited) and gamecheck.cpp (parseSteamSearch,
-  pickSteamMatch, parseProtonSummary, findAntiCheat by storeIds.steam
-  then name, gameVerdict — Denied/Broken/Planned override the tier —,
-  describeSandbox from `flatpak info --show-permissions`, urlEncode);
-  12 new tests (525). CLI runs before the package read. Sources: Steam
-  storesearch API, protondb.com/api/v1/reports/summaries/<id>.json,
-  raw.githubusercontent.com AreWeAntiCheatYet games.json (cached a day in
-  ~/.cache/nexus). Sandbox here could reach GitHub only; Steam and
-  ProtonDB answers unverified until tested on the Asus.
-- **2 Oct, gamecheck on the Asus:** Steam search, ProtonDB and
-  AreWeAntiCheatYet all answer. **Patch 48 (0.1.28):** numeric id takes
-  the anti-cheat list's name; suggestions only if their name contains
-  what was typed; non-Steam games show Heroic's Flatpak sandbox;
-  Denied games skip the sandbox section.
-- **2 Oct, ISO internals** (from install.iso): menus in /EFI/BOOT/grub.cfg,
-  /boot/grub2/grub.cfg and images/efiboot.img::/EFI/BOOT/grub.cfg; all
-  entries already `quiet`; label Fedora-S-dvd-x86_64-44 used by search
-  -l, inst.stage2, inst.ks. Kickstart = osbuild.ks (%include
-  osbuild-base.ks: ostreecontainer + its own bootc switch %post) + ours.
-- **Patch 49 (script only):** build-installer adds
-  `systemd.show_status=auto rd.systemd.show_status=auto` to install
-  entries (not nomodeset/rescue) in the two disc menus via -map, and in
-  efiboot.img in place (`mcopy -i iso@@offset`, offset from xorriso
-  report_lba). -map of efiboot.img made xorriso drop El Torito ("not a
-  data file") — tested, so not done. Checks El Torito still present,
-  then implantisomd5. Requires mtools.
-- **Earlier test note:** fresh minimal ISO in VM (2 GB): desktop not black,
-  mouse, `free -m` < 600 MB; install with Serbian keyboard → Alt+Shift
-  works on the desktop; wallpaper appears; then the Asus; then website
-  second download.
-
----
-
-## RELEASED — Nexus-CORE Preview 1 (27 September 2026)
-
-- **Image:** `ghcr.io/davidosdas-official/nexus-core:kde` (public, signed).
-  Weekly workflow publishes there (`IMAGE_NAME` variable = nexus-core).
-  `nexus-core-testing` is no longer updated. Asus is on nexus-core:kde.
-- **ISO:** `nexus-core-preview1.iso`, 3364749312 bytes, sha256
-  `93f0055b1912028d8161a0beff42bca581dc3628a8e4bd9940b2bff1486f123c`,
-  built from nexus-core:kde (0.1.16, 22f7ac8). Hosted on archive.org:
-  https://archive.org/details/nexus-core-preview1 (sha1 verified against
-  the local file). SourceForge failed: its phone check rejects MK numbers.
-- **Repo** DAVIDOSDAS-official/nexus-core is public (history checked: no
-  keys or tokens). Feedback: Netlify form + GitHub Issues.
-- **Website:** https://nexus-core-davidosdas.netlify.app, RELEASE block
-  filled (archive.org link, size, sha256, date).
-- **Verified before release:** VM install from the release ISO comes up
-  `ostree-image-signed:docker://ghcr.io/davidosdas-official/nexus-core:kde`;
-  one-disk + USB-disk install left the USB disk blank; two internal disks
-  -> installer asks (both disks pre-ticked: known weakness, website says
-  untick); media and development add-ons installed on the Asus.
-- **After release, in order:** watch feedback; installer: start with no
-  disk ticked when there are several; Nexus replacements (OpenH264 back
-  in media); `build-installer.sh` should say "pull" not "build" when the
-  image is missing; then the first big update (graphical Nexus app,
-  minimalism look, showcase), NVIDIA, greenboot.
-
----
-
-## Patch 34 (0.1.16) — media without OpenH264
-
-- Patch 33 reached the Asus (after a detour: Firefox saves downloads to
-  ~/Documents, so the patch file was never in ~/Downloads and the
-  first `git apply --check && ...` line skipped the apply while the
-  commit went ahead). Asus now on `nexus-core-testing:kde`.
-- `nexus setup media --apply` failed on the Asus: `mozilla-openh264`
-  needs `openh264`, which conflicts with the image's `noopenh264`.
-  On an image system that is an override, not an addition, and it
-  failed the whole rpm-ostree transaction (Elisa too). media now asks
-  for VLC (Flatpak) and a music player only; the website gives the one
-  override command for H.264 in Firefox.
-- The add-on check could not see this: the name existed. It now also
-  hands each add-on's resolved packages to `dnf install --assumeno`
-  inside the image and fails on a conflict.
-- Later: let Nexus do replacements (`Replaces: noopenh264 ->
-  openh264`), then put H.264 back in media.
-- Workflow rule from now on: `git apply --check` is its own step and
-  must print PATCH OK before anything is committed.
-
----
-
-## The release bar — all passed
-
-| # | Test | Result |
+| Edition | Desktop | Release |
 |---|---|---|
-| 0 | Supported base, builds end to end | Fedora 44. Built 22 Sept |
-| 1 | Install → encrypted boot → first boot → profiles → reboot | VM and Asus |
-| 2 | Wrong passphrase ×3, then right → boots | VM: asked a 4th time |
-| 3 | First boot offline → honest message | VM and Asus (Asus found a bug; fixed) |
-| 4 | Publish → install from GHCR ISO → upgrade | Asus: 0.1.0 → 0.1.1 → 0.1.2, layered packages kept |
-| 5 | Real version on the installed machine | Asus: `nexus 0.1.2 (98603ab)` |
-| 6 | Secure Boot and wifi on hardware | Asus: `SecureBoot enabled`, picker ran over wifi |
+| KDE | KDE Plasma | Preview 1 (0.1.16), 27 Sept — archive.org/details/nexus-core-preview1 |
+| Minimal | LXQt on labwc (login screen on Miriway) | Preview 1 (0.1.22), 2 Oct — archive.org/details/nexus-core-minimal-preview1 |
+| Server, tiling | — | parked |
 
-Also verified on the Asus, 24 Sept: first boot waits for Enter before
-the login screen (patch 8), run by hand with the network off.
+- Website: https://nexus-core-davidosdas.netlify.app. Version 3 is
+  deployed (5 Oct): edition chooser, feedback form, interactive demos
+  (simulations, labelled as such), local fonts, security headers.
+  Scripts must live in `.js` files: the security headers block scripts
+  written inside the HTML.
+- Images: `ghcr.io/davidosdas-official/nexus-core:kde` and `:minimal`,
+  signed with cosign, built by GitHub Actions weekly and on "Run
+  workflow" (both editions each run). Each image carries a
+  `nexus.version` label (set by the build command from CMakeLists.txt).
 
-That bar was "does it work end to end". The bar for the first public
-release is below, under **Open**.
+## Preview 2 — released 8 October
 
----
+| Step | Minimal | KDE |
+|---|---|---|
+| Image 0.1.34 built | yes | yes |
+| ISO built ("Boot menus made quiet: 3 of 3") | yes | yes |
+| VM: disk-password keyboard plain `us` for English + Serbian | **yes** (log: "console keymap: us-acentos ... changed to us") | **yes** (password `test'test1` unlocked) |
+| VM: installer boots without the long `[ OK ]` list | **yes** (5 Oct) | "3 of 3" at build; not filmed |
+| sha256 | 194f80f80fbc1636fc6f9c3e2b6e8bd1417086b6251c6f7acece347f05c8be15 | b852af8b5c7f868c9943f5bea5f00f8cf1f844a065b6b4171c0381946afeb1b3 |
+| Upload: archive.org/details/nexus-core-minimal-preview2, …/nexus-core-preview2 | done (2.8 G) | done (3.1 G) |
+| Website v4 (release.js, release notes) | deployed | deployed |
 
-## What changed 21–24 September
+ISOs are kept in `~/nexus-isos/` (the build moves and later deletes
+`output/`). Names: `nexus-core-minimal-preview2.iso`,
+`nexus-core-preview2.iso`.
 
-**Base and image**
-- Fedora 42 (end of life 27 May 2026) → **44**, named once as
-  `ARG FEDORA_VERSION`.
-- `fedora-logos` → `generic-logos`, checked with `rpm -q` after the base,
-  after the desktop, and at the end. Fedora 44 bootc ships no
-  fedora-logos at all.
-- `PLATFORM_ID` copied only if present (Fedora 43 removed it).
-- `rd.luks.options=tries=0` in kargs.d — **verified**: a 4th prompt.
-- **Layer order: packages below Nexus.** A Nexus change used to rebuild
-  and re-upload the whole desktop. Now it rebuilds a few small layers —
-  verified in the 0.1.2 build: every `desktop-packages` step "Using
-  cache". The cost: packages refresh only on purpose:
-  ```bash
-  podman pull quay.io/fedora/fedora-bootc:44
-  podman build ... --build-arg REFRESH="$(date +%Y%m%d)"
-  ```
-  Do that every couple of weeks. It is a big push; it is also the only
-  way Fedora's security fixes reach anyone.
-- **One version.** `project(VERSION ...)` in `CMakeLists.txt`. The image
-  asks the binary (`image/identity.sh`); `publish.sh` asks the image.
-  `--build-arg NEXUS_VERSION` / `VERSION=` are only checks and stop the
-  build if they disagree.
+## Every command
 
-**Installer and first boot**
-- Hostname `nexus`. Keymap line made explicit — **did not fix** the empty
-  `vconsole.keymap=` (see open items).
-- First boot fetches package lists before asking; says so honestly when
-  it cannot; **waits for Enter** before the login screen takes the
-  console.
+Nothing changes without `--apply` (and `sudo`); everything else only reads.
 
-**Nexus itself**
-- rpm branch says when it reads no metadata.
-- Control-file parser skips `#` comments. A comment containing a colon
-  used to be parsed as a field and could swallow the rest of a
-  `Requires:` list.
-- `showcase.profile` no longer requires a GPU vendor (it was copied
-  from gaming, where it is a condition, not a requirement).
-- `doctor` Encryption: judges a composefs `/` by `/sysroot`. It said
-  "not encrypted" on a LUKS machine. Swap files judged by the
-  filesystem they live on.
-- `doctor` Updates: reads status without root (rpm-ostree), and names
-  **`rpm-ostree upgrade`** on machines with layered packages —
-  `bootc upgrade` refuses those.
-- `nexus guide`: rpm-ostree on image-based systems, dnf elsewhere.
-- rpm reads check themselves: exit status, rpm's own errors, and a
-  second count. On a mismatch, doctor warns and marks Dependencies
-  **not judged** instead of reporting false "missing".
+**Everyday**
+- `nexus` — this machine in a few lines
+- `nexus guide` (or `help`), `nexus --help`, `nexus --version`
+- `nexus doctor` — health: clock, memory, storage, services, packages
+- `nexus history` — what changed and when, with system versions
+- `nexus update` / `sudo nexus update --apply` — what is new; take it
 
-**Tooling**
-- `build-installer.sh`: moves old `output/` aside, reclaims disk,
-  writes `output/nexus-build.txt` (image and builder digests).
-- `build.sh` passes the commit, `-dirty` when modified.
-- `generate-lists.sh` refuses an image whose Fedora differs from the
-  Containerfile's.
-- `publish.sh`: defaults to the account, lowercases it, reads the
-  version from the image, **checks the login before pushing**.
+**Language**
+- `nexus language` — language, keyboard and packs side by side
+- `nexus language list` — the 101 languages Fedora offers
+- `nexus language add <name>` — fonts, spell checker; `--apply`
+- `nexus language set <name or locale>` — menus and formats; `--apply`
 
----
+**Add-ons and installing**
+- `nexus setup [add-ons]` — media, school, development, vpn, security, gaming (KDE)
+- `nexus install <thing>` — plain-words preview; `--apply`
+- `nexus options <thing>` — every way to get it, with costs
+- `nexus plan <thing>`, `nexus remove <package>`, `nexus source <package>`,
+  `nexus container <package> [--from-distro d]`
 
-**24 September, evening (patches 14–17)**
-- **RPM Fusion** (free + nonfree) enabled in the `os` stage, for Steam,
-  codecs, and later NVIDIA. **Correction (25 Sept):** I said nothing
-  from it would be installed by default. False — 0.1.3–0.1.7 shipped
-  `fdk-aac` (rpmfusion-nonfree) and `openh264`/`mozilla-openh264`
-  (Cisco's repo) inside the image. Patch 22 fixes it.
-- **Licence:** GPL-3.0 in `LICENSE` (copied from Pop!_OS's
-  `/usr/share/common-licenses/GPL-3` — gnu.org reset the connection).
-  **`TRADEMARKS.md`:** the name and the node-graph N are not GPL; a
-  changed version must be renamed; unmodified copies may be shared.
-- **Wallpapers:** `image/artwork/wallpapers/<profile>.png`, 12 files,
-  3840×2160 (`base.png` = `minimal.png` on purpose). An `artwork` stage
-  converts them to JPEG (42 MB → 9 MB) as Plasma packages
-  `/usr/share/wallpapers/nexus-<profile>/`. At login,
-  `/usr/libexec/nexus/apply-wallpaper` (autostart) applies: the first
-  add-on chosen at first boot (`/etc/nexus/wallpaper`) → else the
-  image's profile (`VARIANT_ID`) → else base. Once per choice; a
-  wallpaper the user picks stays.
-- **First boot offers 8, not 12:** basic, development, gaming,
-  minimalism, school, security, showcase, vpn. minimal, tiling and
-  server are left out of the desktop image's profile directory (they
-  are different machines, not add-ons); `base` is hidden from
-  `nexus setup` (it is in every image anyway).
-- **Patch 17 (0.1.4, not built yet):** `sddm-breeze` + login theme
-  (the build said "No SDDM theme" — the login screen was SDDM's bare
-  fallback), Plymouth `bgrt` splash with a graphical passphrase box,
-  initramfs rebuilt with `dracut --no-hostonly --add "ostree plymouth"`
-  and checked for plymouthd, systemd-cryptsetup and
-  ostree-prepare-root before it is kept; `rhgb quiet` via kargs.d.
-  **This is the riskiest change so far** — it replaces the initramfs.
-  If a machine fails to boot, pick the previous entry in the boot menu.
+**Understanding the system**
+- `nexus why <package>` — image, added by you, or needed by something
+- `nexus inspect <package>`, `nexus what-provides <capability>`
+- `nexus largest [count] [--unused]`, `nexus services [--all]`
+- `nexus hardware`, `nexus secureboot`
+- `nexus scan`, `nexus gaps [kind]`, `nexus conflicts`
 
-## Things learned the hard way
+**Games**: `nexus gamecheck <name or Steam id>`, `nexus gamecheck --identifiers` — reports only.
 
-- **podman logins vanish at shutdown** (kept in `/run`). Log in again
-  after every reboot, **as yourself, no sudo**:
-  `podman login ghcr.io -u DAVIDOSDAS-official`. Every 403 so far was
-  this — misdiagnosed twice, once as the token, once as the registry.
-- **Don't delete `~/.local/share/containers/cache/blob-info-cache-v1.*`.**
-  It is how podman knows what GHCR already has. Deleting it turned a
-  small push into a full re-upload.
-- **Push with the VPN off** and heavy apps closed. A dropped tunnel
-  killed a 2 GB upload mid-layer; running everything at once froze the
-  Acer (REISUB).
-- **`git apply`, never `patch`.** `patch` asks questions and reads the
-  answers from whatever you pasted next.
-- **One command at a time when the first can fail.** A failed build
-  followed by pasted commands produced "Fedora 44" lists from Fedora 42.
-- **The package is separate from the repo.** Package public, repo
-  private is fine: the image carries the binary, not the source.
-- **A VM is always online.** The offline first-boot bug only showed on
-  hardware. Use the VM to iterate, hardware before release.
-- **`bootc upgrade` refuses machines with layered packages.** Use
-  `sudo rpm-ostree upgrade`.
-- **`/etc/nexus` does not exist until first boot writes to it.** Writing
-  a file there by hand needs `sudo mkdir -p /etc/nexus` first (my
-  instruction on 24 Sept forgot it).
+**Nexus Shop** (window, desktops only): `nexus-shop`, or "Nexus Shop" in the menu.
 
-The recurring bug shape, still: **something reported success about
-its own narrow view while the wider claim was false.** This week:
-doctor's encryption check, its update advice, `generate-lists.sh`
-reading a stale image, the logos check that looked at one stage, three
-places holding one version number, a first-boot message nobody could
-see, and tests that could not fail. Always disable a fix and watch its
-test fail.
+**VPN**: `nexus vpn keys`, `nexus vpn config --address A --peer-key K --endpoint H:P`
 
----
+**Profiles (image building)**: `nexus profile list | show <name> | check <names>`,
+`nexus image <profile>`, `nexus solve <capability>`
 
-## Open, in order
+**Options**: `--apply`, `--yes`, `--explain`, `--commands`,
+`--with-available`, `--with-flatpak`, `--from <source>`, `--arch <arch>`
+(plus developer options for reading other systems' package data).
 
-**Waiting on the Asus (24 Sept)**
-- **Steam, part 1 — found:** i686-only in RPM Fusion, unreachable under
-  Debian's architecture rule. Fixed in patch 18 (0.1.5): Nexus now plans
-  `[install] steam`.
-- **Steam, part 2 — patch 19 (0.1.6):** the apply then refused because
-  dnf's list differed from Nexus's. Now a plan that *differs* proceeds
-  (only one name is handed over; the package manager resolves it) as
-  long as the manager's list contains the requested package; *refused*
-  and *could not be asked* still stop. When asked to confirm, the
-  person sees the manager's list. Tested with a fake apt: differs →
-  applies; requested missing → refuses; answer n → nothing changed.
-- **Steam, part 3 — works.** First launch took 10–15 minutes (Steam
-  downloads and unpacks itself); that was not a failure. Its log showed
-  three gaps in the image, fixed in patch 20 and verified on the Asus
-  (`locale`, `lspci`, `pactl info` all clean): `glibc-langpack-en` (the
-  base had no en_US.UTF-8 at all), `pciutils`, `pulseaudio-utils`.
-  Other languages still missing — needs the installer's language
-  choice (later: install the chosen langpack, or all-langpacks).
-- **Time zone, language, keyboard — patch 21 (0.1.7), not yet built.**
-  The installer kickstart forced `lang en_US`, a US keyboard and
-  `timezone UTC`: every clock was hours off (Asus 13:15 at 15:15 in
-  Skopje). Now the installer asks all three (Localization and Timezone
-  Anaconda modules enabled). `glibc-all-langpacks` replaces the English
-  one, since the installer can't add packages. **`nexus-timezone`**:
-  set by hand, look up once, or `sudo nexus-timezone auto on|off` —
-  **off by default** (David: nothing forced on). Auto uses a
-  NetworkManager dispatcher hook and Fedora's GeoIP service; tested with
-  fakes (bad names, hostile answer, offline, on/off, hook off/on).
-  **Needs a VM install from a new ISO** to confirm Anaconda shows the
-  three screens. Unknown: whether Anaconda's own IP-based preselect runs
-  (can't be switched off from our config — bootc-image-builder has no
-  ISO kernel-argument option). If the VM preselects your real zone, it
-  ran. Asus fixed by hand: `sudo timedatectl set-timezone Europe/Skopje`.
-- First boot should warn that Steam's first start takes minutes.
+## How updates work (decided 4 Oct)
 
-- **Splash: works** on the Asus (password box confirmed, 25 Sept), but
-  only after adding kargs by hand: **`rpm-ostree upgrade` does not
-  apply new kargs.d files** — only fresh installs get them. Upgraded
-  machines need `sudo rpm-ostree kargs --append=rhgb --append=quiet`.
-  Worth a first-boot or update-time check later (also affects
-  `rd.luks.options=tries=0` on machines installed before it existed).
-- **Wallpaper: works** — minimalism by default, gaming after choosing
-  it (Asus, 25 Sept). Remove the stray `/etc/nexus` on the Acer.
+Checked once a day, **installed only when asked**, never a restart by
+itself.
 
-- **Patch 22 (0.1.8) — redistribution.** Image builds now disable
-  `rpmfusion-*` and `fedora-cisco-openh264`, and the build fails if any
-  RPM Fusion package (other than the two repo-release packages) or
-  openh264 is in the image. Why: Cisco's patent licence covers openh264
-  only when each user downloads it from Cisco (Fedora ships the
-  `noopenh264` stub for that reason); RPM Fusion nonfree builds are
-  meant to be fetched by the user, not redistributed inside an image.
-  Machines keep the repos enabled, so users still get Steam/codecs by
-  downloading them. Package layer rebuilds: **big push**.
-- **Acer disk:** ISO build stopped at 11 GB free (needs ~20).
+- A timer in each person's session (`nexus-update-notify`, 10–15 min
+  after login, then daily) compares the image the machine runs with the
+  registry's (fingerprints via skopeo; no password) and sends a
+  notification once per new version. It stays until closed.
+- Weekly rebuilds with the same Nexus version show as
+  "Nexus 0.1.34, rebuilt with Fedora's latest updates".
+- `sudo nexus update --apply` stages the new system version (in effect
+  at the next restart; the old one stays in the boot menu) and updates
+  Flatpak apps.
+- Fedora's `bootc-fetch-apply-updates.timer` is masked (it restarts by
+  itself, and fails silently with added packages); rpm-ostree's
+  automatic check is off (it missed new Nexus images).
+- The boot menu waits 5 seconds (Fedora: 1), written once to
+  `/boot/grub2/custom.cfg`.
+- Missed notifications: the bell by the clock keeps the last 10 on
+  minimal (LXQt's own feature); KDE has its own bell.
 
-- **Patch 23 (0.1.9) — signed updates.** cosign 2.x key pair; private
-  key `~/.config/nexus-signing/cosign.key` (password, offline backup,
-  never in git — `*.key` ignored), public key committed as
-  `image/signing/cosign.pub`. Image carries the key at
-  `/etc/pki/containers/nexus-core.pub`, `registries.d/nexus-core.yaml`
-  (sigstore attachments) and a policy.json *merged* to require the key
-  for `ghcr.io/davidosdas-official` only. `publish.sh` refuses without
-  cosign 2.x and the key, pushes by digest, signs
-  (`--tlog-upload=false`, using podman's login), then verifies with the
-  public key. New installs: kickstart `%post` runs `bootc switch
-  --mutate-in-place --enforce-container-sigpolicy`, image name filled in
-  by `build-installer.sh` (left out for localhost images). Tested with
-  fakes: signs+verifies; refuses cosign 3; sign failure says "PUSHED BUT
-  NOT SIGNED". **0.1.9 signed and verified for real, 25 Sept**
-  (`sha256:0e9a1c9b…`).
-- **Patch 24 (0.1.10):** policy default becomes `reject`, with an
-  explicit accept-anything rule per transport — same effect for every
-  other registry, but ostree's container code refuses signed pulls while
-  the *top-level* default is `insecureAcceptAnything`. Existing machines
-  therefore switch in two steps: `rpm-ostree upgrade` + reboot (gets the
-  new policy into /etc), *then* `rpm-ostree rebase ostree-image-signed:…`
-  + reboot.
-- **Signed updates verified end to end (Asus, 25 Sept):** 0.1.10 signed
-  (`sha256:4ce8e0c1…`), Asus switched in two steps and shows
-  `ostree-image-signed:docker://…`. An unsigned image with a different
-  digest (`:unsigned-test`) was **refused**: "A signature was required,
-  but no signature exists." Delete the `unsigned-test` version on GitHub.
-- **Patch 25:** `publish.sh` retries signing 3×; `SIGN_ONLY=sha256:…
-  NAME=… ./image/publish.sh` signs without pushing (used once, when a
-  slow connection timed out). Cosmetic: sign-only still prints
-  "Pushed…" and the after-push text. Existing machines switch
-  once: `sudo rpm-ostree rebase
-  ostree-image-signed:docker://ghcr.io/davidosdas-official/nexus-core-testing:minimalism`.
-  Negative test: push an image with a different digest and no
-  signature as `:unsigned-test`; rebasing to it must fail.
-- **nexus-timezone works** (Asus, 25 Sept). Paris showed the same clock
-  as Skopje because both are UTC+2 in summer; `now` then replaced the
-  manual Paris with the looked-up zone, as designed.
-- **Decided 25 Sept:** release as a public preview without other
-  testers (feedback on the website instead), NVIDIA on the open driver,
-  paid version not before ~6 months — all free until then.
+## Tested on real hardware
 
-- **VM install from the 0.1.10 ISO (26 Sept) — passed:** installer
-  asked language, keyboard and time zone (preselected New York: no IP
-  lookup happened); installed machine came up `ostree-image-signed`
-  straight from the installer; `VC Keymap: us` (the empty keymap bug
-  is gone); first boot layered showcase+security+vpn and **waited for
-  Enter before the login screen on a real first boot**; wallpaper was
-  showcase's (first add-on chosen). Not tested: a non-English choice.
-- **Installer still showed Fedora's logo** (sidebar). Title already
-  said "NEXUS-CORE 44" (from os-release). **Patch 26 (0.1.11):** the
-  artwork stage draws sidebar/topbar pixmaps
-  (`image/installer-branding.py`, node-graph N in orange + name) and
-  packs them as a gzip cpio `product.img`, carried in the image at
-  `/usr/share/nexus/installer/product.img`; `build-installer.sh` adds it
-  to the ISO as `images/product.img` (merging any existing one), with
-  `xorriso -boot_image any replay`, same volume label, `implantisomd5`,
-  and writes `install.iso.sha256`. Tested on a small bootable test ISO:
-  merge, no-merge, El Torito kept, label kept, media check PASS. Needs
-  host tools: `sudo apt install xorriso cpio isomd5sum`. Also: "Handing
-  the plan to rpm-ostree" on image-based systems (said dnf).
-- Minor: after a fresh install the deployment digest is the ISO's
-  embedded copy, so the first `rpm-ostree upgrade` may re-download the
-  layers even with no new version.
+**Asus laptop** (3.6 GB RAM, Secure Boot on), minimal edition: login,
+desktop, battery, wallpaper, Alt+Shift us / Serbian Latin, add-ons,
+`nexus language set sr_RS.UTF-8@latin` (menus switched, keyboard
+untouched), `nexus update` and the daily notification, the 5-second
+boot menu, gamecheck (Elden Ring, CS2, Fortnite).
 
-- **VM install from the 0.1.11 ISO in Serbian (26 Sept):** installer
-  branding shows the Nexus N (patch 26 works); installer, time zone
-  (Europe/Belgrade), keyboard (us + Serbian) and the login screen's date
-  all in Serbian; graphical passphrase box on a fresh install;
-  wallpaper followed the first add-on (security). ISO sha256
-  `7249aff1…`.
-- **Found: in any non-English language, first boot installed
-  nothing.** Nexus parses dnf's table; dnf printed it in Serbian; every
-  plan looked like a refusal. **Patch 27 (0.1.12):** every command Nexus
-  reads runs with `LC_ALL=C.UTF-8`, `LANGUAGE=` (`inPlainLocale()` in
-  process.cpp, used by `runCommand` and both plan checks). Two tests,
-  both seen failing without the fix. **513 tests** (510 pass, 3 skipped).
-  Also expected in a VM: gaming reports `gpu-vendor-*` missing (virtual
-  GPU).
+**VM** (2 GB): installer, first boot, add-ons, labwc session, keyboard,
+disk-password keymap fix (0.1.34 ISO, 5 Oct).
 
-- **VM install in Bosnian (0.1.12, 26 Sept):** patch 27 confirmed —
-  first boot verified and installed school/vpn/development in a
-  non-English locale. Desktop in Bosnian. Nexus's own text is English
-  only (not translated yet). **Steam failed**: 32-bit (i686) packages
-  must match the image's x86_64 versions exactly, and Fedora had
-  updated libheif, gtk3, SDL3, glycin, gdk-pixbuf2 since the image was
-  built, so the matching i686 builds no longer existed on the mirrors.
-  Worked on the Asus the day before only by timing.
-- **Decided: Steam as a Flatpak (David, 26 Sept).** **Patch 28
-  (0.1.13):** profiles gain `Flatpak: capability=app-id` (parsed,
-  composed, tested); gaming maps `steam=com.valvesoftware.Steam`;
-  `nexus setup` shows it as "(Flatpak, from Flathub)", adds Flathub from
-  `/usr/share/nexus/flathub.flatpakrepo` (fetched at image build, key
-  verified by presence) and runs `flatpak install --system`; an
-  installed rpm Steam or Flatpak Steam counts as satisfied. Image adds
-  the `flatpak` package. Tested with a fake flatpak: preview, apply,
-  then "already is what you asked for". **513 tests** (510 pass, 3
-  skipped).
-- **Keyboard:** the Bosnian layout (Y/Z swapped, symbols moved) had no
-  way back to US. First boot now adds English (US) as a second layout
-  when missing (`localectl --no-convert set-x11-keymap`, switch with
-  Super+Space) — the console keymap, which the disk passphrase uses, is
-  untouched. **Hardware test (26 Sept, Serbian install):** "en/rs"
-  indicator present; clicking it and Meta+Alt+K both switch. Super+Space
-  did not (KDE ignores the XKB option given through localectl; Konsole
-  printed hostnames) — **patch 29 (0.1.14)** removes the option and names
-  Meta+Alt+K and the indicator instead. In a VM, Super goes to the host
-  (Pop!_OS switched its own layout). Installer still needs a warning: the keyboard active
-  when the disk password is set is the one used at every boot.
-- **Automatic weekly images — patch 30:** `.github/workflows/weekly-image.yml`
-  runs Mondays 03:00 UTC (and by hand from the Actions tab): tests →
-  fresh Fedora pull + build with REFRESH → push + sign via
-  `image/publish.sh` → verify. Needs, once: repo secrets
-  `COSIGN_PRIVATE_KEY` (contents of cosign.key) and `COSIGN_PASSWORD`;
-  the package's "Manage Actions access" granting the repo Write; the
-  code pushed to GitHub (a push of `.github/workflows/` needs a token
-  with the `workflow` scope). Optional repo variable `IMAGE_NAME`
-  (default nexus-core-testing; set to nexus-core at release). YAML
-  checked; **never run yet** — first run by hand and read the log.
-  Still manual: the Fedora version bump, about once a year — **patch
-  31** adds `.github/workflows/fedora-version-check.yml` (monthly):
-  when quay.io has fedora-bootc N+1 it opens an issue "Fedora N+1 is
-  available", when N+2 exists "URGENT: Fedora N is near end of life";
-  GitHub emails the owner. One issue per title. Tested with fakes.
-  (fedora-bootc:45 may already exist, so the first run may open one.)
-- **First weekly run (26 Sept) failed at signing:** "invalid pem block"
-  — the COSIGN_PRIVATE_KEY secret was pasted with damage (indentation
-  reproduces exactly this error). Tests and build passed (~15 min). It
-  had already pushed, so `:minimalism` briefly pointed at an unsigned
-  image that signed machines refuse. **Patch 32:** cosign is installed
-  and the key checked *first* — whitespace/CR stripped, BEGIN/END
-  present, decrypts with COSIGN_PASSWORD, derives exactly
-  image/signing/cosign.pub — so a bad secret stops the run with nothing
-  built or pushed. Tested with real cosign 2.4.1: good, CRLF, indented,
-  blank lines pass; wrong password, partial, other key, mangled fail
-  with a named cause.
-- Repo root junk (17 empty files named like commit hashes, plus
-  `Using`, a 27 MB `heaptrack.nexus.*.zst`) — removed with `git rm`
-  (26 Sept).
-  Decided 26 Sept (David): keep the image design, automate it; he does
-  not want to rebuild by hand.
-- (Was:) rebuild the image every week or two (fresh Fedora pull):
-  layered packages hit the same version wall, and it is the only way
-  security fixes reach users. First update after a fresh install
-  re-downloads ~2.3 GB (ISO copy vs registry digest).
+## Next
 
-**The bar for the first public release** (one stable, impressive
-release first; paid comes later)
-1. **Every offered profile focused and tested.** Each strictly about its
-   job while still able to do normal things. Written out for review
-   before code. `basic` currently adds nothing on KDE — make it the
-   media add-on (codecs from RPM Fusion, hardware video decoding, VLC).
-2. **Artwork:** wallpapers ✓ (patch 16); login theme and boot splash
-   (patch 17); the Nexus mark in the splash and on the login screen.
-3. **Steam working** from the gaming add-on.
-4. **NVIDIA** — no hardware to test on. First release: ship Fedora's
-   open driver (nouveau/NVK) and have `nexus doctor` say so honestly.
-   Alongside: find one tester with an NVIDIA card. The real fix, later:
-   build and sign the driver at image build (ublue-os/akmods approach),
-   a Nexus MOK key enrolled once, an NVIDIA image variant that first
-   boot offers to switch to.
-5. **Image signing** (cosign) — before the public release, because
-   adding it later means switching every installed machine by hand.
-6. **`nexus update`** preview (what an update changes) and automatic
-   rollback when an update fails to boot (greenboot).
-7. Keymap (`vconsole.keymap=` empty), zram.
-8. **Publish under the real name** `nexus-core`, make it public, ISO
-   from `ghcr.io/davidosdas-official/nexus-core:minimalism`.
-9. **Website** rewritten to match what ships.
+1. A short Preview 2 video / post (optional).
+2. Done (0.1.35–0.1.36, verified on the Asus 8 Oct): `nexus gamecheck
+   --identifiers` and a section in every gamecheck: network card, disks,
+   machine ID, screen readable; motherboard serials and TPM root-only
+   (matches `ls -l`). Reports only. Non-exact Steam matches are labelled.
+3. **Nexus Shop** (design: the "Nexus Shop mockups" canvas, 8 Oct).
+   - Step 1, 0.1.37 (patch 61), **works on the Asus** (9 Oct; 185 MB
+     while open there, used memory 709 → 864 MB: trim in step 2):
+     Home (Nexus picks, categories), search across Flathub and Fedora,
+     app pages with every source side by side and "Nexus suggests"
+     with reasons. Reads only; shows the command to install.
+     Qt Quick (QML); motion on KDE only. Measured here: ~110 MB while
+     open (43 MB of it shared Qt libraries), lists read in ~1 s.
+   - Data: Fedora's list from `appstream-data` (in the image, 14 MB;
+     written once per Fedora release), Flathub's downloaded by the
+     Shop once a day with `flatpak update --appstream` (no password,
+     tested on the Asus; 107 MB on disk with icons). The versions in
+     the lists are the developer's latest notes, never shown as what
+     would be installed.
+   - Real data (8 Oct): Flathub 3,310 apps (2,188 verified), Fedora
+     1,098, 458 in both. Steam, GeoGebra and Minecraft Launcher on
+     Flathub are packaged by volunteers, not the developer.
+   - Step 2, 0.1.39 (patch 63), **works on the Asus** (10 Oct: Kalk
+     installed and removed from the Shop, both in `nexus history`;
+     "Update everything" asks for the password; brightness 0.1.38
+     works). Memory there: 173 MB RSS = 67 MB the Shop's own + 106 MB
+     shared files (Qt, Mesa). 0.1.40 (patch 64): a line under greyed
+     buttons saying another change is running (Remove looked broken
+     while Kalk was installing). Step 2 was: Updates page (system
+     + apps, one button: `pkexec nexus update --apply --yes`, password
+     once), Installed (Open / Remove), History (same records as
+     `nexus history`), Install from Flathub with a "what Nexus will do /
+     it will not" dialog first. Installs go through the new
+     `nexus app install|remove <id> --apply` (Flatpak, system-wide, no
+     password: tested 9 Oct with GNOME Calculator; written in history).
+     Fedora packages stay a copyable command (password + restart).
+     `nexus update --lines` is what the Shop reads. One malloc arena:
+     ~71 MB while open here (was ~110-130). `nexus-shop --updates`
+     opens Updates; the notification now says "open Nexus Shop".
+   - Step 3, 0.1.41 (patch 65), **works on the Asus** (10 Oct: the
+     notification button opened the Shop at Updates, "rebuilt with
+     Fedora's latest updates"; Steam shows "Nexus suggests RPM Fusion
+     (non-free)", so RPM Fusion's list is in the image). The update
+     notification has an "Open Nexus Shop" button (LXQt shows buttons,
+     and the user manager knows WAYLAND_DISPLAY: both checked on the
+     Asus 10 Oct); the Shop opens through systemd-run so it outlives
+     the notify service. Sources page (what each source is, how many
+     apps, list date, Refresh lists). RPM Fusion's app lists
+     (rpmfusion-*-appstream-data) added to the image, not fatal if
+     missing; RPM Fusion offers show beside Fedora and Flathub, with
+     "not open source" for non-free. Fedora Flatpaks: no list on the
+     Asus (`flatpak update --appstream fedora` made none); not shown.
+   - Next for the Shop: the KDE look (motion), picks per add-on.
+4. **Brightness keys** (0.1.38, patch 62). Pieces tested on the Asus
+   (9 Oct; whole thing works on the Asus 10 Oct): logind SetBrightness with no password, the one-line bar,
+   one notification replaced in place, transient ones kept out of the
+   bell. **Image not built yet** (no internet for GitHub that day):
+   push, Run workflow (or wait for the weekly build), update, log out
+   and in, `grep nexus-brightness ~/.config/lxqt/labwc/rc.xml` shows
+   two lines, ~11 presses dark to bright. LXQt's
+   moved 2% a press (385 of 19200 on the Asus) with nothing on screen.
+   `nexus-brightness up|down`: 12 steps (5…100%, closer at the dark
+   end, never black) through logind's SetBrightness (no password, no
+   package), and a one-line bar as a notification that each press
+   replaces (LXQt notifications show text, not progress bars).
+   Existing users' labwc keys changed once by a user unit.
+   - Decided 9 Oct: GameVox not preinstalled (not on Flathub, beta,
+     licence not stated). The Shop shows it if it reaches Flathub.
+5. **Dual boot** (chosen 10 Oct: Pop!_OS + Nexus on the Acer one day;
+   Windows + Linux is what beginners want).
+   - 0.1.42 (patch 66): the installer no longer erases the only
+     internal disk when anything is on it (it did, Windows included);
+     the Installation Destination screen asks, and is where "install
+     next to it" starts. Only an empty disk is taken without asking.
+   - Next: VM test of installing next to another Linux; then
+     `nexus dualboot` (what other systems are on the disk, and boot
+     menu entries for them in /boot/grub2/custom.cfg).
+6. Showcase ("insane UI", Linux showing off) and the minimalism look.
+7. Later: trim minimal under 600 MB RAM, security review, server and
+   tiling editions, greenboot, NVIDIA (needs NVIDIA hardware).
 
-**Decided, 24 Sept**
-- **One ISO (KDE) for now.** minimal, tiling and server return later as
-  their own images; server = no desktop, managed from Cockpit, services
-  as Podman containers (clean removal), firewall/SSH/fail2ban, updates
-  with rollback, disk health, restic backups, no hacking tools.
-- **RPM Fusion over Flatpak** for Steam and codecs.
-- **Licence:** GPL-3.0 code + trademark policy. Under GPL, sharing
-  unmodified copies cannot be forbidden; the paid part will have its
-  own closed licence. Search the name before registering it ("Nexus"
-  is crowded: WIPO Global Brand Database). AI-written code has weak
-  copyright; the trademark is the stronger protection.
+## Acer housekeeping (10 Oct)
 
-**Paid version (after the free release)**
-- Model: self-hosted, local-first, $1 once per account. Lemon Squeezy
-  (pays out to North Macedonia) issues and checks licence keys, so no
-  server of our own. At $1 a key check is an honesty box.
-- Keep everything that protects the user free: rollback, snapshots,
-  recovery, basic backup. Fedora gives rollback free; so do Bazzite,
-  Aurora, Silverblue.
-- Best Pro candidate: the **System Contract** — declare what the
-  machine should be, Nexus reports drift. Builds on profiles. One Pro
-  feature for the first paid release, not thirteen.
-- Source documents: "Nexus-upgrade" (feature list, S/A/B/C) and
-  "Nexus-paid-inside" (Free vs Pro). Several of their S items already
-  exist: atomic updates + rollback (rpm-ostree), signed boot chain
-  (Fedora shim/kernel), installer disk plan (Anaconda).
+Freed 38 → 75 GB: old Nexus podman images (`podman image prune -a`,
+with and without sudo), the build's leftover KDE ISO in output/
+(checked against the Preview 2 sha256 first), apt cache, old
+installers and ISOs in Downloads. The Preview 2 ISOs stay in
+~/nexus-isos as backups.
 
-**Later**
-- Installer artwork is Fedora's (from bootc-image-builder, archived 18
-  June 2026: pin its digest, plan `image-builder --bootc-ref`).
-- Backup, firmware status (fwupd), network doctor, export/apply,
-  security and privacy reports, app centre.
-- `runCommand` holds a whole decompressed repository in memory; needs
-  a streaming XML reader. Rechunking for smaller Fedora refreshes.
-- Clean up: 17 empty junk files at the root, five empty directories,
-  stale `docs/HANDOFF.md`.
+## Lessons worth keeping
 
----
+- Test on the real thing: stand-in tests passed for every bug the Asus
+  and the VM found.
+- In VM instructions, never use key combinations the host uses itself
+  (Ctrl+Alt+F3 switched the host, not the VM).
+- Paste `sudo` commands one at a time: the password prompt swallows the
+  lines pasted after it.
+- A clock set in the past makes rpm skip packages signed "after" it;
+  doctor checks the clock.
+- LXQt picks its compositor from the first `session.conf` with a
+  `compositor=` line; labwc takes keyboard layouts from
+  `~/.config/lxqt/labwc/environment`.
+- `podman untag` without a name removes every name; the next prune
+  deletes the image.
+- Fedora 44 ISOs keep the UEFI boot menu in an appended partition, not
+  in `images/efiboot.img`.
+- rpm-ostree's `--check` does not see new container images; compare
+  digests with the registry instead.
+- The Containerfile has two stages that start the same way (server and
+  desktop); check which one an edit lands in.
 
-## Commands
+## Rules
 
-```bash
-cd ~/Documents/nexus-core
-cmake --build build && ctest --test-dir build        # 513 (3 skipped)
-./build/cli/nexus --version
-```
-
-**Release a Nexus change** (small push):
-```bash
-# bump project(VERSION ...) in CMakeLists.txt, commit, then:
-podman build --target desktop --build-arg NEXUS_PROFILE=minimalism \
-    --build-arg NEXUS_COMMIT="$(git rev-parse --short HEAD)" \
-    -t localhost/nexus-os:minimalism -f image/Containerfile . 2>&1 | tee build.log
-podman login ghcr.io -u DAVIDOSDAS-official          # after any reboot
-NAME=nexus-core-testing ./image/publish.sh
-```
-
-**Refresh Fedora** (big push, every couple of weeks): same, after
-`podman pull quay.io/fedora/fedora-bootc:44`, with
-`--build-arg REFRESH="$(date +%Y%m%d)"`.
-
-**After changing the Fedora version:** build `--target base`, run
-`./image/generate-lists.sh`, read `git diff image/generated/`.
-
-**ISO:**
-```bash
-IMAGE=ghcr.io/davidosdas-official/nexus-core-testing:minimalism \
-    PROFILE=minimalism ./image/build-installer.sh
-cat output/nexus-build.txt
-```
-
-**On an installed machine:**
-```bash
-sudo rpm-ostree upgrade && systemctl reboot
-grep PRETTY /etc/os-release; nexus --version; nexus doctor
-sudo bootc status | grep -i image      # must say ghcr, not localhost
-cat /proc/cmdline                      # rd.luks.options=tries=0
-```
-
-**VM:**
-```bash
-rm -f /tmp/nexus-test.qcow2 && qemu-img create -f qcow2 /tmp/nexus-test.qcow2 30G
-qemu-system-x86_64 -m 4096 -smp 4 -enable-kvm -bios /usr/share/ovmf/OVMF.fd \
-    -drive file=/tmp/nexus-test.qcow2,format=qcow2 \
-    -cdrom output/bootiso/install.iso -boot d
-```
-
-**Build check lines** (after a build, before publishing):
-```bash
-grep -E "KB ->|Login|Splash|No SDDM|No Plasma|Identity" build.log
-```
-
-**Applying a patch:**
-```bash
-git apply --check ~/Downloads/X.patch && git apply ~/Downloads/X.patch
-```
-Same name on both sides. Silence means it worked; "does not apply"
-on a second run means it was already in.
-
-## Key documents
-
-`README.md`, `docs/overview.md`, `docs/vision.md`,
-`docs/specifications/00-decisions.md` (15 decisions),
-`image/README.md` (layer order, refresh rule, Fedora bump order, logos,
-update commands), `image/first-boot/README.md`.
+- The cosign private key never leaves `~/.config/nexus-signing/`; it is
+  only ever uploaded as a GitHub secret.
+- No personal email or location on the website or in recordings.
+- Nothing is changed without `--apply`; every change is in history.
