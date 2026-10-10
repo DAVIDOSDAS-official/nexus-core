@@ -61,6 +61,8 @@ Flickable {
             }
         }
 
+        BusyHint {}
+
         // Could not ask.
         Text {
             visible: u.state === "error" || u.system === "unreachable"

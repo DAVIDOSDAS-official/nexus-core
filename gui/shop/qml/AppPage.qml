@@ -176,6 +176,7 @@ Flickable {
                         Button2 { visible: modelData.installed; text: "Open"; primary: true; onClicked: shop.launch(modelData.appId) }
                         Button2 { visible: modelData.installed; text: "Remove"; danger: true; enabled: !shop.jobRunning; onClicked: root.removeApp(modelData.appId, root.app.name) }
                     }
+                    BusyHint { visible: shop.jobRunning && modelData.flathub }
                     // Fedora: it joins the system image, which needs the
                     // password and a restart; from a terminal for now.
                     ColumnLayout {

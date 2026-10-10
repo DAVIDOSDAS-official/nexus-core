@@ -38,6 +38,7 @@ Flickable {
             Layout.fillWidth: true
             Layout.bottomMargin: 8
         }
+        BusyHint {}
         Repeater {
             model: root.apps
             Rectangle {

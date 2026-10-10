@@ -1,47 +1,29 @@
---- HANDOFF.md	2026-10-09 19:34:21.593695676 +0000
-+++ HANDOFF.md	2026-10-09 19:34:31.262445377 +0000
+--- HANDOFF.md	2026-10-09 19:34:31.262445377 +0000
++++ HANDOFF.md	2026-10-10 13:31:26.649057934 +0000
 @@ -1,9 +1,9 @@
  # Nexus-CORE — status
  
--Updated 8 October 2026. Paste this at the start of a new session; it is
-+Updated 9 October 2026. Paste this at the start of a new session; it is
+-Updated 9 October 2026. Paste this at the start of a new session; it is
++Updated 10 October 2026. Paste this at the start of a new session; it is
  written for someone picking the project up cold.
  
--**Version 0.1.38** (patches 1–62). **554 automated tests**, all passing.
-+**Version 0.1.39** (patches 1–63). **557 automated tests**, all passing.
+-**Version 0.1.39** (patches 1–63). **557 automated tests**, all passing.
++**Version 0.1.40** (patches 1–64). **557 automated tests**, all passing.
  **Preview 2 released 8 Oct 2026** (both editions, 0.1.34).
  
  ## What it is
-@@ -155,11 +155,27 @@
+@@ -155,7 +155,13 @@
     - Real data (8 Oct): Flathub 3,310 apps (2,188 verified), Fedora
       1,098, 458 in both. Steam, GeoGebra and Minecraft Launcher on
       Flathub are packaged by volunteers, not the developer.
--   - Step 2: install and remove through `nexus install`, Updates
--     (system + Flatpak, one button), History, Installed, Sources;
--     the update notification opens the Shop. Also Fedora Flatpaks
--     and RPM Fusion lists.
--4. **Brightness keys** (0.1.38, patch 62), waiting for a test: LXQt's
-+   - Step 2, 0.1.39 (patch 63), **not built yet**: Updates page (system
-+     + apps, one button: `pkexec nexus update --apply --yes`, password
-+     once), Installed (Open / Remove), History (same records as
-+     `nexus history`), Install from Flathub with a "what Nexus will do /
-+     it will not" dialog first. Installs go through the new
-+     `nexus app install|remove <id> --apply` (Flatpak, system-wide, no
-+     password: tested 9 Oct with GNOME Calculator; written in history).
-+     Fedora packages stay a copyable command (password + restart).
-+     `nexus update --lines` is what the Shop reads. One malloc arena:
-+     ~71 MB while open here (was ~110-130). `nexus-shop --updates`
-+     opens Updates; the notification now says "open Nexus Shop".
-+   - Step 3: a button in the notification that opens the Shop (needs a
-+     check of the session environment), Sources page, Fedora Flatpaks
-+     and RPM Fusion lists, KDE look.
-+4. **Brightness keys** (0.1.38, patch 62). Pieces tested on the Asus
-+   (9 Oct): logind SetBrightness with no password, the one-line bar,
-+   one notification replaced in place, transient ones kept out of the
-+   bell. **Image not built yet** (no internet for GitHub that day):
-+   push, Run workflow (or wait for the weekly build), update, log out
-+   and in, `grep nexus-brightness ~/.config/lxqt/labwc/rc.xml` shows
-+   two lines, ~11 presses dark to bright. LXQt's
-    moved 2% a press (385 of 19200 on the Asus) with nothing on screen.
-    `nexus-brightness up|down`: 12 steps (5…100%, closer at the dark
-    end, never black) through logind's SetBrightness (no password, no
+-   - Step 2, 0.1.39 (patch 63), **not built yet**: Updates page (system
++   - Step 2, 0.1.39 (patch 63), **works on the Asus** (10 Oct: Kalk
++     installed and removed from the Shop, both in `nexus history`;
++     "Update everything" asks for the password; brightness 0.1.38
++     works). Memory there: 173 MB RSS = 67 MB the Shop's own + 106 MB
++     shared files (Qt, Mesa). 0.1.40 (patch 64): a line under greyed
++     buttons saying another change is running (Remove looked broken
++     while Kalk was installing). Step 2 was: Updates page (system
+      + apps, one button: `pkexec nexus update --apply --yes`, password
+      once), Installed (Open / Remove), History (same records as
+      `nexus history`), Install from Flathub with a "what Nexus will do /
