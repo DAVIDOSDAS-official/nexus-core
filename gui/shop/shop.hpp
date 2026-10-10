@@ -12,6 +12,7 @@
 #include <QVariantMap>
 
 #include <atomic>
+#include <map>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -64,6 +65,8 @@ public:
     // Changes. Each goes through nexus, so it is written in history and
     // follows the same rules as at a terminal.
     Q_INVOKABLE void checkUpdates();
+    // Read the app lists again, downloading Flathub's first.
+    Q_INVOKABLE void refreshLists();
     Q_INVOKABLE void install(const QString& appId);
     Q_INVOKABLE void remove(const QString& appId);
     Q_INVOKABLE void updateEverything();
@@ -86,6 +89,7 @@ private:
         QHash<QString, QString> flatpakNames;
         QSet<QString> installedPackages;
         QVariantList sources;
+        std::map<std::string, std::string> iconDirs; // source -> icons dir
     };
 
     void load();
@@ -107,6 +111,7 @@ private:
     std::unique_ptr<Loaded> data_;
     std::thread worker_;
     std::thread checker_;
+    std::atomic<bool> forceRefresh_{false};
     std::atomic<bool> checking_{false};
 
     QVariantMap updates_;
@@ -117,7 +122,6 @@ private:
     QString jobKind_;
     QString startPage_ = QStringLiteral("home");
 
-    QString fedoraFile_;
-    QString fedoraIcons_;
+    QString swcatalog_;
     QString flathubDir_;
 };

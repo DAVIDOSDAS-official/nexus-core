@@ -8,6 +8,7 @@
 #include <QClipboard>
 #include <QDateTime>
 #include <QDesktopServices>
+#include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QLocale>
@@ -34,8 +35,33 @@ QString env(const char* name, const QString& fallback) {
 }
 
 QString sourceName(const std::string& source) {
-    return source == "flathub" ? QStringLiteral("Flathub")
-                               : QStringLiteral("Fedora");
+    return QString::fromStdString(nexus::system::sourceLabel(source));
+}
+
+// What each source is, for the Sources page. Plain facts, the same
+// ones the comparison uses.
+QString sourceAbout(const std::string& source) {
+    if (source == "flathub") {
+        return QStringLiteral(
+            "Apps packaged as Flatpaks, by their developers (verified) or "
+            "by volunteers. They run apart from the system and need no "
+            "restart.");
+    }
+    if (source == "fedora") {
+        return QStringLiteral(
+            "Fedora's own packages, built and signed by Fedora. Added to "
+            "the system image; they work after a restart.");
+    }
+    if (source == "rpmfusion-nonfree") {
+        return QStringLiteral(
+            "RPM Fusion's packages of software that is not open source "
+            "(Steam, NVIDIA drivers...). Community-run, signed by RPM "
+            "Fusion. Added to the system image.");
+    }
+    return QStringLiteral(
+        "RPM Fusion: open-source software Fedora cannot ship, mostly "
+        "for patent reasons (codecs, players). Community-run, signed by "
+        "RPM Fusion. Added to the system image.");
 }
 
 // When a catalogue file was written, in words.
@@ -71,10 +97,10 @@ const std::vector<std::string>& pickKeys() {
 
 Shop::Shop(QObject* parent) : QObject(parent) {
     // Paths can be pointed elsewhere, for testing on another machine.
-    fedoraFile_ = env("NEXUS_SHOP_FEDORA",
-        "/usr/share/swcatalog/xml/fedora.xml.gz");
-    fedoraIcons_ = env("NEXUS_SHOP_FEDORA_ICONS",
-        "/usr/share/swcatalog/icons/fedora");
+    // Every system catalogue installed: Fedora's (appstream-data) and
+    // RPM Fusion's (rpmfusion-*-appstream-data), side by side in
+    // xml/, with their icons in icons/<origin>/.
+    swcatalog_ = env("NEXUS_SHOP_SWCATALOG", "/usr/share/swcatalog");
     flathubDir_ = env("NEXUS_SHOP_FLATHUB",
         "/var/lib/flatpak/appstream/flathub/x86_64/active");
 
@@ -133,6 +159,19 @@ void Shop::start() {
     worker_ = std::thread([this] { load(); });
 }
 
+void Shop::refreshLists() {
+    if (loading_) {
+        return;
+    }
+    if (worker_.joinable()) {
+        worker_.join();
+    }
+    loading_ = true;
+    forceRefresh_ = true;
+    emit changed();
+    worker_ = std::thread([this] { load(); });
+}
+
 void Shop::load() {
     auto loaded = std::make_unique<Loaded>();
     const QString flathubFile = flathubDir_ + "/appstream.xml.gz";
@@ -143,7 +182,7 @@ void Shop::load() {
     const QFileInfo flathubInfo(flathubFile);
     QString flathubNote;
     if (qgetenv("NEXUS_SHOP_NO_REFRESH").isEmpty() &&
-        (!flathubInfo.exists() ||
+        (forceRefresh_.exchange(false) || !flathubInfo.exists() ||
          flathubInfo.lastModified().secsTo(QDateTime::currentDateTime()) >
              24 * 3600) &&
         nexus::system::commandExists("flatpak")) {
@@ -155,49 +194,80 @@ void Shop::load() {
         }
     }
 
-    auto readOne = [&](const QString& path, const std::string& source,
-                       const QString& label) {
+    auto readOne = [&](const QString& path, std::string source,
+                       bool fromFlathub) {
         QVariantMap state;
-        state["name"] = label;
         std::string document;
         std::string reason;
-        if (!QFileInfo::exists(path)) {
+        if (fromFlathub && !QFileInfo::exists(path)) {
+            state["name"] = QStringLiteral("Flathub");
+            state["source"] = QStringLiteral("flathub");
+            state["about"] = sourceAbout("flathub");
             state["ready"] = false;
-            state["detail"] = source == "flathub"
-                ? QStringLiteral("list not downloaded yet")
-                : QStringLiteral("list not installed");
+            state["count"] = 0;
+            state["detail"] = QStringLiteral("list not downloaded yet") +
+                (flathubNote.isEmpty() ? QString() : ", " + flathubNote);
             loaded->sources.push_back(state);
             return;
         }
         if (!nexus::system::readPossiblyCompressed(
                 path.toStdString(), document, reason)) {
+            state["name"] = QFileInfo(path).fileName();
             state["ready"] = false;
             state["detail"] = q(reason);
             loaded->sources.push_back(state);
             return;
         }
+        // Which source a system catalogue is: its origin attribute.
+        std::string origin;
+        if (!fromFlathub) {
+            const std::size_t at = document.find("origin=\"");
+            if (at != std::string::npos && at < 2048) {
+                const std::size_t end = document.find('"', at + 8);
+                origin = document.substr(at + 8, end - at - 8);
+            }
+            source = nexus::system::catalogueSource(origin);
+            if (source.empty() || source == "flathub") {
+                return;  // not a source the Shop shows
+            }
+        }
         std::string error;
         auto apps = nexus::system::parseCatalogue(document, source, error);
         document.clear();
         document.shrink_to_fit();
+        if (apps.empty() && error.empty()) {
+            return;  // codecs or repository files only
+        }
 
+        state["name"] = sourceName(source);
+        state["source"] = q(source);
+        state["about"] = sourceAbout(source);
         state["ready"] = error.empty();
+        state["count"] = static_cast<int>(apps.size());
         QString detail = QString::number(apps.size()) +
             QStringLiteral(" apps, list from ") + age(path);
         if (!error.empty()) {
             detail = QStringLiteral("list damaged: ") + q(error);
-        } else if (source == "flathub" && !flathubNote.isEmpty()) {
+        } else if (fromFlathub && !flathubNote.isEmpty()) {
             detail += ", " + flathubNote;
         }
         state["detail"] = detail;
         loaded->sources.push_back(state);
+        if (!fromFlathub && !origin.empty()) {
+            loaded->iconDirs[source] =
+                swcatalog_.toStdString() + "/icons/" + origin;
+        }
         for (auto& app : apps) {
             loaded->apps.push_back(std::move(app));
         }
     };
 
-    readOne(flathubFile, "flathub", QStringLiteral("Flathub"));
-    readOne(fedoraFile_, "fedora", QStringLiteral("Fedora"));
+    readOne(flathubFile, "flathub", true);
+    QStringList files = QDir(swcatalog_ + "/xml").entryList(
+        {"*.xml.gz", "*.xml"}, QDir::Files, QDir::Name);
+    for (const QString& file : files) {
+        readOne(swcatalog_ + "/xml/" + file, "", false);
+    }
 
     // Grouped only after every app is in place: the entries point
     // into the vector, which must not grow afterwards.
@@ -237,8 +307,17 @@ QString Shop::iconFor(const CatalogueApp& app) const {
     }
     const QString size = QString::number(app.iconSize) + "x" +
                          QString::number(app.iconSize);
-    const QString base = app.source == "flathub"
-        ? flathubDir_ + "/icons" : fedoraIcons_;
+    QString base = flathubDir_ + "/icons";
+    if (app.source != "flathub") {
+        if (!data_) {
+            return {};
+        }
+        const auto found = data_->iconDirs.find(app.source);
+        if (found == data_->iconDirs.end()) {
+            return {};
+        }
+        base = q(found->second);
+    }
     const QString path = base + "/" + size + "/" + q(app.icon);
     return QFileInfo::exists(path)
         ? QUrl::fromLocalFile(path).toString() : QString();
@@ -396,11 +475,7 @@ QVariantMap Shop::details(const QString& key) const {
         row["kind"] = q(nexus::system::sourceKind(*offer));
         row["restart"] = q(nexus::system::sourceRestart(*offer));
         row["verified"] = offer->verified;
-        row["who"] = flathub
-            ? (offer->verified
-                   ? QStringLiteral("the developer, confirmed by Flathub")
-                   : QStringLiteral("volunteers, reviewed by Flathub"))
-            : QStringLiteral("Fedora's packagers, signed by Fedora");
+        row["who"] = q(nexus::system::sourcePackager(*offer));
         row["installed"] = installed(*offer);
         row["appId"] = flathub ? q(offer->package) : QString();
         row["flathub"] = flathub;

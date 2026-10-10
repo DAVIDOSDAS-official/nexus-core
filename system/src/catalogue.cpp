@@ -368,7 +368,11 @@ std::vector<ShopEntry> groupCatalogue(
         offers.push_back(&app);
         std::stable_sort(offers.begin(), offers.end(),
             [](const CatalogueApp* a, const CatalogueApp* b) {
-                return a->source == "flathub" && b->source != "flathub";
+                auto rank = [](const std::string& source) {
+                    return source == "flathub" ? 0
+                         : source == "fedora" ? 1 : 2;
+                };
+                return rank(a->source) < rank(b->source);
             });
     }
     return entries;
@@ -497,21 +501,65 @@ std::string sourceRestart(const CatalogueApp& app) {
     return app.source == "flathub" ? "not needed" : "needed once";
 }
 
+std::string catalogueSource(const std::string& origin) {
+    const std::string name = lower(origin);
+    if (name.rfind("rpmfusion-nonfree", 0) == 0) {
+        return "rpmfusion-nonfree";
+    }
+    if (name.rfind("rpmfusion-free", 0) == 0) {
+        return "rpmfusion-free";
+    }
+    if (name == "flatpak" || name == "flathub") {
+        return "flathub";
+    }
+    if (name.rfind("fedora", 0) == 0) {
+        return "fedora";
+    }
+    return "";
+}
+
+std::string sourceLabel(const std::string& source) {
+    if (source == "flathub") return "Flathub";
+    if (source == "fedora") return "Fedora";
+    if (source == "rpmfusion-free") return "RPM Fusion";
+    if (source == "rpmfusion-nonfree") return "RPM Fusion (non-free)";
+    return source;
+}
+
+std::string sourcePackager(const CatalogueApp& app) {
+    if (app.source == "flathub") {
+        return app.verified ? "the developer, confirmed by Flathub"
+                            : "volunteers, reviewed by Flathub";
+    }
+    if (app.source == "fedora") {
+        return "Fedora's packagers, signed by Fedora";
+    }
+    return "RPM Fusion's packagers, signed by RPM Fusion "
+           "(a community repository, not run by Fedora)";
+}
+
+bool isSystemSource(const std::string& source) {
+    return source == "fedora" || source.rfind("rpmfusion", 0) == 0;
+}
+
 SourceSuggestion suggestSource(const ShopEntry& entry) {
     const CatalogueApp* flathub = nullptr;
-    const CatalogueApp* fedora = nullptr;
+    const CatalogueApp* system = nullptr;   // Fedora first, then RPM Fusion
 
     for (const CatalogueApp* offer : entry.offers) {
         if (offer->source == "flathub") {
             flathub = offer;
-        } else if (offer->source == "fedora") {
-            fedora = offer;
+        } else if (isSystemSource(offer->source) &&
+                   (system == nullptr || offer->source == "fedora")) {
+            system = offer;
         }
     }
 
     SourceSuggestion suggestion;
+    const std::string systemName =
+        system == nullptr ? "" : sourceLabel(system->source);
 
-    if (flathub != nullptr && (flathub->verified || fedora == nullptr)) {
+    if (flathub != nullptr && (flathub->verified || system == nullptr)) {
         suggestion.source = "flathub";
         if (flathub->verified) {
             const std::string who = flathub->developer.empty()
@@ -526,19 +574,26 @@ SourceSuggestion suggestSource(const ShopEntry& entry) {
         suggestion.reasons.push_back("Ready to open at once, no restart");
         suggestion.reasons.push_back("Leaves the system image as it is");
         suggestion.reasons.push_back("Removing it removes all of it");
-        if (fedora != nullptr) {
+        if (system != nullptr) {
             suggestion.otherNote =
-                "The Fedora package is just as trustworthy, but it "
-                "joins the system image: it starts working after the "
-                "next restart, and every system update carries it.";
+                "The " + systemName + " package is also signed and "
+                "reviewed, but it joins the system image: it starts "
+                "working after the next restart, and every system "
+                "update carries it.";
         }
         return suggestion;
     }
 
-    if (fedora != nullptr) {
-        suggestion.source = "fedora";
-        suggestion.reasons.push_back(
-            "Built and signed by Fedora's packagers");
+    if (system != nullptr) {
+        suggestion.source = system->source;
+        suggestion.reasons.push_back(system->source == "fedora"
+            ? "Built and signed by Fedora's packagers"
+            : "Built and signed by RPM Fusion's packagers, the community "
+              "repository Nexus turns on for what Fedora cannot ship");
+        if (system->source == "rpmfusion-nonfree") {
+            suggestion.reasons.push_back(
+                "Not open source: RPM Fusion lists it as non-free");
+        }
         suggestion.reasons.push_back(
             "Part of the system: updated with it, kept in the boot "
             "menu with every earlier version");

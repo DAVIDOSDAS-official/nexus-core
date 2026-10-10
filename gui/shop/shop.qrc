@@ -17,5 +17,6 @@
         <file>qml/InstalledPage.qml</file>
         <file>qml/HistoryPage.qml</file>
         <file>qml/BusyHint.qml</file>
+        <file>qml/SourcesPage.qml</file>
     </qresource>
 </RCC>

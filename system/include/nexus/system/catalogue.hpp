@@ -22,7 +22,8 @@ namespace nexus::system {
 // shown as the version that would be installed.
 struct CatalogueApp {
     std::string id;          // as written, minus a trailing ".desktop"
-    std::string source;      // "fedora" or "flathub"
+    std::string source;      // "flathub", "fedora", "rpmfusion-free",
+                             // "rpmfusion-nonfree"
     std::string name;
     std::string summary;
     std::string developer;
@@ -84,10 +85,24 @@ std::string shopCategory(const std::vector<std::string>& categories);
 // The groups, in the order Home shows them.
 const std::vector<std::string>& shopCategories();
 
+// The source a catalogue file speaks for, from its origin attribute
+// ("fedora", "flatpak", "rpmfusion-free-44"...). Empty: not one the
+// Shop shows (Nexus offers known sources only).
+std::string catalogueSource(const std::string& origin);
+
+// "Flathub", "Fedora", "RPM Fusion", "RPM Fusion (non-free)".
+std::string sourceLabel(const std::string& source);
+
+// Who built it and who vouches for it, in a few words.
+std::string sourcePackager(const CatalogueApp& app);
+
+// Fedora and RPM Fusion packages join the system image.
+bool isSystemSource(const std::string& source);
+
 // Which source Nexus suggests, and why, in plain words. The person
 // still chooses; this only says which one and the reasons.
 struct SourceSuggestion {
-    std::string source;                 // "flathub" or "fedora"
+    std::string source;                 // as CatalogueApp::source
     std::vector<std::string> reasons;   // for the suggested one
     std::string otherNote;              // why not the other, if any
 };

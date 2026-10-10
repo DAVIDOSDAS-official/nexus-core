@@ -7,3 +7,6 @@ Documentation=man:nexus(1)
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/nexus update notify
+# It waits while the notification is on screen, for the "Open Nexus
+# Shop" button: however long that is, it is not a hang.
+TimeoutStartSec=infinity

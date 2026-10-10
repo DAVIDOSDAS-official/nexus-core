@@ -310,3 +310,41 @@ TEST(CatalogueTest, FlatpakIdsOnly) {
     EXPECT_FALSE(isFlatpakId("com.obs.Stu'dio"));
     EXPECT_FALSE(isFlatpakId(""));
 }
+
+static std::vector<CatalogueApp> steamOffers() {
+    CatalogueApp flathub;
+    flathub.id = "com.valvesoftware.Steam";
+    flathub.name = "Steam";
+    flathub.source = "flathub";
+    flathub.verified = false;
+    CatalogueApp fusion;
+    fusion.id = "com.valvesoftware.Steam";
+    fusion.name = "Steam";
+    fusion.source = "rpmfusion-nonfree";
+    fusion.package = "steam";
+    return {fusion, flathub};
+}
+
+TEST(CatalogueTest, RpmFusionIsASystemSourceAndSaysNonFree) {
+    const auto apps = steamOffers();
+    const auto entries = groupCatalogue(apps);
+    ASSERT_EQ(entries.size(), 1u);
+    EXPECT_EQ(entries[0].offers[0]->source, "flathub");  // shown first
+    const auto s = suggestSource(entries[0]);
+    EXPECT_EQ(s.source, "rpmfusion-nonfree");
+    EXPECT_NE(s.reasons[0].find("RPM Fusion"), std::string::npos);
+    EXPECT_EQ(s.reasons[1], "Not open source: RPM Fusion lists it as non-free");
+    EXPECT_NE(s.otherNote.find("volunteers"), std::string::npos);
+}
+
+TEST(CatalogueTest, SourceNamesFromCatalogueOrigins) {
+    EXPECT_EQ(catalogueSource("fedora"), "fedora");
+    EXPECT_EQ(catalogueSource("flatpak"), "flathub");
+    EXPECT_EQ(catalogueSource("rpmfusion-free-44"), "rpmfusion-free");
+    EXPECT_EQ(catalogueSource("rpmfusion-nonfree-updates"), "rpmfusion-nonfree");
+    EXPECT_EQ(catalogueSource(""), "");
+    EXPECT_EQ(catalogueSource("someone-elses-repo"), "");
+    EXPECT_EQ(sourceLabel("rpmfusion-nonfree"), "RPM Fusion (non-free)");
+    EXPECT_TRUE(isSystemSource("rpmfusion-free"));
+    EXPECT_FALSE(isSystemSource("flathub"));
+}

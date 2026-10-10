@@ -769,6 +769,17 @@ RUN set -eu; \
         dnf install -y --setopt=install_weak_deps=False ${missing} && dnf clean all; \
     fi; \
     rpm -q appstream-data qt6-qtdeclarative
+# RPM Fusion's app lists (0.1.41), so the Shop can show its apps beside
+# Fedora's and Flathub's. Not fatal: without them the Shop simply shows
+# the other sources, and its Sources page says which it has.
+RUN set -u; \
+    for package in rpmfusion-free-appstream-data rpmfusion-nonfree-appstream-data; do \
+        rpm -q "${package}" > /dev/null || \
+            dnf install -y --setopt=install_weak_deps=False "${package}" || \
+            echo "Not available: ${package} (the Shop shows the other sources)"; \
+    done; \
+    dnf clean all; \
+    ls /usr/share/swcatalog/xml/
 COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
 COPY image/first-boot/nexus-first-boot.service \
      /usr/lib/systemd/system/nexus-first-boot.service

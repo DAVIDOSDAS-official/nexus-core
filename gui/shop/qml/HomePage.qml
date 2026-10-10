@@ -38,7 +38,7 @@ Flickable {
                 spacing: 14
                 BusyIndicator { running: shop.loading; implicitWidth: 28; implicitHeight: 28 }
                 Text {
-                    text: "Reading the app lists from Flathub and Fedora…"
+                    text: "Reading the app lists…"
                     color: Theme.text
                     font.pixelSize: 15
                     Layout.fillWidth: true

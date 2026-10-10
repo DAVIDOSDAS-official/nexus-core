@@ -30,6 +30,7 @@ ApplicationWindow {
         if (name === "updates") stack.push(updatesPage)
         else if (name === "installed") stack.push(installedPage)
         else if (name === "history") stack.push(historyPage)
+        else if (name === "sources") stack.push(sourcesPage)
     }
     function confirmInstall(appId, name, who) {
         confirm.ask({
@@ -78,7 +79,7 @@ ApplicationWindow {
         search.text = ""
         section = name
         stack.pop(null)
-        stack.push(listPage, { title: name, subtitle: "Every app in Flathub and Fedora in this group, A to Z.", apps: shop.inCategory(name) })
+        stack.push(listPage, { title: name, subtitle: "Every app from the sources in this group, A to Z.", apps: shop.inCategory(name) })
     }
     function runSearch() {
         const words = search.text.trim()
@@ -87,7 +88,7 @@ ApplicationWindow {
             return
         }
         const found = shop.search(words)
-        const sub = found.length === 0 ? "" : "Searched Flathub and Fedora. Nothing from anywhere else."
+        const sub = found.length === 0 ? "" : "Searched Flathub, Fedora and RPM Fusion. Nothing from anywhere else."
         if (section === "search" && stack.depth > 1 && stack.currentItem.objectName === "results") {
             stack.currentItem.title = "“" + words + "”"
             stack.currentItem.apps = found
@@ -145,6 +146,7 @@ ApplicationWindow {
                 }
                 NavButton { text: "Installed"; current: window.section === "installed"; Layout.fillWidth: true; enabled: !shop.loading; onClicked: window.openPage("installed") }
                 NavButton { text: "History"; current: window.section === "history"; Layout.fillWidth: true; onClicked: window.openPage("history") }
+                NavButton { text: "Sources"; current: window.section === "sources"; Layout.fillWidth: true; onClicked: window.openPage("sources") }
                 Text { text: "EXPLORE"; color: Theme.dim; font.pixelSize: 11; font.bold: true; Layout.topMargin: 14; Layout.leftMargin: 14; Layout.bottomMargin: 4 }
                 Repeater {
                     model: shop.categories
@@ -153,34 +155,6 @@ ApplicationWindow {
 
                 Item { Layout.fillHeight: true }
 
-                // Where the apps come from, and how fresh each list is.
-                Rectangle {
-                    Layout.fillWidth: true
-                    implicitHeight: sourcesColumn.implicitHeight + 24
-                    radius: 10
-                    color: Theme.panel2
-                    ColumnLayout {
-                        id: sourcesColumn
-                        x: 12; y: 12
-                        width: parent.width - 24
-                        spacing: 6
-                        Text { text: "Sources"; color: Theme.text; font.pixelSize: 13; font.bold: true }
-                        Text { visible: shop.loading; text: "reading…"; color: Theme.dim; font.pixelSize: 12 }
-                        Repeater {
-                            model: shop.sources
-                            ColumnLayout {
-                                spacing: 0
-                                Layout.fillWidth: true
-                                RowLayout {
-                                    spacing: 6
-                                    Text { text: "●"; color: modelData.ready ? "#4ade80" : Theme.warn; font.pixelSize: 11 }
-                                    Text { text: modelData.name; color: Theme.text; font.pixelSize: 12 }
-                                }
-                                Text { text: modelData.detail; color: Theme.dim; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true; leftPadding: 17 }
-                            }
-                        }
-                    }
-                }
             }
         }
 
@@ -204,7 +178,7 @@ ApplicationWindow {
                     anchors.fill: parent
                     anchors.leftMargin: 18
                     anchors.rightMargin: 18
-                    placeholderText: shop.loading ? "Reading the app lists…" : "Search Flathub and Fedora: an app, or what you need (“video editor”)"
+                    placeholderText: shop.loading ? "Reading the app lists…" : "Search every source: an app, or what you need (“video editor”)"
                     placeholderTextColor: Theme.dim
                     color: Theme.bright
                     font.pixelSize: 16
@@ -283,6 +257,10 @@ ApplicationWindow {
     Component {
         id: historyPage
         HistoryPage {}
+    }
+    Component {
+        id: sourcesPage
+        SourcesPage {}
     }
 
     ConfirmDialog { id: confirm }

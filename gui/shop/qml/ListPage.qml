@@ -49,7 +49,7 @@ Item {
             Text {
                 visible: root.apps.length === 0
                 width: grid.width - 16
-                text: "Nothing in Flathub or Fedora matches that. Try another word, or what the app does (“video editor”)."
+                text: "Nothing in the sources matches that. Try another word, or what the app does (“video editor”)."
                 color: Theme.dim
                 font.pixelSize: 14
                 wrapMode: Text.WordWrap

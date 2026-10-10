@@ -3180,18 +3180,32 @@ int commandUpdate(
             }
             return out + "'";
         };
-        nexus::system::runCommand(
-            // -t 0: it stays until it is clicked away. A notification
-            // that vanishes while nobody looks is one nobody saw
-            // (Asus, 4 October). `nexus update` says the same any time.
-            "notify-send -a Nexus -t 0 -i system-software-update "
-            + quoted("Update available") + " "
-            + quoted(summary + ". Nothing is installed until you ask: " +
-                     (nexus::system::commandExists("nexus-shop")
-                          ? std::string("open Nexus Shop, Updates")
-                          : std::string("open a terminal and run  "
-                                        "nexus update"))),
+        // -t 0: it stays until it is clicked away. A notification
+        // that vanishes while nobody looks is one nobody saw (Asus,
+        // 4 October). `nexus update` says the same any time.
+        //
+        // With the Shop installed it carries a button that opens it at
+        // Updates. notify-send waits for the click (or the close) and
+        // prints the button's name; LXQt shows the button (Asus, 10
+        // October). The Shop is started in a unit of its own: started
+        // from here it would belong to this service and be stopped with
+        // it. The session's display is known to the user manager
+        // (WAYLAND_DISPLAY, checked the same day).
+        const bool shop = nexus::system::commandExists("nexus-shop");
+        const auto answer = nexus::system::runCommand(
+            "notify-send -a Nexus -t 0 -i system-software-update " +
+            std::string(shop ? "-A open='Open Nexus Shop' " : "") +
+            quoted("Update available") + " " +
+            quoted(summary + ". Nothing is installed until you ask: " +
+                   (shop ? std::string("open Nexus Shop, Updates")
+                         : std::string("open a terminal and run  "
+                                       "nexus update"))),
             false);
+        if (shop && answer.text.find("open") != std::string::npos) {
+            nexus::system::runCommand(
+                "systemd-run --user --quiet --collect --no-block "
+                "nexus-shop --updates >/dev/null 2>&1", false);
+        }
         return 0;
     }
 
