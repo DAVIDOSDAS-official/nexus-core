@@ -3,7 +3,7 @@
 Updated 10 October 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.42** (patches 1–66). **559 automated tests**, all passing.
+**Version 0.1.43** (patches 1–67). **559 automated tests**, all passing.
 **Preview 2 released 8 Oct 2026** (both editions, 0.1.34).
 
 ## What it is
@@ -207,12 +207,81 @@ disk-password keymap fix (0.1.34 ISO, 5 Oct).
      internal disk when anything is on it (it did, Windows included);
      the Installation Destination screen asks, and is where "install
      next to it" starts. Only an empty disk is taken without asking.
-   - Next: VM test of installing next to another Linux; then
-     `nexus dualboot` (what other systems are on the disk, and boot
-     menu entries for them in /boot/grub2/custom.cfg).
+   - Decided 10 Oct: Linux only, never Windows. Tested on the Asus
+     (reinstall), never the Acer until finished. First partner: Linux
+     Mint (cleaner than Pop!_OS for a first test).
+   - VM test dropped (mouse unusable); real hardware instead.
+   - Test 1, Asus, 11 Oct: Mint 22.3 ("Something else": 512 MB EFI +
+     100 GB ext4, ~150 GB free). Nexus 0.1.42 saw 142.63 GiB free and
+     erased nothing, but failed at "Bootloader write config:
+     grub2-mkconfig": it reused Mint's EFI partition, so ostree saw
+     Mint's GRUB and tried to rebuild the menu with grub2-mkconfig,
+     which fails inside the installer ("failed to get canonical path of
+     LiveOS_rootfs"). os-prober itself worked (found Mint). Known Fedora
+     limitation: fedora-silverblue/issue-tracker#530 (static GRUB +
+     bootupd: no dual boot yet; use separate empty boot partitions).
+     Leftovers (p3 /boot, p4 LUKS) deleted from Mint; Mint's ESP has
+     only BOOT + ubuntu; BIOS list only Ubuntu + USB. Asus left on Mint
+     with the free space, ready for test 2.
+   - 0.1.43 (patch 67): one disk in use + UEFI + GPT + 30 GiB or more
+     free in one piece -> Nexus installs into the free space with its
+     OWN EFI partition (600 MB), /boot (2 GB ext4) and encrypted / (xfs,
+     LUKS2). Otherwise the installer asks, as before.
+   - Test 2: 0.1.43 ISO on the Asus next to Mint. Watch: does it ask
+     for the disk password; does it install; which system starts; Mint
+     still from the BIOS Utility (ubuntu).
+   - Then `nexus dualboot` (decided 11 Oct with David):
+     - no arguments: lists this system and the others, numbered, each
+       with the name it gives itself (/etc/os-release via os-prober),
+       encrypted or not, size; Nexus is not numbered. An encrypted
+       other system: "encrypted, can't tell which until unlocked".
+       No list of distro names in Nexus.
+     - `nexus dualboot 1`: restart into other system 1, once (firmware
+       BootNext), asks first, --apply to restart. Test whether the Asus
+       honours BootNext.
+     - plus boot menu entries for the others in /boot/grub2/custom.cfg.
 6. Showcase ("insane UI", Linux showing off) and the minimalism look.
 7. Later: trim minimal under 600 MB RAM, security review, server and
    tiling editions, greenboot, NVIDIA (needs NVIDIA hardware).
+
+## Ideas for later (David, 10 Oct)
+
+- **More people on one computer** (family). Accounts are added by
+  someone who knows the admin password (Settings or `nexus user add`),
+  never by anyone at the login screen. Kinds: admin / standard / child
+  (child = app limits through Fedora's parental controls). The login
+  screen already lists every account. With disk encryption, everyone
+  types the disk password at start, or someone starts the computer
+  for them: say so when adding a person.
+- **Nexus-pet**: an optional assistant that can see the screen and
+  talk. Asked once after the first login, on/off in settings any time.
+  Modes: text only / text + voice / text + voice + listening
+  (microphone). Rules: off unless chosen; a visible sign whenever it
+  looks or listens; it suggests, never runs anything by itself; says
+  plainly whether it runs on this computer or sends to a company.
+  On this computer it needs about 8-16 GB RAM (small language model,
+  speech: Whisper or Vosk to listen, Piper to speak), so the minimal
+  edition on 3.6 GB could only offer it through an online service
+  the person chooses. **That is said in bold**, with what is sent.
+  - Look (David, 10 Oct): Grok's concept, a rounded charcoal hexagon
+    with two antennae, big eyes, small tail, an "N" on the front, icy
+    blue accents; expressions happy, curious, thinking, processing
+    (spinner instead of a face), concerned, proud, sleepy. The cube
+    version was turned down (eyes split across two faces look dull).
+  - Services (David, 10 Oct): Claude, ChatGPT, Grok. Wanted: sign in
+    with the plan they already pay for, its limits apply; otherwise
+    their own API key (billed by that company). Checked 10 Oct for
+    Claude only: Anthropic's help pages say third-party apps can draw
+    on a subscription's limits through the Agent SDK, but the rules
+    changed and were paused this year and developer requirements are
+    not spelled out. ChatGPT (checked 10 Oct): official "Sign in with
+    ChatGPT" (developers.openai.com/siwc) lets open-source apps use an
+    eligible Plus/Pro user's plan without an API key (OAuth, the user
+    authorises; "Continue with ChatGPT" branding); commercial apps need
+    approval. Grok (checked 10 Oct): one third-party tool signs in with
+    a SuperGrok/X plan, but no xAI page saying third-party apps may;
+    treat as API key only until xAI documents it. Check all three again
+    before building; API keys are the path that certainly works.
 
 ## Acer housekeeping (10 Oct)
 

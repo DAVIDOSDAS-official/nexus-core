@@ -35,8 +35,11 @@ enable = [
 #   - exactly one internal disk (not USB, not removable, not read-only,
 #     20 GiB or more) with nothing on it: it is used and encrypted;
 #   - one disk with anything on it (another system, files): nothing is
-#     erased; the Installation Destination screen asks, and offers to
-#     install next to what is there (dual boot);
+#     erased. With 30 GiB or more free in one piece (GPT, UEFI), Nexus
+#     installs into the free space with its OWN EFI partition, /boot
+#     and encrypted system -- never sharing the other system's boot
+#     partition, which breaks ostree's boot menu (0.1.43). Otherwise
+#     the Installation Destination screen asks;
 #   - none, or more than one: nothing is decided, and the installer's
 #     Installation Destination screen asks the person which disk, and
 #     whether to encrypt it.
@@ -166,14 +169,86 @@ def in_use(disk):
                         (" " + f["LABEL"] if f.get("LABEL") else ""))
     return used
 
+# Installing next to another system (0.1.43). Nexus gets its own EFI
+# partition and its own /boot, in the free space, and never shares
+# the other system's. Sharing it is what failed on the Asus next to
+# Linux Mint: with Mint's GRUB files in the shared EFI partition,
+# ostree switches from Nexus's fixed boot menu to rebuilding one with
+# grub2-mkconfig, which cannot work inside the installer ("failed to
+# get canonical path of LiveOS_rootfs") and would run again on every
+# update. Fedora's image-based editions have the same limitation and
+# the same advice: separate, empty boot partitions
+# (github.com/fedora-silverblue/issue-tracker/issues/530).
+#
+# The free space is measured from /sys, where sizes are always in
+# 512-byte sectors. Only the largest gap counts, because that is
+# where the three partitions go. 30 GiB is the least it uses:
+# 0.6 GiB EFI + 2 GiB /boot + the rest for the system.
+# On a disk too full, an old MBR disk, or a machine started without
+# UEFI, nothing is decided: the installer asks, as before.
+NEEDED = 30 * 1024 ** 3
+
+def read_int(path):
+    try:
+        with open(path) as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return 0
+
+def largest_gap(disk):
+    import os
+    base = "/sys/block/" + disk
+    total = read_int(base + "/size")
+    used = []
+    for entry in sorted(os.listdir(base)):
+        if entry.startswith(disk) and os.path.exists(base + "/" + entry + "/start"):
+            start = read_int(base + "/" + entry + "/start")
+            used.append((start, start + read_int(base + "/" + entry + "/size")))
+    used.sort()
+    # The first MiB and the last 34 sectors belong to the partition
+    # table itself.
+    position = 2048
+    gap = 0
+    for start, end in used + [(total - 34, total - 34)]:
+        gap = max(gap, start - position)
+        position = max(position, end)
+    return max(gap, 0) * 512
+
+def table_type(disk):
+    return subprocess.run(["lsblk", "-d", "-n", "-o", "PTTYPE", "/dev/" + disk],
+                          capture_output=True, text=True).stdout.strip()
+
+beside = ""
+
 if len(disks) == 1 and in_use(disks[0]):
-    print(disks[0], "already holds:")
-    for item in in_use(disks[0]):
+    disk = disks[0]
+    print(disk, "already holds:")
+    for item in in_use(disk):
         print("   ", item)
-    print("Nothing is erased automatically: the installer asks.")
+    print("Nothing on it is erased or changed.")
+    gap = largest_gap(disk)
+    print("Largest free space:", round(gap / 1024 ** 3, 1), "GiB")
+    import os
+    if not os.path.exists("/sys/firmware/efi"):
+        print("Started without UEFI: the installer asks.")
+    elif table_type(disk) != "gpt":
+        print("Partition table is", table_type(disk) or "unknown", "not GPT: the installer asks.")
+    elif gap < NEEDED:
+        print("Less than 30 GiB free in one piece: the installer asks.")
+    else:
+        beside = disk
     disks = disks + ["(in use)"]
 
-if len(disks) == 1:
+if beside:
+    lines += [
+        "ignoredisk --only-use=" + beside,
+        "clearpart --none",
+        "part /boot/efi --fstype=efi --size=600 --ondisk=" + beside,
+        "part /boot --fstype=ext4 --size=2048 --ondisk=" + beside,
+        "part / --fstype=xfs --grow --encrypted --luks-version=luks2 --ondisk=" + beside,
+    ]
+    print("Installing next to it, in the free space, with its own EFI partition and /boot.")
+elif len(disks) == 1:
     disk = disks[0]
     lines += [
         "ignoredisk --only-use=" + disk,
