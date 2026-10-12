@@ -3,7 +3,7 @@
 Updated 10 October 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.43** (patches 1–67). **559 automated tests**, all passing.
+**Version 0.1.44** (patches 1–68). **572 automated tests**, all passing.
 **Preview 2 released 8 Oct 2026** (both editions, 0.1.34).
 
 ## What it is
@@ -227,10 +227,39 @@ disk-password keymap fix (0.1.34 ISO, 5 Oct).
      free in one piece -> Nexus installs into the free space with its
      OWN EFI partition (600 MB), /boot (2 GB ext4) and encrypted / (xfs,
      LUKS2). Otherwise the installer asks, as before.
-   - Test 2: 0.1.43 ISO on the Asus next to Mint. Watch: does it ask
-     for the disk password; does it install; which system starts; Mint
-     still from the BIOS Utility (ubuntu).
-   - Then `nexus dualboot` (decided 11 Oct with David):
+   - Test 2, Asus, 12 Oct: PASSED with the 0.1.43 ISO (image f728ccc,
+     nexus 0.1.43 aafd96a). Disk log: 142.6 GiB free -> own EFI p3
+     600M, /boot p4 2G, / p5 LUKS2 xfs 140G; Mint p1/p2 untouched.
+     Nexus boots (disk password, login), Mint boots from the BIOS list,
+     restarting goes straight to Nexus (BootOrder 0003 first).
+     Found on the way:
+     - The disk password is asked as soon as the installer starts,
+       before the keyboard screen: a non-US keyboard could set a
+       password that does not match at boot. To fix.
+     - Opening Installation Destination and pressing Done with
+       Automatic selected throws the Nexus plan away: the installer's
+       own layout reused Mint's ESP, unencrypted btrfs, and failed with
+       the grub2-mkconfig error again. To fix (trap for real users).
+     - The new Fedora entry (0003) was added third in the boot order,
+       behind a dead Boot0000 Fedora entry left by the failed attempts
+       (pointing at Mint's ESP) and Ubuntu: the first restart started
+       Mint. Fixed by hand in the BIOS; 0000 to remove with
+       efibootmgr -b 0000 -B. The installer/nexus should put Nexus first.
+     - The Asus ignores BootNext (efibootmgr --bootnext 0003 started
+       Mint; the same entry works from the BIOS list). So
+       `nexus dualboot 1` uses Nexus's own GRUB (next entry), not
+       BootNext.
+     - Time zone skipped in the installer: clock not on Skopje time.
+   - Asus facts (12 Oct, Nexus): grub.cfg sources $prefix/custom.cfg
+     (41_custom); grub.cfg has NO next_entry handling; custom.cfg holds
+     nexus-boot-menu's "set timeout=5"; grub2-editenv, grub2-reboot,
+     os-prober, mokutil present; Secure Boot enabled.
+   - 0.1.44 (patch 68): `nexus dualboot` written (not yet run on the
+     Asus). Its block in /boot/grub2/custom.cfg (between "### BEGIN/END
+     nexus dualboot ###") holds chainload entries (search ESP uuid,
+     chainloader /EFI/<dir>/shimx64.efi) plus its own next_entry
+     handling. To test: chainloading Mint's shim with Secure Boot on.
+   - `nexus dualboot` design (decided 11 Oct with David):
      - no arguments: lists this system and the others, numbered, each
        with the name it gives itself (/etc/os-release via os-prober),
        encrypted or not, size; Nexus is not numbered. An encrypted

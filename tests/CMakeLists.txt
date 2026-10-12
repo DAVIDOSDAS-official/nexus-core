@@ -48,6 +48,7 @@ add_executable(component_test
     unit/language_test.cpp
     unit/update_test.cpp
     unit/catalogue_test.cpp
+    unit/dualboot_test.cpp
 )
 
 target_link_libraries(component_test
