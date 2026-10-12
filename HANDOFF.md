@@ -1,9 +1,9 @@
 # Nexus-CORE — status
 
-Updated 10 October 2026. Paste this at the start of a new session; it is
+Updated 12 October 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.44** (patches 1–68). **572 automated tests**, all passing.
+**Version 0.1.45** (patches 1–69). **572 automated tests**, all passing.
 **Preview 2 released 8 Oct 2026** (both editions, 0.1.34).
 
 ## What it is
@@ -87,6 +87,11 @@ Nothing changes without `--apply` (and `sudo`); everything else only reads.
 
 **Games**: `nexus gamecheck <name or Steam id>`, `nexus gamecheck --identifiers` — reports only.
 
+**Dual boot** (0.1.44): `nexus dualboot` — the systems on this disk
+(names need `sudo`); `sudo nexus dualboot add --apply` — put them in the
+boot menu; `sudo nexus dualboot remove --apply`; `sudo nexus dualboot 1
+--apply` — restart into system 1, once.
+
 **Nexus Shop** (window, desktops only): `nexus-shop`, or "Nexus Shop" in the menu.
 
 **VPN**: `nexus vpn keys`, `nexus vpn config --address A --peer-key K --endpoint H:P`
@@ -120,6 +125,64 @@ itself.
 - Missed notifications: the bell by the clock keeps the last 10 on
   minimal (LXQt's own feature); KDE has its own bell.
 
+## Dual boot — how it works (tested on the Asus, 12 Oct)
+
+Nexus next to another **Linux** (never Windows). Tested with Linux Mint
+22.3 on the Asus, Secure Boot on. **Not released yet: Preview 3.**
+
+**Installing next to another Linux** (0.1.43+ ISO):
+1. The other system is already installed, with at least **30 GiB of
+   free space in one piece** next to it (UEFI, GPT disk). Mint's
+   installer: "Something else", leave the space free.
+2. Start the Nexus USB. The installer finds the other system on its
+   own and plans Nexus into the free space with **its own** EFI
+   partition (600 MB), `/boot` (2 GB) and an encrypted system. The
+   other system's partitions are not touched. (`/tmp/nexus-disk.log`
+   in the installer says what it decided.)
+3. It asks for the disk password straight away. Then keyboard, user,
+   **Begin Installation. Do not open Installation Destination** —
+   pressing Done there throws Nexus's plan away (0.1.45: the installer
+   then stops early with a plain message instead of failing at the end).
+4. After installing, the laptop may still start the other system: the
+   new Nexus entry lands below it in the BIOS boot list. Fix once in
+   the **BIOS Utility (F2 on the Asus) → Boot Priority: drag Fedora
+   (the Nexus entry) to the top → F10 save**. (0.1.45: the installer
+   puts Nexus first itself.) From then on **every restart starts
+   Nexus**.
+
+**Using it:**
+- `sudo nexus dualboot` — lists the systems: "1  Linux Mint 22.3,
+  not encrypted, 95.4 GiB, started by /EFI/ubuntu/shimx64.efi".
+- `sudo nexus dualboot add --apply` — Mint appears at the bottom of
+  Nexus's 5-second boot menu ("Linux Mint 22.3"). Pick it with the
+  arrow keys.
+- `sudo nexus dualboot 1 --apply` — **one line from Nexus straight
+  into Mint**: restarts with Mint already chosen, once; the next
+  restart is Nexus again. No arrow keys, no BIOS.
+- The BIOS boot list (F2 → Boot menu → ubuntu) still starts Mint too.
+
+**How it works inside:** each entry in `/boot/grub2/custom.cfg`
+(between `### BEGIN/END nexus dualboot ###`) hands over to the other
+system's own signed loader on its own EFI partition (chainload), so
+Secure Boot stays on and nothing of the other system changes. The
+Asus ignores the firmware's "start this next" (BootNext), so
+`nexus dualboot 1` uses GRUB's next_entry, handled in Nexus's block.
+
+**Known:** Mint on the Asus sometimes starts to a "melting" logo and a
+white screen (Intel Gemini Lake graphics, "FIFO underrun" in Mint's
+log). Mint's own problem on this laptop: it happened on David's first
+Mint install before Nexus existed; not caused by the handover.
+
+**For the website and a video (Preview 3):**
+- "Install Nexus next to your Linux. It finds the other system, takes
+  only the free space, and never touches the other system."
+- "One command from Nexus into Mint: `sudo nexus dualboot 1 --apply`.
+  The next restart is Nexus again."
+- Show: `nexus dualboot` listing both systems; the boot menu with
+  Linux Mint at the bottom; the one-line switch.
+- Say honestly: Linux next to Linux only (no Windows); tested with
+  Linux Mint on one laptop; the BIOS step until the installer does it.
+
 ## Tested on real hardware
 
 **Asus laptop** (3.6 GB RAM, Secure Boot on), minimal edition: login,
@@ -127,6 +190,10 @@ desktop, battery, wallpaper, Alt+Shift us / Serbian Latin, add-ons,
 `nexus language set sr_RS.UTF-8@latin` (menus switched, keyboard
 untouched), `nexus update` and the daily notification, the 5-second
 boot menu, gamecheck (Elden Ring, CS2, Fortnite).
+
+**Asus, dual boot** (12 Oct): 0.1.43 installed next to Linux Mint 22.3;
+0.1.44 `nexus dualboot` list/add/1; Mint from the menu, by
+`dualboot 1`, and from the BIOS; Secure Boot on.
 
 **VM** (2 GB): installer, first boot, add-ons, labwc session, keyboard,
 disk-password keymap fix (0.1.34 ISO, 5 Oct).
@@ -259,6 +326,42 @@ disk-password keymap fix (0.1.34 ISO, 5 Oct).
      nexus dualboot ###") holds chainload entries (search ESP uuid,
      chainloader /EFI/<dir>/shimx64.efi) plus its own next_entry
      handling. To test: chainloading Mint's shim with Secure Boot on.
+   - Test on the Asus, 12 Oct, 0.1.44: PASSED. `nexus dualboot` (no
+     root: Mint seen from outside; sudo: "Linux Mint 22.3", started by
+     /EFI/ubuntu/shimx64.efi on p1), `add --apply` wrote the block,
+     Mint appears last in the GRUB menu, chainloading works with Secure
+     Boot on, `nexus dualboot 1 --apply` restarted with Mint
+     preselected (next_entry handling works), BIOS -> ubuntu also OK.
+     One Mint start went white ("melting" logo, then white; i915 "CPU
+     pipe A FIFO underrun" in Mint's log): Mint/Gemini Lake, not the
+     handover -- David saw the same on his first Mint install, before
+     Nexus existed; 3 later starts (menu, dualboot 1, BIOS) all fine.
+   - Found 12 Oct, to fix next:
+     - First-boot add-on question: typing is not shown (keys DO arrive:
+       log showed "Did you mean: development?"). Likely the disk
+       password prompt (plymouth) leaves echo off. Fix: stty sane/echo
+       before asking; give the question a time limit (it waits forever).
+     - Clock a day behind and on New York time (time zone skipped in
+       the installer; "Oct 11 11:38 EDT" on 12 Oct).
+     - `nexus dualboot` text: "a ext4" -> "an ext4"; the no-root hint
+       wraps badly.
+   - 0.1.45 (patch 69, not yet tested):
+     - first boot: `stty sane` before asking (typing shows); the
+       question waits 15 minutes at most (NEXUS_SETUP_WAIT), then the
+       login screen, asking again next start.
+     - installer %pre: when it plans the disk (both paths, encrypted),
+       adds `keyboard --vckeymap=us --xlayouts=us` so the early disk
+       password is typed on US; %post keeps the console on US
+       (/etc/nexus/install-passphrase-us marker, from a --nochroot
+       %post). Layouts added on the Keyboard screen still apply to the
+       desktop.
+     - installer %pre-install guard (--erroronfail): stops with a plain
+       message if /boot/efi holds another system's EFI/<dir> (the Done
+       trap) -- before anything is written.
+     - installer %post --nochroot: puts the Nexus EFI entries (matched
+       by the EFI partition's PARTUUID) first in BootOrder.
+     - dualboot wording: "a partition (ext4)"; shorter no-root hint.
+     - Clock: not yet; needs `timedatectl` from the Asus.
    - `nexus dualboot` design (decided 11 Oct with David):
      - no arguments: lists this system and the others, numbered, each
        with the name it gives itself (/etc/os-release via os-prober),
@@ -341,6 +444,16 @@ installers and ISOs in Downloads. The Preview 2 ISOs stay in
   digests with the registry instead.
 - The Containerfile has two stages that start the same way (server and
   desktop); check which one an edit lands in.
+
+- Anaconda: opening Installation Destination and pressing Done with
+  Automatic selected re-plans the disk itself, discarding the
+  kickstart's partitions (12 Oct).
+- An ostree system must not share another system's EFI partition: its
+  GRUB files make ostree rebuild the menu with grub2-mkconfig, which
+  fails in the installer (fedora-silverblue issue 530).
+- The Asus ignores BootNext; use GRUB's next_entry instead.
+- The disk password prompt can leave the console with typing hidden;
+  anything asking on tty1 afterwards must turn echo back on.
 
 ## Rules
 

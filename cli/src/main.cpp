@@ -3286,7 +3286,7 @@ DiskPicture lookAtDisk() {
                               : (picture.lookedInside
                                      ? "no system found on it (a /home or "
                                        "data partition?)"
-                                     : "a " + system.fstype + " partition");
+                                     : "a partition (" + system.fstype + ")");
         }
         // Only partitions with a system on them, or that might have
         // one, are worth a line; data partitions are dropped once
@@ -3375,9 +3375,9 @@ void showDiskPicture(const DiskPicture& picture,
 
     if (!picture.lookedInside) {
         std::cout
-            << "\nTo read the other systems' names and find what starts "
-               "them, Nexus\nlooks inside their partitions, read-only. "
-               "That needs root:\n    sudo nexus dualboot\n";
+            << "\nTheir names, and what starts them, are inside their "
+               "partitions.\nNexus looks, read-only; that needs root:\n"
+               "    sudo nexus dualboot\n";
         return;
     }
     if (anyMissing) {

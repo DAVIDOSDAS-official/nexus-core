@@ -78,6 +78,10 @@ enable = [
 # place a person actually reads it.
 #
 # Language, keyboard and time zone are not here: the installer asks.
+# (One exception, 0.1.45: when the %pre plans the disk itself, the
+# installer asks for the disk password at its very start, so the %pre
+# fixes the keyboard to US for that moment and the console stays US.
+# Layouts added on the Keyboard screen still apply to the desktop.)
 #
 # They used to be answered on everybody's behalf -- US English, a US
 # keyboard, UTC -- so every machine's clock was hours off anywhere but
@@ -260,12 +264,112 @@ elif len(disks) == 1:
 elif "(in use)" not in disks:
     print(len(disks), "internal disks: the installer asks which one.")
 
+# The disk password. With the disk planned here, the installer asks for
+# it the moment it starts -- before the keyboard screen (Asus,
+# 12 October). It is typed on whatever layout is active then, and the
+# console has to have that same layout at every start, or the same keys
+# give a different password. So the layout is fixed to US for that
+# moment, and the %post below keeps the console on US for this install;
+# layouts added in the installer still work on the desktop.
+if any("--encrypted" in line for line in lines):
+    lines.append("keyboard --vckeymap=us --xlayouts=us")
+    open("/tmp/nexus-early-passphrase", "w").close()
+    print("Disk password asked at the start, on a US layout; the console keeps us.")
+
 with open("/tmp/nexus-storage.ks", "w") as out:
     out.write(chr(10).join(lines) + chr(10))
 %end
 
+%pre-install --interpreter=/usr/bin/python3 --erroronfail --log=/tmp/nexus-esp-check.log
+# Last check before anything is written: Nexus must not share another
+# system's EFI partition. Shared, ostree sees the other system's GRUB
+# files there and rebuilds the boot menu with grub2-mkconfig, which
+# fails at the very end of the install (Asus, 11-12 October) and would
+# fail again at every update. The %pre plans Nexus its own; this
+# catches the plan being changed on the Installation Destination
+# screen -- pressing Done there with Automatic selected re-plans the
+# disk and reuses the other system's EFI partition.
+import os
+import sys
+
+found = []
+for root in ("/mnt/sysimage", "/mnt/sysroot"):
+    efi = os.path.join(root, "boot/efi")
+    for name in ("EFI", "efi"):
+        path = os.path.join(efi, name)
+        if os.path.isdir(path):
+            for entry in os.listdir(path):
+                if entry.lower() not in ("boot", "fedora") and os.path.isdir(os.path.join(path, entry)):
+                    found.append(entry)
+
+if found:
+    message = (
+        "This EFI partition already belongs to another system (EFI/" + ", EFI/".join(sorted(set(found))) + "). "
+        "Nexus needs its own: shared, the install fails at the end. "
+        "Nothing of the other system has been changed. "
+        "Restart the installer and do not change Installation Destination: "
+        "with free space next to the other system, Nexus plans its own EFI partition by itself."
+    )
+    print(message)
+    print(message, file=sys.stderr)
+    sys.exit(1)
+print("EFI partition is Nexus's own.")
+%end
+
 %post --erroronfail
 bootc switch --mutate-in-place --enforce-container-sigpolicy --transport registry @NEXUS_IMAGE@
+%end
+
+%post --nochroot --interpreter=/usr/bin/python3 --log=/tmp/nexus-post-nochroot.log
+# Runs in the installer, outside the new system.
+import glob
+import os
+import re
+import subprocess
+
+def run(command):
+    done = subprocess.run(command, capture_output=True, text=True)
+    return done.stdout if done.returncode == 0 else ""
+
+# 1. Tell the keyboard %post that the disk password was typed on US
+#    (see the %pre). Written into the new system's /etc.
+if os.path.exists("/tmp/nexus-early-passphrase"):
+    roots = ["/mnt/sysimage"] + glob.glob("/mnt/sys*/ostree/deploy/*/deploy/*.0")
+    for root in roots:
+        etc = os.path.join(root, "etc")
+        if os.path.isdir(etc):
+            os.makedirs(os.path.join(etc, "nexus"), exist_ok=True)
+            open(os.path.join(etc, "nexus", "install-passphrase-us"), "w").close()
+            print("marker in", etc)
+
+# 2. Nexus first in the computer's start order. The new entry was put
+#    behind Linux Mint's on the Asus (12 October), so the first restart
+#    started Mint. Only the order changes; no entry is added or removed.
+esp = ""
+for root in ("/mnt/sysimage", "/mnt/sysroot"):
+    esp = run(["findmnt", "-n", "-o", "SOURCE", os.path.join(root, "boot/efi")]).strip()
+    if esp:
+        break
+partuuid = run(["lsblk", "-n", "-o", "PARTUUID", esp]).strip().lower() if esp else ""
+listing = run(["efibootmgr"])
+order = []
+ours = []
+for line in listing.splitlines():
+    if line.startswith("BootOrder:"):
+        order = [n for n in line.split(":", 1)[1].strip().split(",") if n]
+    entry = re.match(r"Boot([0-9A-Fa-f]{4})", line)
+    if entry and partuuid and partuuid in line.lower():
+        ours.append(entry.group(1))
+print("EFI partition:", esp or "?", "partuuid:", partuuid or "?")
+print("start order:", ",".join(order) or "?", "Nexus entries:", ",".join(ours) or "none")
+if ours and order:
+    first = [n for n in order if n in ours] + [n for n in ours if n not in order]
+    wanted = first + [n for n in order if n not in ours]
+    if wanted != order:
+        done = subprocess.run(["efibootmgr", "-o", ",".join(wanted)], capture_output=True, text=True)
+        print("start order now:", ",".join(wanted), "ok" if done.returncode == 0 else "failed: " + done.stderr)
+    else:
+        print("Nexus is already first")
 %end
 
 %post --interpreter=/usr/bin/python3 --log=/var/log/nexus-install-keyboard.log
@@ -311,6 +415,14 @@ for line in read("/usr/share/systemd/kbd-model-map"):
 print("desktop layout:", xlayout or "?", "variant:", xvariant or "none")
 print("console keymap:", keymap or "?", "matching row:", wanted or "none")
 
+# The disk password was asked before the keyboard screen, on US (the
+# %pre, 0.1.45): the console stays on US so the same keys open it.
+early = os.path.exists("/etc/nexus/install-passphrase-us")
+if early:
+    print("disk password typed on us at the start: console keymap us")
+    wanted = "us"
+    xlayout = xlayout or "us"
+
 # Only a keymap this system actually has.
 present = False
 for top, dirs, files in os.walk("/usr/lib/kbd/keymaps"):
@@ -320,7 +432,9 @@ for top, dirs, files in os.walk("/usr/lib/kbd/keymaps"):
 if wanted and not present:
     print("no keymap file for", wanted)
 
-if xlayout and keymap and wanted and present and wanted != keymap:
+if xlayout and (keymap or early) and wanted and present and wanted != keymap:
+    if not any(line.startswith("KEYMAP=") for line in conf):
+        conf.append("KEYMAP=")
     with open("/etc/vconsole.conf", "w") as f:
         for line in conf:
             if line.startswith("KEYMAP="):

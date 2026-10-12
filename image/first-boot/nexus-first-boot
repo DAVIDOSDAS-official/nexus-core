@@ -451,6 +451,13 @@ echo
 # and the picker skipped itself. Anything waiting is discarded.
 while read -r -s -t 0.05 -n 1 _ 2>/dev/null; do :; done
 
+# Typing must show. On the Asus (12 October) nothing typed appeared:
+# the keys arrived ("Did you mean: development?" in the log) but the
+# console was left with echo off -- by the disk password prompt just
+# before, or by the -s of the read above when it times out. Whatever
+# left it so, the console is put back to normal before asking.
+stty sane 2> /dev/null
+
 printf "  > "
 
 # A failed read is not somebody pressing Enter.
@@ -459,7 +466,28 @@ printf "  > "
 # person declining, the other is a console that went away underneath.
 # Treated alike, the second wrote the marker and the picker never ran
 # again on that machine.
-if ! read -r CHOICE; then
+#
+# Nor does the question wait forever. Before the display manager,
+# nothing else on the machine starts until this is answered; a
+# keyboard that cannot reach it (Asus, 12 October) held the laptop at
+# this screen. After ANSWER_WAIT seconds it goes on to the login
+# screen, asks again at the next start, and says how to choose sooner.
+ANSWER_WAIT="${NEXUS_SETUP_WAIT:-900}"
+
+no_answer() {
+    ASKED=0
+    echo
+    echo "  No answer in $((ANSWER_WAIT / 60)) minutes. Nothing has been changed;"
+    echo "  going on to the login screen. This asks again at the next"
+    echo "  start, or choose any time with: sudo nexus setup"
+    SHOWN=0
+    exit 0
+}
+
+read -r -t "${ANSWER_WAIT}" CHOICE
+GOT=$?
+if [ "${GOT}" -ne 0 ]; then
+    [ "${GOT}" -gt 128 ] && no_answer
     echo >&2
     echo "The console went away before this was answered." >&2
     echo "Nothing has been changed. Run 'nexus setup' to choose." >&2
@@ -481,9 +509,13 @@ if [ -z "${CHOICE}" ]; then
     echo "  Nothing was typed. Press Enter again to skip setup, or type"
     echo "  the names now."
     echo
+    stty sane 2> /dev/null
     printf "  > "
 
-    if ! read -r CHOICE; then
+    read -r -t "${ANSWER_WAIT}" CHOICE
+    GOT=$?
+    if [ "${GOT}" -ne 0 ]; then
+        [ "${GOT}" -gt 128 ] && no_answer
         ASKED=0
         echo >&2
         echo "The console went away before this was answered." >&2
