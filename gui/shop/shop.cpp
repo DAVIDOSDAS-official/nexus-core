@@ -1,9 +1,11 @@
 #include "shop.hpp"
 
+#include <QSet>
 #include <nexus/system/compression.hpp>
 #include <nexus/system/process.hpp>
 #include <nexus/system/transaction_log.hpp>
 #include <nexus/system/update.hpp>
+#include <nexus/system/json.hpp>
 
 #include <QClipboard>
 #include <QDateTime>
@@ -696,9 +698,41 @@ QVariantList Shop::installedApps() const {
     return list;
 }
 
+// Packages added to the running system version: rpm-ostree's
+// "requested" list for the booted deployment. A package installed with
+// `nexus install` is "staged" in the log until the restart that brings
+// it in; once it is in the running version, it is "applied" -- as
+// `nexus history` says. The Shop said "staged" for all of them, days
+// later (Asus, 13 October).
+static QSet<QString> packagesInRunningSystem() {
+    QSet<QString> found;
+    if (!nexus::system::commandExists("rpm-ostree")) {
+        return found;
+    }
+    const auto status = nexus::system::runCommand(
+        "rpm-ostree status --booted --json 2>/dev/null", false);
+    if (!status.ok) {
+        return found;
+    }
+    const auto parsed = nexus::system::parseJson(status.text);
+    for (const auto& deployment : parsed.value["deployments"].items) {
+        if (deployment["booted"].kind != nexus::system::JsonValue::Kind::Bool ||
+            !deployment["booted"].boolean) {
+            continue;
+        }
+        for (const char* key : {"requested-packages", "packages"}) {
+            for (const auto& name : deployment[key].items) {
+                found.insert(QString::fromStdString(name.asString()));
+            }
+        }
+    }
+    return found;
+}
+
 QVariantList Shop::history() const {
     QVariantList list;
     auto records = nexus::system::readAllTransactions();
+    const QSet<QString> running = packagesInRunningSystem();
     std::sort(records.begin(), records.end(),
               [](const auto& a, const auto& b) { return a.when > b.when; });
     for (const auto& record : records) {
@@ -710,9 +744,13 @@ QVariantList Shop::history() const {
             : q(record.when);
         row["what"] = q(record.request);
         row["resolved"] = q(record.resolved);
+        const bool applied = record.outcome == "staged" &&
+            (running.contains(q(record.request)) ||
+             running.contains(q(record.resolved)));
         row["outcome"] = record.unfinished ? QStringLiteral("never finished")
+                         : applied         ? QStringLiteral("applied")
                                            : q(record.outcome);
-        row["ok"] = record.succeeded && !record.unfinished;
+        row["ok"] = (record.succeeded || applied) && !record.unfinished;
         list << row;
     }
     return list;
