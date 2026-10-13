@@ -1,0 +1,34 @@
+#!/bin/sh
+# The clock: network time on, and the hardware clock in universal time.
+#
+# The Asus (12 October) came out of the installer with both wrong:
+# network time off -- the installer turns it off when it has no
+# network, and nothing turned it back on -- and the hardware clock
+# read as New York time ("RTC in local TZ: yes"), while Linux Mint on
+# the same laptop keeps it in universal time. Each start, each system
+# moved the other's clock by hours; Nexus showed a day behind.
+#
+# Universal time in the hardware clock is what every Linux expects.
+# Local time is only for Windows, which Nexus never shares a disk with.
+# Network time asks a time server (Fedora's chrony settings: the
+# public pool) for the time, and nothing else.
+#
+# Once per machine (the marker in /var/lib/nexus): somebody who turns
+# network time off afterwards keeps their choice.
+set -u
+
+marker=/var/lib/nexus/clock-set
+[ -e "${marker}" ] && exit 0
+
+if [ "$(timedatectl show --property=LocalRTC --value 2> /dev/null)" = yes ]; then
+    # Keeps the same moment: the hardware clock is rewritten from the
+    # system clock, in universal time.
+    timedatectl set-local-rtc 0 && echo "Hardware clock: universal time (was local)."
+fi
+
+if [ "$(timedatectl show --property=NTP --value 2> /dev/null)" != yes ]; then
+    timedatectl set-ntp true && echo "Network time: on."
+fi
+
+mkdir -p /var/lib/nexus
+touch "${marker}"

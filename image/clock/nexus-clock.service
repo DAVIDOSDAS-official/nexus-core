@@ -1,0 +1,12 @@
+[Unit]
+Description=Nexus: network time on, hardware clock in universal time
+ConditionPathExists=!/var/lib/nexus/clock-set
+After=dbus.service local-fs.target
+Wants=dbus.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nexus/clock
+
+[Install]
+WantedBy=multi-user.target

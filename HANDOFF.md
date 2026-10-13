@@ -3,7 +3,7 @@
 Updated 12 October 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.45** (patches 1–69). **572 automated tests**, all passing.
+**Version 0.1.46** (patches 1–70). **572 automated tests**, all passing.
 **Preview 2 released 8 Oct 2026** (both editions, 0.1.34).
 
 ## What it is
@@ -146,8 +146,8 @@ Nexus next to another **Linux** (never Windows). Tested with Linux Mint
 4. After installing, the laptop may still start the other system: the
    new Nexus entry lands below it in the BIOS boot list. Fix once in
    the **BIOS Utility (F2 on the Asus) → Boot Priority: drag Fedora
-   (the Nexus entry) to the top → F10 save**. (0.1.45: the installer
-   puts Nexus first itself.) From then on **every restart starts
+   (the Nexus entry) to the top → F10 save**. (0.1.46: the installer
+   fixes the entry and puts Nexus first itself -- to be tested.) From then on **every restart starts
    Nexus**.
 
 **Using it:**
@@ -362,6 +362,33 @@ disk-password keymap fix (0.1.34 ISO, 5 Oct).
        by the EFI partition's PARTUUID) first in BootOrder.
      - dualboot wording: "a partition (ext4)"; shorter no-root hint.
      - Clock: not yet; needs `timedatectl` from the Asus.
+   - 0.1.45 tested on the Asus, 12-13 Oct (ISO sha256 41dafe3c…,
+     nexus 0.1.45 5053196):
+     - Done-trap guard: PASSED -- stopped before installing, nothing
+       written to Mint's ESP or the boot list; message in
+       /tmp/nexus-esp-check.log (on screen only the generic "unknown
+       error" -- to improve).
+     - Password window shows "us"; nexus-disk.log "Disk password asked
+       at the start, on a US layout"; vconsole KEYMAP=us; disk password
+       and login work: PASSED.
+     - First-boot typing visible: PASSED.
+     - Nexus first: FAILED. packaging.log: bootupctl ran `efibootmgr
+       --create --disk /dev/nvme0n1 --part 1 ... --label Fedora` --
+       partition 1 is MINT's ESP (Nexus's is 3). bootupd takes the
+       first ESP on the disk. That dead entry (Boot0000, file missing)
+       went first and the firmware fell through to Mint; the working
+       entry (0003, SHIM.EFI + data "BO") is created by shim's fallback
+       on the first start from the disk. Same cause as the dead
+       Boot0000 of 11 Oct. Fixed by hand in the BIOS.
+   - 0.1.46 (patch 70, not yet tested):
+     - installer %post --nochroot: removes Fedora entries that point
+       at another ESP lacking the file (mounted read-only to check; a
+       real Fedora elsewhere is kept), creates "Nexus-CORE" on Nexus's
+       own ESP partition if none, puts Nexus's entries first. Log kept
+       in /var/log/nexus-install-boot.log. Tested with a fake efibootmgr
+       on the Asus's exact list: 0000 removed, Nexus-CORE created first.
+     - nexus-clock.service (all editions, once per machine): network
+       time on, hardware clock in UTC (Asus: NTP inactive, RTC local).
    - `nexus dualboot` design (decided 11 Oct with David):
      - no arguments: lists this system and the others, numbered, each
        with the name it gives itself (/etc/os-release via os-prober),

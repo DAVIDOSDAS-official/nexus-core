@@ -558,6 +558,16 @@ COPY image/timezone/90-nexus-timezone \
 RUN chmod 0755 /usr/bin/nexus-timezone \
         /usr/lib/NetworkManager/dispatcher.d/90-nexus-timezone
 
+# The clock: network time on and the hardware clock in universal time,
+# once per machine. The installer leaves network time off when it had
+# no network, and the Asus came out reading its hardware clock as local
+# time -- a day behind, next to Linux Mint (12 October). See the script.
+COPY image/clock/nexus-clock /usr/libexec/nexus/clock
+COPY image/clock/nexus-clock.service \
+     /usr/lib/systemd/system/nexus-clock.service
+RUN chmod 0755 /usr/libexec/nexus/clock \
+    && systemctl enable nexus-clock.service
+
 # Signed updates. See image/signing/README.md.
 #
 # The policy is merged, not replaced: everything under

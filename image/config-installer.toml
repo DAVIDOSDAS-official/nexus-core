@@ -327,6 +327,15 @@ import os
 import re
 import subprocess
 
+# Everything printed is also kept in the new system as
+# /var/log/nexus-install-boot.log: the installer's /tmp is gone after
+# the restart, and this is the part worth reading afterwards.
+_kept = []
+_print = print
+def print(*words):
+    _kept.append(" ".join(str(w) for w in words))
+    _print(*words)
+
 def run(command):
     done = subprocess.run(command, capture_output=True, text=True)
     return done.stdout if done.returncode == 0 else ""
@@ -342,34 +351,104 @@ if os.path.exists("/tmp/nexus-early-passphrase"):
             open(os.path.join(etc, "nexus", "install-passphrase-us"), "w").close()
             print("marker in", etc)
 
-# 2. Nexus first in the computer's start order. The new entry was put
-#    behind Linux Mint's on the Asus (12 October), so the first restart
-#    started Mint. Only the order changes; no entry is added or removed.
+# 2. The computer's start list. What the Asus showed (12-13 October,
+#    /var/log/anaconda/packaging.log): bootupctl ran
+#      efibootmgr --create --disk /dev/nvme0n1 --part 1 --loader
+#      EFI/fedora/shimx64.efi --label Fedora
+#    -- partition 1 is Linux Mint's EFI partition; Nexus's is 3. So the
+#    entry pointed at a file that does not exist, sat first in the list,
+#    and the firmware skipped it and started Mint. bootupd takes the
+#    first EFI partition on the disk, not the one it installed to.
+#    So: entries for Nexus's loader that point at another EFI partition
+#    which does not have that file are removed, a correct entry is
+#    made if there is none, and Nexus's entries go first. Entries of
+#    other systems are never touched; a Fedora entry whose file really
+#    is on another partition (a real Fedora there) stays.
+SEP = chr(92)
+
+def partition_has(partuuid, relative):
+    device = "/dev/disk/by-partuuid/" + partuuid
+    if not os.path.exists(device):
+        return True  # cannot tell: keep it
+    where = "/tmp/nexus-esp-look"
+    os.makedirs(where, exist_ok=True)
+    if subprocess.run(["mount", "-o", "ro", device, where]).returncode != 0:
+        return True
+    try:
+        path = where
+        for part in [p for p in relative.split(SEP) if p]:
+            match = [e for e in os.listdir(path) if e.lower() == part.lower()]
+            if not match:
+                return False
+            path = os.path.join(path, match[0])
+        return os.path.isfile(path)
+    finally:
+        subprocess.run(["umount", where])
+
 esp = ""
 for root in ("/mnt/sysimage", "/mnt/sysroot"):
     esp = run(["findmnt", "-n", "-o", "SOURCE", os.path.join(root, "boot/efi")]).strip()
     if esp:
         break
-partuuid = run(["lsblk", "-n", "-o", "PARTUUID", esp]).strip().lower() if esp else ""
-listing = run(["efibootmgr"])
-order = []
-ours = []
-for line in listing.splitlines():
-    if line.startswith("BootOrder:"):
-        order = [n for n in line.split(":", 1)[1].strip().split(",") if n]
-    entry = re.match(r"Boot([0-9A-Fa-f]{4})", line)
-    if entry and partuuid and partuuid in line.lower():
-        ours.append(entry.group(1))
-print("EFI partition:", esp or "?", "partuuid:", partuuid or "?")
-print("start order:", ",".join(order) or "?", "Nexus entries:", ",".join(ours) or "none")
-if ours and order:
-    first = [n for n in order if n in ours] + [n for n in ours if n not in order]
-    wanted = first + [n for n in order if n not in ours]
-    if wanted != order:
-        done = subprocess.run(["efibootmgr", "-o", ",".join(wanted)], capture_output=True, text=True)
-        print("start order now:", ",".join(wanted), "ok" if done.returncode == 0 else "failed: " + done.stderr)
-    else:
-        print("Nexus is already first")
+info = run(["lsblk", "-n", "-o", "PARTUUID,PARTN,PKNAME", esp]).split() if esp else []
+partuuid = info[0].lower() if len(info) > 0 else ""
+partn = info[1] if len(info) > 1 else ""
+disk = "/dev/" + info[2] if len(info) > 2 else ""
+print("EFI partition:", esp or "?", "partuuid:", partuuid or "?", "number:", partn or "?", "disk:", disk or "?")
+
+def entries():
+    order, found = [], []
+    for line in run(["efibootmgr"]).splitlines():
+        if line.startswith("BootOrder:"):
+            order = [n for n in line.split(":", 1)[1].strip().split(",") if n]
+        m = re.match(r"Boot([0-9A-Fa-f]{4})[* ]+(.*)", line)
+        if m:
+            found.append((m.group(1), m.group(2)))
+    return order, found
+
+order, found = entries()
+print("start order before:", ",".join(order) or "?")
+
+if partuuid:
+    loader = SEP + "EFI" + SEP + "fedora" + SEP + "shimx64.efi"
+    for number, rest in found:
+        low = rest.lower()
+        other = re.search(r"gpt,([0-9a-f-]{36})", low)
+        if not other or other.group(1) == partuuid:
+            continue
+        if SEP + "efi" + SEP + "fedora" + SEP not in low:
+            continue
+        path = rest[low.index(SEP + "efi" + SEP + "fedora" + SEP):].split(")")[0].strip()
+        if partition_has(other.group(1), path):
+            print("kept", number, "(its file is there):", rest)
+            continue
+        done = subprocess.run(["efibootmgr", "-b", number, "-B"], capture_output=True, text=True)
+        print("removed", number, "-- points at", path, "on another EFI partition, which does not have it:",
+              "ok" if done.returncode == 0 else done.stderr)
+
+    order, found = entries()
+    ours = [n for n, rest in found if partuuid in rest.lower()]
+    if not ours and disk and partn:
+        done = subprocess.run(["efibootmgr", "--create", "--disk", disk, "--part", partn,
+                               "--loader", loader, "--label", "Nexus-CORE"],
+                              capture_output=True, text=True)
+        print("created an entry for Nexus:", "ok" if done.returncode == 0 else done.stderr)
+        order, found = entries()
+        ours = [n for n, rest in found if partuuid in rest.lower()]
+
+    if ours and order:
+        wanted = [n for n in order if n in ours] + [n for n in ours if n not in order]
+        wanted += [n for n in order if n not in ours]
+        if wanted != order:
+            done = subprocess.run(["efibootmgr", "-o", ",".join(wanted)], capture_output=True, text=True)
+            print("start order now:", ",".join(wanted), "ok" if done.returncode == 0 else done.stderr)
+        else:
+            print("Nexus is already first")
+
+for target in ["/mnt/sysimage/var/log"] + glob.glob("/mnt/sys*/ostree/deploy/*/var/log"):
+    if os.path.isdir(target):
+        with open(os.path.join(target, "nexus-install-boot.log"), "w") as out:
+            out.write(chr(10).join(_kept) + chr(10))
 %end
 
 %post --interpreter=/usr/bin/python3 --log=/var/log/nexus-install-keyboard.log
