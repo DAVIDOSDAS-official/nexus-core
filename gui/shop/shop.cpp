@@ -1,4 +1,5 @@
 #include "shop.hpp"
+#include <nexus_version.h>
 
 #include <QSet>
 #include <nexus/system/compression.hpp>
@@ -733,6 +734,7 @@ QVariantList Shop::history() const {
     QVariantList list;
     auto records = nexus::system::readAllTransactions();
     const QSet<QString> running = packagesInRunningSystem();
+    const std::string booted = nexus::system::bootTimestamp();
     std::sort(records.begin(), records.end(),
               [](const auto& a, const auto& b) { return a.when > b.when; });
     for (const auto& record : records) {
@@ -744,9 +746,10 @@ QVariantList Shop::history() const {
             : q(record.when);
         row["what"] = q(record.request);
         row["resolved"] = q(record.resolved);
-        const bool applied = record.outcome == "staged" &&
+        const bool applied = (record.outcome == "staged" &&
             (running.contains(q(record.request)) ||
-             running.contains(q(record.resolved)));
+             running.contains(q(record.resolved)))) ||
+            nexus::system::updateTookEffect(record, NEXUS_VERSION, booted);
         row["outcome"] = record.unfinished ? QStringLiteral("never finished")
                          : applied         ? QStringLiteral("applied")
                                            : q(record.outcome);

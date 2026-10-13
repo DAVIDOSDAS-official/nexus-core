@@ -170,3 +170,38 @@ TEST(TransactionLogTest, AnInstallStillSaysAdded) {
     std::error_code error;
     std::filesystem::remove(path, error);
 }
+
+// "update -> Nexus 0.1.46 [staged]" while 0.1.46 ran (Asus, 13 October).
+TEST(TransactionLogTest, AStagedUpdateTakesEffectAfterTheRestart) {
+    nexus::system::TransactionRecord update;
+    update.request = "update";
+    update.resolved = "Nexus 0.1.46";
+    update.outcome = "staged";
+    update.succeeded = true;
+    update.when = "2026-10-11T15:55:53Z";
+
+    using nexus::system::updateTookEffect;
+    // Restarted since, running that version or a newer one.
+    EXPECT_TRUE(updateTookEffect(update, "0.1.46", "2026-10-13T20:40:00Z"));
+    EXPECT_TRUE(updateTookEffect(update, "0.1.50", "2026-10-13T20:40:00Z"));
+    EXPECT_TRUE(updateTookEffect(update, "0.2.0", "2026-10-13T20:40:00Z"));
+    // Not restarted yet.
+    EXPECT_FALSE(updateTookEffect(update, "0.1.46", "2026-10-10T08:00:00Z"));
+    // Restarted, but into the old version (the boot menu's previous one).
+    EXPECT_FALSE(updateTookEffect(update, "0.1.45", "2026-10-13T20:40:00Z"));
+    // A weekly rebuild names its version too.
+    update.resolved = "Nexus 0.1.46, rebuilt with Fedora's latest updates";
+    EXPECT_TRUE(updateTookEffect(update, "0.1.46", "2026-10-13T20:40:00Z"));
+    // Apps only: no version to compare, restarting is enough.
+    update.resolved = "3 apps";
+    EXPECT_TRUE(updateTookEffect(update, "0.1.46", "2026-10-13T20:40:00Z"));
+    // Not an update, or not staged: untouched.
+    update.request = "gcc-c++";
+    EXPECT_FALSE(updateTookEffect(update, "0.1.46", "2026-10-13T20:40:00Z"));
+    update.request = "update";
+    update.outcome = "failed";
+    EXPECT_FALSE(updateTookEffect(update, "0.1.46", "2026-10-13T20:40:00Z"));
+    // Unknown boot time: say nothing new.
+    update.outcome = "staged";
+    EXPECT_FALSE(updateTookEffect(update, "0.1.46", ""));
+}

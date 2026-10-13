@@ -43,6 +43,74 @@ std::string defaultTransactionLog() {
     return "";
 }
 
+std::string bootTimestamp() {
+    std::ifstream in("/proc/stat");
+    std::string word;
+    while (in >> word) {
+        if (word == "btime") {
+            long long seconds = 0;
+            if (!(in >> seconds)) {
+                return "";
+            }
+            const std::time_t when = static_cast<std::time_t>(seconds);
+            std::tm parts{};
+            if (gmtime_r(&when, &parts) == nullptr) {
+                return "";
+            }
+            char buffer[32]{};
+            std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &parts);
+            return buffer;
+        }
+    }
+    return "";
+}
+
+namespace {
+
+// "0.1.46" -> {0, 1, 46}; anything else stops at the first non-digit.
+std::vector<long> versionParts(const std::string& text) {
+    std::vector<long> parts;
+    long current = -1;
+    for (char c : text) {
+        if (c >= '0' && c <= '9') {
+            current = (current < 0 ? 0 : current * 10) + (c - '0');
+        } else if (c == '.' && current >= 0) {
+            parts.push_back(current);
+            current = -1;
+        } else {
+            break;
+        }
+    }
+    if (current >= 0) {
+        parts.push_back(current);
+    }
+    return parts;
+}
+
+}  // namespace
+
+bool updateTookEffect(
+    const TransactionRecord& record,
+    const std::string& runningVersion,
+    const std::string& bootTime
+) {
+    if (record.request != "update" || record.outcome != "staged" ||
+        record.unfinished || bootTime.empty() || record.when.empty() ||
+        !(record.when < bootTime)) {
+        return false;
+    }
+    const auto at = record.resolved.find("Nexus ");
+    if (at == std::string::npos) {
+        return true;  // restarted since, and nothing more to compare
+    }
+    const auto wanted = versionParts(record.resolved.substr(at + 6));
+    const auto running = versionParts(runningVersion);
+    if (wanted.empty() || running.empty()) {
+        return false;
+    }
+    return !(running < wanted);
+}
+
 std::vector<std::string> transactionLogPaths() {
     // Changes are made under sudo and read back without it, so the
     // account of what happened was written to one file and looked

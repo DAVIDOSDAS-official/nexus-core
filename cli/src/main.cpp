@@ -4313,6 +4313,7 @@ int commandHistory(const std::string& path) {
     }
 
     std::cout << "Changes made with nexus\n";
+    const std::string booted = nexus::system::bootTimestamp();
 
     for (const auto& record : records) {
         std::cout
@@ -4327,9 +4328,10 @@ int commandHistory(const std::string& path) {
         // rebooted into a version that carries it, it is applied --
         // the Asus still said "staged" five days and three updates on.
         const bool applied =
-            record.outcome == "staged" &&
-            (layeredNow.count(record.request) > 0 ||
-             layeredNow.count(record.resolved) > 0);
+            (record.outcome == "staged" &&
+             (layeredNow.count(record.request) > 0 ||
+              layeredNow.count(record.resolved) > 0)) ||
+            nexus::system::updateTookEffect(record, NEXUS_VERSION, booted);
 
         std::cout
             << "  ["

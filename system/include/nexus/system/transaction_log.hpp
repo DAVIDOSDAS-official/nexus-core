@@ -101,4 +101,20 @@ std::vector<TransactionRecord> readAllTransactions();
 
 std::string currentTimestamp();
 
+// When this machine last started, in the same form as currentTimestamp
+// (from /proc/stat's btime). Empty if unknown.
+std::string bootTimestamp();
+
+// Whether a `nexus update` that was "staged" has taken effect: the
+// machine has restarted since it was written, and the Nexus running now
+// is that version or newer. The record says "Nexus 0.1.46" (or
+// "Nexus 0.1.46, rebuilt with..."); an update that named no Nexus
+// version counts once the machine has restarted. The Asus showed
+// "update -> Nexus 0.1.46 [staged]" while running 0.1.46 (13 October).
+bool updateTookEffect(
+    const TransactionRecord& record,
+    const std::string& runningVersion,   // "0.1.46"
+    const std::string& bootTime          // bootTimestamp()
+);
+
 }

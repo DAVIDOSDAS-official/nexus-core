@@ -19,3 +19,8 @@ target_link_libraries(nexus-shop
         Qt6::Qml
         Qt6::Quick
 )
+
+# The running Nexus version, to tell a staged update that has since
+# taken effect (History).
+add_dependencies(nexus-shop nexus_version_header)
+target_include_directories(nexus-shop PRIVATE "${NEXUS_VERSION_DIR}")

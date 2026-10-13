@@ -3,7 +3,7 @@
 Updated 12 October 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.46** (patches 1–70). **572 automated tests**, all passing.
+**Version 0.1.47** (patches 1–71). **576 automated tests**, all passing.
 **Preview 2 released 8 Oct 2026** (both editions, 0.1.34).
 
 ## What it is
@@ -394,6 +394,21 @@ disk-password keymap fix (0.1.34 ISO, 5 Oct).
        the oldest entry and had scrolled off the terminal.)
      - nexus-clock.service (all editions, once per machine): network
        time on, hardware clock in UTC (Asus: NTP inactive, RTC local).
+   - 0.1.46 on the Asus, 13 Oct: clock PASSED (NTP active, RTC UTC,
+     right date); Shop History "applied" PASSED. Time zone left on New
+     York on purpose (David). Clock was stuck around 11 Oct 11:30 before
+     (CMOS battery? BIOS time not yet checked), so older history
+     entries carry 11 Oct.
+   - 0.1.47 (patch 71): a staged `update` record shows "applied" once
+     the machine restarted after it and runs that Nexus version or
+     newer (updateTookEffect, bootTimestamp from /proc/stat btime);
+     CLI and Shop. Flatpak entries keep "installed" (no restart).
+     Not done: the Done-trap stop still shows Anaconda's generic
+     "unknown error" on screen; the plain message is only in
+     /tmp/nexus-esp-check.log (a kickstart script cannot put text on
+     the GUI).
+   - Next: one ISO (0.1.47) and one reinstall next to Mint to test the
+     boot-entry fix (Nexus first by itself); then Preview 3.
    - `nexus dualboot` design (decided 11 Oct with David):
      - no arguments: lists this system and the others, numbered, each
        with the name it gives itself (/etc/os-release via os-prober),
