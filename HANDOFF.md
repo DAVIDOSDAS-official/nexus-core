@@ -387,6 +387,11 @@ disk-password keymap fix (0.1.34 ISO, 5 Oct).
        own ESP partition if none, puts Nexus's entries first. Log kept
        in /var/log/nexus-install-boot.log. Tested with a fake efibootmgr
        on the Asus's exact list: 0000 removed, Nexus-CORE created first.
+     - Shop History: "applied" (green) for packages that are in the
+       running system version, like `nexus history` -- it said "staged"
+       for all of them (Asus, 13 Oct). Reads `rpm-ostree status --booted
+       --json` requested-packages/packages. (OBS was in history; it was
+       the oldest entry and had scrolled off the terminal.)
      - nexus-clock.service (all editions, once per machine): network
        time on, hardware clock in UTC (Asus: NTP inactive, RTC local).
    - `nexus dualboot` design (decided 11 Oct with David):
