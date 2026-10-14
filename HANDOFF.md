@@ -3,7 +3,7 @@
 Updated 12 October 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.47** (patches 1–71). **576 automated tests**, all passing.
+**Version 0.1.48** (patches 1–72). **576 automated tests**, all passing.
 **Preview 2 released 8 Oct 2026** (both editions, 0.1.34).
 
 ## What it is
@@ -407,6 +407,13 @@ disk-password keymap fix (0.1.34 ISO, 5 Oct).
      "unknown error" on screen; the plain message is only in
      /tmp/nexus-esp-check.log (a kickstart script cannot put text on
      the GUI).
+   - 0.1.48 (patch 72): `nexus update --apply` no longer captures
+     rpm-ostree's and flatpak's output (std::system): progress shows in
+     the terminal and in the Shop's job panel. Before: 2+ hours of
+     silent "Updating..." on the Asus (14 Oct) for 0.1.46 -> 0.1.47 with
+     ~15 layered packages, and a second `sudo nexus update` queued
+     silently behind it. Now refuses with a plain message when
+     rpm-ostree is already busy.
    - Next: one ISO (0.1.47) and one reinstall next to Mint to test the
      boot-entry fix (Nexus first by itself); then Preview 3.
    - `nexus dualboot` design (decided 11 Oct with David):

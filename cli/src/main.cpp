@@ -3873,6 +3873,21 @@ int commandUpdate(
         }
     }
 
+    // One system change at a time. A second `nexus update` (the Shop's
+    // and a terminal's, Asus 14 October) waited silently behind the
+    // first; say what is happening instead.
+    if (image && system.available) {
+        const auto state = nexus::system::runCommand(
+            "rpm-ostree status 2>/dev/null | head -2", false);
+        if (state.text.find("State: busy") != std::string::npos) {
+            std::cout << "\nAn update is already running (from Nexus Shop, "
+                         "or another terminal).\nLet it finish; "
+                         "`rpm-ostree status` shows when it is idle again.\n"
+                         "Nothing has been changed.\n";
+            return 1;
+        }
+    }
+
     nexus::system::TransactionRecord record;
     record.when = nexus::system::currentTimestamp();
     record.request = "update";
@@ -3883,18 +3898,29 @@ int commandUpdate(
     bool ok = true;
 
     if (image && system.available) {
-        std::cout << "\nSystem: handing over to rpm-ostree.\n\n";
-        const auto ran = nexus::system::runCommand("rpm-ostree upgrade", true);
-        std::cout << ran.text << "\n";
-        ok = ok && ran.exitCode == 0;
+        std::cout << "\nSystem: handing over to rpm-ostree.\n";
+        // Not captured: rpm-ostree prints what it downloads as it goes,
+        // and a new system plus the packages added on top of it can be
+        // a gigabyte. Captured, nothing showed until it was over -- two
+        // hours of "Updating..." and an empty terminal on the Asus
+        // (14 October), which looked like a hang.
+        std::cout << "Downloading the new version; this can take a while on "
+                     "a slow\nconnection. Its progress is below.\n\n"
+                  << std::flush;
+        const int status = std::system(
+            nexus::system::inPlainLocale("rpm-ostree upgrade").c_str());
+        std::cout << "\n";
+        ok = ok && status == 0;
     }
 
     if (!apps.empty()) {
         std::cout << "\nApps: handing over to flatpak.\n\n";
-        const auto ran = nexus::system::runCommand(
-            "flatpak update -y --noninteractive", true);
-        std::cout << ran.text << "\n";
-        ok = ok && ran.exitCode == 0;
+        std::cout << std::flush;
+        // Not captured either, for the same reason as the system.
+        const int status = std::system(nexus::system::inPlainLocale(
+            "flatpak update -y --noninteractive").c_str());
+        std::cout << "\n";
+        ok = ok && status == 0;
     }
 
     record.outcome = ok ? (image && system.available ? "staged" : "applied")
