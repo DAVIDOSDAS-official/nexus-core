@@ -568,6 +568,15 @@ COPY image/clock/nexus-clock.service \
 RUN chmod 0755 /usr/libexec/nexus/clock \
     && systemctl enable nexus-clock.service
 
+# Nexus first in the start list, once per machine: corrects the dead
+# "Fedora" entry bootupd writes for the other system's EFI partition
+# when Nexus is installed next to another Linux. See the script.
+COPY image/boot-entry/nexus-boot-entry /usr/libexec/nexus/boot-entry
+COPY image/boot-entry/nexus-boot-entry.service \
+     /usr/lib/systemd/system/nexus-boot-entry.service
+RUN chmod 0755 /usr/libexec/nexus/boot-entry \
+    && systemctl enable nexus-boot-entry.service
+
 # Signed updates. See image/signing/README.md.
 #
 # The policy is merged, not replaced: everything under

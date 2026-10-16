@@ -3,7 +3,7 @@
 Updated 12 October 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.48** (patches 1–72). **576 automated tests**, all passing.
+**Version 0.1.49** (patches 1–73). **576 automated tests**, all passing.
 **Preview 2 released 8 Oct 2026** (both editions, 0.1.34).
 
 ## What it is
@@ -414,6 +414,18 @@ disk-password keymap fix (0.1.34 ISO, 5 Oct).
      ~15 layered packages, and a second `sudo nexus update` queued
      silently behind it. Now refuses with a plain message when
      rpm-ostree is already busy.
+   - 0.1.48 ISO reinstall on the Asus, 16 Oct: Nexus first FAILED
+     again. /var/log/nexus-install-boot.log: "EFI partition:
+     /dev/nvme0n1p3" printed on two lines -- findmnt returned the ESP
+     twice (mounted twice in the installer), the two-line name broke
+     lsblk ("partuuid: ?"), and the whole fix was skipped. Mint's ESP
+     has no EFI/fedora, so Boot0000 was dead as before.
+   - 0.1.49 (patch 73): installer %post takes the first findmnt line;
+     plus nexus-boot-entry.service (once per machine, marker
+     /var/lib/nexus/boot-entry-set) doing the same on the running
+     system -- fixes the Asus by an ordinary update, and any machine
+     installed before. Both tested with fake tools on the Asus's exact
+     list (two-line findmnt): 0000 removed, order 0003,0001,0002.
    - Next: one ISO (0.1.47) and one reinstall next to Mint to test the
      boot-entry fix (Nexus first by itself); then Preview 3.
    - `nexus dualboot` design (decided 11 Oct with David):

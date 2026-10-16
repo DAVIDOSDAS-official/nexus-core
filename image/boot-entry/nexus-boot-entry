@@ -1,0 +1,120 @@
+#!/usr/bin/python3
+# Nexus first in the computer's start list, once per machine.
+#
+# Installing next to another Linux, bootupd writes the "Fedora" start
+# entry for the FIRST EFI partition on the disk -- the other system's --
+# where Nexus's loader does not exist (Asus, 11-16 October). The
+# firmware skips that dead entry and starts the other system. The
+# installer's %post corrects it; this does the same on the running
+# system, for machines installed before the fix or where it did not run:
+#
+#   - "Fedora"/"Nexus" entries that point at ANOTHER EFI partition which
+#     does not have that file are removed (looked at read-only; a real
+#     Fedora installed there keeps its entry);
+#   - if no entry points at Nexus's own EFI partition, one is made;
+#   - Nexus's entries go first. Nothing else changes order.
+#
+# Once (the marker in /var/lib/nexus): somebody who then puts the other
+# system first in the BIOS keeps that choice. What it did:
+# journalctl -u nexus-boot-entry.
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+MARKER = "/var/lib/nexus/boot-entry-set"
+SEP = chr(92)
+
+
+def run(command):
+    done = subprocess.run(command, capture_output=True, text=True)
+    return done.stdout if done.returncode == 0 else ""
+
+
+def entries():
+    order, found = [], []
+    for line in run(["efibootmgr"]).splitlines():
+        if line.startswith("BootOrder:"):
+            order = [n for n in line.split(":", 1)[1].strip().split(",") if n]
+        m = re.match(r"Boot([0-9A-Fa-f]{4})[* ]+(.*)", line)
+        if m:
+            found.append((m.group(1), m.group(2)))
+    return order, found
+
+
+def partition_has(partuuid, relative):
+    device = "/dev/disk/by-partuuid/" + partuuid
+    if not os.path.exists(device):
+        return True  # cannot tell: keep it
+    where = tempfile.mkdtemp(prefix="nexus-esp-")
+    if subprocess.run(["mount", "-o", "ro", device, where]).returncode != 0:
+        os.rmdir(where)
+        return True
+    try:
+        path = where
+        for part in [p for p in relative.split(SEP) if p]:
+            match = [e for e in os.listdir(path) if e.lower() == part.lower()]
+            if not match:
+                return False
+            path = os.path.join(path, match[0])
+        return os.path.isfile(path)
+    finally:
+        subprocess.run(["umount", where])
+        os.rmdir(where)
+
+
+def main():
+    if os.path.exists(MARKER) or not os.path.isdir("/sys/firmware/efi"):
+        return 0
+    found = run(["findmnt", "-n", "-o", "SOURCE", "/boot/efi"]).split()
+    esp = found[0] if found else ""
+    info = run(["lsblk", "-n", "-o", "PARTUUID,PARTN,PKNAME", esp]).split() if esp else []
+    if len(info) < 3:
+        print("No EFI partition at /boot/efi; nothing to do.")
+        return 0
+    partuuid, partn, disk = info[0].lower(), info[1], "/dev/" + info[2]
+    order, found = entries()
+    print("Nexus's EFI partition:", esp, "start order:", ",".join(order))
+
+    for number, rest in found:
+        low = rest.lower()
+        other = re.search(r"gpt,([0-9a-f-]{36})", low)
+        key = SEP + "efi" + SEP + "fedora" + SEP
+        if not other or other.group(1) == partuuid or key not in low:
+            continue
+        path = rest[low.index(key):].split(")")[0].strip()
+        if partition_has(other.group(1), path):
+            print("Kept", number, "- its file is there:", rest)
+            continue
+        done = subprocess.run(["efibootmgr", "-b", number, "-B"], capture_output=True, text=True)
+        print("Removed", number, "- it points at", path,
+              "on another system's EFI partition, which does not have it:",
+              "ok" if done.returncode == 0 else done.stderr.strip())
+
+    order, found = entries()
+    ours = [n for n, rest in found if partuuid in rest.lower()]
+    if not ours:
+        done = subprocess.run(["efibootmgr", "--create", "--disk", disk, "--part", partn,
+                               "--loader", SEP + "EFI" + SEP + "fedora" + SEP + "shimx64.efi",
+                               "--label", "Nexus-CORE"], capture_output=True, text=True)
+        print("Made a start entry for Nexus:", "ok" if done.returncode == 0 else done.stderr.strip())
+        order, found = entries()
+        ours = [n for n, rest in found if partuuid in rest.lower()]
+
+    if ours and order:
+        wanted = [n for n in order if n in ours] + [n for n in ours if n not in order]
+        wanted += [n for n in order if n not in ours]
+        if wanted != order:
+            done = subprocess.run(["efibootmgr", "-o", ",".join(wanted)], capture_output=True, text=True)
+            print("Start order now:", ",".join(wanted), "ok" if done.returncode == 0 else done.stderr.strip())
+        else:
+            print("Nexus is already first.")
+
+    os.makedirs(os.path.dirname(MARKER), exist_ok=True)
+    open(MARKER, "w").close()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

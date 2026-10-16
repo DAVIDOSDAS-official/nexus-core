@@ -387,7 +387,11 @@ def partition_has(partuuid, relative):
 
 esp = ""
 for root in ("/mnt/sysimage", "/mnt/sysroot"):
-    esp = run(["findmnt", "-n", "-o", "SOURCE", os.path.join(root, "boot/efi")]).strip()
+    # One line: the EFI partition can be mounted twice in the installer
+    # (Asus, 14 October: "/dev/nvme0n1p3" twice, and every lookup after
+    # it failed on the two-line name -- the whole fix was skipped).
+    found = run(["findmnt", "-n", "-o", "SOURCE", os.path.join(root, "boot/efi")]).split()
+    esp = found[0] if found else ""
     if esp:
         break
 info = run(["lsblk", "-n", "-o", "PARTUUID,PARTN,PKNAME", esp]).split() if esp else []
