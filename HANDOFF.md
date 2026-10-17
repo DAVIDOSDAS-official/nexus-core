@@ -1,9 +1,9 @@
 # Nexus-CORE — status
 
-Updated 12 October 2026. Paste this at the start of a new session; it is
+Updated 16 October 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.49** (patches 1–73). **576 automated tests**, all passing.
+**Version 0.1.50** (patches 1–74). **576 automated tests**, all passing.
 **Preview 2 released 8 Oct 2026** (both editions, 0.1.34).
 
 ## What it is
@@ -426,6 +426,32 @@ disk-password keymap fix (0.1.34 ISO, 5 Oct).
      system -- fixes the Asus by an ordinary update, and any machine
      installed before. Both tested with fake tools on the Asus's exact
      list (two-line findmnt): 0000 removed, order 0003,0001,0002.
+   - Asus, 16 Oct: nexus-boot-entry ran (0.1.49): removed the dead
+     Boot0000 on Mint's ESP -- PASSED on real hardware. "Nexus first"
+     not exercised (David had already moved it in the BIOS); to see in
+     the Preview 3 install test. Shop update now shows rpm-ostree's
+     "[5/55] Fetching..." line in the job panel, and the full output
+     when opened -- patch 72 PASSED.
+   - Next: Preview 3 (both editions, 0.1.49), with one install next to
+     Mint as the release test. In progress 16 Oct: minimal ISO building
+     on the Acer (PROFILE=minimal IMAGE=ghcr.io/davidosdas-official/
+     nexus-core:minimal ./image/build-installer.sh), then KDE (PROFILE=
+     kde IMAGE=...:kde); save as ~/nexus-isos/nexus-core-minimal-
+     preview3.iso and nexus-core-preview3.iso. Acer disk: ~31 GB free
+     after removing 0.1.42/0.1.43/0.1.45 ISOs, a nameless podman image
+     and a flatpak cache (a build with 13 GB free froze the Acer).
+     Minimal Preview 3 ISO built 16 Oct 21:12Z: nexus 0.1.49 (aa80e1c),
+     image sha256:aeae1d1f90cb9599eac3024d85b66335f60f38f977bf398269792165d014c733,
+     iso sha256 3a551a20bb6ec81bba2442ab7ade32685e4862f19fc20a4ecd62f4d9d3dccdc8.
+     RELEASE TEST PASSED 16 Oct 23:55 (Asus, minimal Preview 3 ISO,
+     next to Mint): first restart went straight to Nexus. Install log:
+     dead Boot0000 removed, "Nexus-CORE" entry created on p3, first.
+     `sudo nexus dualboot 1 --apply` worked after `add`.
+   - 0.1.50 (patch 74): `nexus dualboot <n> --apply` adds the other
+     systems to the boot menu itself when they are missing (fresh
+     install), then restarts into the chosen one. Not in the Preview 3
+     ISOs (0.1.49); arrives as an update.
+     Old note follows.
    - Next: one ISO (0.1.47) and one reinstall next to Mint to test the
      boot-entry fix (Nexus first by itself); then Preview 3.
    - `nexus dualboot` design (decided 11 Oct with David):

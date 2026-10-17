@@ -3590,15 +3590,19 @@ int commandDualboot(
         std::cout << "\nThere is no system " << action << ".\n";
         return 1;
     }
-    if (std::find(inMenu.begin(), inMenu.end(), chosen->entryId) ==
-        inMenu.end()) {
-        std::cout << chosen->name << " is not in Nexus's boot menu yet. "
-                     "First:\n    sudo nexus dualboot add --apply\n";
-        return 1;
-    }
+    // Not in the menu yet (a fresh install, say): it is added on the
+    // way. Two commands for one wish was the Asus experience on
+    // 16 October -- "add" first, then the restart.
+    const bool addFirst =
+        std::find(inMenu.begin(), inMenu.end(), chosen->entryId) ==
+        inMenu.end();
 
-    std::cout << "What Nexus will do\n"
-              << "  Restart the computer now, into " << chosen->name << "\n"
+    std::cout << "What Nexus will do\n";
+    if (addFirst) {
+        std::cout << "  Add the other systems to the boot menu (in "
+                  << kGrubCustom << "): they stay there\n";
+    }
+    std::cout << "  Restart the computer now, into " << chosen->name << "\n"
               << "  Only this once: the next restart starts Nexus again\n"
               << "\nIt will not\n"
                  "  Change the order the computer starts in\n"
@@ -3611,6 +3615,36 @@ int commandDualboot(
     if (!confirmed(assumeYes)) {
         std::cout << "Nothing has been changed.\n";
         return 1;
+    }
+
+    if (addFirst) {
+        nexus::system::TransactionRecord added;
+        added.when = nexus::system::currentTimestamp();
+        added.request = "dualboot add";
+        added.kind = nexus::system::TransactionKind::Install;
+        added.resolved = std::string("boot menu: ") + kGrubCustom;
+        for (const auto& system : picture.systems) {
+            if (!system.entryId.empty()) {
+                added.packages.insert(system.name);
+            }
+        }
+        const std::string log = nexus::system::defaultTransactionLog();
+        const std::string marker = nexus::system::beginTransaction(log, added);
+        std::string error;
+        const bool ok = writeGrubCustom(
+            nexus::system::replaceGrubBlock(
+                current, nexus::system::grubBlock(picture.systems)),
+            error);
+        added.outcome = ok ? "added" : "failed";
+        added.succeeded = ok;
+        added.exitCode = ok ? 0 : 1;
+        nexus::system::finishTransaction(log, marker, added);
+        if (!ok) {
+            std::cout << "\nThe boot menu could not be written: " << error
+                      << "\nNothing else was changed; not restarting.\n";
+            return 1;
+        }
+        std::cout << "\nAdded to the boot menu.\n";
     }
 
     const auto set = nexus::system::runCommand(
