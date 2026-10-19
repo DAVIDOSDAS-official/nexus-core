@@ -1,190 +1,144 @@
-# Nexus
+<p align="center">
+  <img src="docs/logo.svg" width="96" alt="">
+</p>
 
-A package tool that explains itself.
+<h1 align="center">Nexus-CORE</h1>
 
-Nexus reasons about a Linux system in terms of **capabilities** — what
-you want the machine to be able to do, rather than which packages
-provide it — and it says why it chose what it chose. It works on
-Debian-family and Fedora-family systems from the same profiles,
-without being told which one it is on.
+<p align="center">
+  <b>A Linux desktop that explains itself, and asks before it changes anything.</b><br>
+  Fedora 44 · KDE Plasma or a light LXQt edition · free and open source (GPL-3.0)
+</p>
 
-It is not a package manager. It decides and explains; `apt` and `dnf`
-carry out the work.
-
----
-
-## What it does
-
-**Explains a failure instead of reporting one.**
-
-```
-$ apt-get install steam-installer
-E: Unable to correct problems, you have held broken packages.
-
-$ nexus install steam-installer
-Blocked on:
-    libgl1:i386 is 1.4.0-1 but libgl1:amd64 is 1.7.0-2101~22.04.
-    Multi-Arch: same builds share files and must be the same version.
-```
-
-Same fact. One of them tells you that a third-party graphics
-repository pinned to 64-bit is why Steam will not install.
-
-**Shows what a choice costs, before you make it.**
-
-```
-$ nexus options video-editor
-  kdenlive  21.12.3   [installed]       654 components, already here
-  org.kde.kdenlive  26.08.0  (flatpak)  107 MB to fetch
-  kdenlive  26.08.0-1  (container)      414 components, 1.9 GB on disk
-```
-
-The same program three ways. The container costs 1.9 GB because a
-container is a whole distribution.
-
-**Checks a machine.**
-
-```
-$ nexus doctor
-  [ ok ]  Package database  3046 components read from dpkg status.
-  [ ok ]  Hardware          6 capabilities detected.
-  [ ok ]  Encryption        Root and swap encrypted (luks). This
-                            protects the machine when it is off, not
-                            while it is running.
-  [ ok ]  Dependencies      Every requirement is satisfied.
-  [ ok ]  Conflicts         No installed component collides.
-  [warn]  Unused            4 component(s) nothing needs.
-```
-
-**Describes a machine as intent, not as a package list.**
-
-```
-Profile: kde
-Requires: desktop-session, display-manager, terminal-emulator,
- file-manager, text-editor, web-browser, audio-server, ...
-Prefers: desktop-session=plasma-desktop, terminal-emulator=konsole
-```
-
-That resolves to `plasma-workspace`, `konsole`, `dolphin` on Fedora
-and to the equivalents on Debian. `nexus image <profile>` turns it
-into a package list a container build consumes.
+<p align="center">
+  <a href="https://nexus-core-davidosdas.netlify.app/">Website</a> ·
+  <a href="https://github.com/DAVIDOSDAS-official/nexus-core/releases/latest">Latest release</a> ·
+  <a href="https://nexus-core-davidosdas.netlify.app/#limits">Known limits</a> ·
+  <a href="https://github.com/DAVIDOSDAS-official/nexus-core/issues">Report a problem</a>
+</p>
 
 ---
 
-## Commands
+Nexus-CORE is a Fedora-based desktop for people who want Linux to tell
+them what is going on. Before anything changes, Nexus says what it
+will do and what it will not do, and nothing happens until you add
+`--apply` or press the button. Every change is written down in
+`nexus history`.
 
-| | |
-|---|---|
-| `nexus guide` | how to work this system, on this system |
-| `nexus doctor` | dependencies, conflicts, unused, encryption, interrupted changes |
-| `nexus setup [profile...]` | what this machine could be, and what each costs here |
-| `nexus options <capability>` | every way to satisfy it, with costs |
-| `nexus install <thing>` | a verified plan; `--apply` to carry it out |
-| `nexus remove <thing>` | what removing it would take with it |
-| `nexus source <package>` | what building it from source would cost |
-| `nexus container <package>` | another distribution's package, in a container |
-| `nexus services` | what starts at boot, and which package installed each |
-| `nexus largest [n]` | what is taking up the room; `--unused` for what is not needed |
-| `nexus hardware` / `nexus secureboot` | what this machine is |
-| `nexus vpn config ...` | generate a WireGuard tunnel |
-| `nexus why` / `inspect` / `conflicts` / `plan` / `history` | the rest |
+It is a **preview made by one person**, tested on a few laptops and in
+virtual machines. Read the [known limits](https://nexus-core-davidosdas.netlify.app/#limits)
+before installing, and keep a backup of anything that matters.
 
-Every command reads by default. Only `--apply` writes. `--commands`
-prints what would be run instead of running it.
+<!--
+Screenshots: put PNGs in docs/screenshots/ and remove this comment.
+<p align="center">
+  <img src="docs/screenshots/desktop.png" width="49%" alt="KDE desktop">
+  <img src="docs/screenshots/shop.png" width="49%" alt="Nexus Shop">
+</p>
+-->
 
----
+## Download
 
-## Where software can come from
+| Edition | Desktop | For | Download |
+|---|---|---|---|
+| **KDE Plasma** | KDE Plasma | the full desktop, gaming included; 4 GB RAM or more | [Preview 3 ISO](https://archive.org/details/nexus-core-preview3) |
+| **Minimal** | LXQt | older computers, from 2 GB RAM | [Preview 3 ISO](https://archive.org/details/nexus-core-minimal-preview3) |
 
-Six sources, each labelled with its trade-off rather than ranked:
+Checksums are on the [release page](https://github.com/DAVIDOSDAS-official/nexus-core/releases/latest)
+and the website. Check the file before writing it to a USB stick:
 
-| Source | What it means |
-|---|---|
-| **Base** (apt / dnf) | integrated, smallest, moves with the distribution |
-| **Flatpak** | current and sandboxed, larger, weaker desktop integration |
-| **Snap** | confined and self-updating, slower to start, one store |
-| **Container** (Arch, BlackArch…) | another distribution's package, behind a boundary |
-| **Nix** | any version, side by side, its own model to learn |
-| **Portage** (Gentoo) | built from source, with your own flags |
+```
+sha256sum nexus-core-preview3.iso
+```
 
-Five metadata formats, one model: RFC822 stanzas, compressed XML,
-tar'd `%FIELD%` blocks, whitespace tables, and `KEY=value` with a
-nested dependency grammar.
+Needs a 64-bit PC with UEFI. Secure Boot can stay on.
 
----
+**About the disk:** an empty disk is used whole. Next to another
+**Linux** with 30 GB or more free in one piece (UEFI, GPT disk), Nexus
+installs into the free space and leaves the other system alone. If
+anything else is on the disk, Windows included, the installer asks
+before touching anything. Dual boot with Windows is not supported.
 
-## How it is verified
+## What you get
 
-**493 tests**, and — more usefully — **differential checks against the
-tools that already know the answer**:
+- **It asks what the machine is for.** At first start you pick add-ons
+  (media, gaming, development, school, security, VPN). Nexus shows what
+  each would add on *your* hardware and installs nothing until you agree.
+- **Nexus Shop.** Flathub, Fedora and RPM Fusion side by side, with
+  what Nexus suggests and why: who packaged the app, whether it needs a
+  restart, whether it is open source. Before every install, a "What
+  Nexus will do / It will not" screen.
+- **Updates on your terms.** A new signed image is built every week
+  with Fedora's latest fixes. Your machine checks daily and tells you.
+  Nothing is installed, and the computer never restarts by itself,
+  until you say so. The previous version stays in the boot menu.
+- **Next to your Linux.** `sudo nexus dualboot` lists the other systems
+  on the disk; `sudo nexus dualboot 1 --apply` restarts straight into
+  one, once. Each one starts through its own signed loader, so Secure
+  Boot stays on.
+- **Encrypted by default**, with signed images: an installed machine
+  refuses an update that Nexus-CORE did not sign.
+- **`nexus doctor`** checks clock, memory, storage, services, updates
+  and encryption, and says what to do about anything wrong.
+- **`nexus gamecheck <game>`**: will it run, what its anti-cheat
+  allows, and what it can read about your computer. Reports only.
+- **No accounts, no tracking.**
 
-| Question | Checked against |
-|---|---|
-| Debian version ordering | `dpkg --compare-versions`, ~1,800 pairs |
-| RPM version ordering | `rpm.vercmp`, ~800 pairs |
-| Which packages are unused | `apt autoremove` |
-| Whether a plan will work | `apt-get install --dry-run` |
+## The `nexus` command
 
-That last one is an interlock, not a diagnostic: `--apply` refuses a
-plan the package manager will not agree to.
+```
+nexus                      this machine in a few lines
+nexus guide                how to work this system
+nexus doctor               is anything wrong, and what to do
+nexus update [--apply]     what is new; take it
+nexus app install|remove <flathub id> [--apply]
+nexus setup [add-ons] [--apply]
+nexus dualboot [add | remove | <number>] [--apply]
+nexus gamecheck <game>     will it run here, and what it can see
+nexus language [list | add | set] [--apply]
+nexus history              every change Nexus has made
+nexus install | remove | options | why | largest | services | hardware | secureboot
+```
 
-Plus a suite of deliberately hostile input — truncated databases,
-binary garbage, directories where files should be, 50,000-deep XML —
-which found two real bugs the day it was written, and a suite for
-interrupted changes.
+**Every command only reads and explains. Only `--apply` changes
+anything.** `nexus --help` lists the rest.
 
-Nearly every serious bug here was found by computing a number, finding
-it implausible, and comparing it against a native tool. Almost none
-were found by a failing test. The suite catches regressions; it rarely
-catches a wrong answer nobody thought to assert.
+An example, before anything is changed:
 
----
+```
+$ sudo nexus dualboot 1
+What Nexus will do
+  Restart the computer now, into Linux Mint 22.3
+  Only this once: the next restart starts Nexus again
 
-## What it does not do
+It will not
+  Change the order the computer starts in
+  Close your apps for you first: save your work
 
-- **It does not update.** `apt` and `dnf` do that correctly, and a
-  second implementation would only be a way to get it wrong.
-- **It does not unpack, configure or remove files.** Same reason.
-- **It does not mix distributions in one filesystem.** Nothing can:
-  different file layouts, different libc builds, package databases
-  that do not know about each other. What does move between them is
-  isolated runtimes, which Nexus offers as sources.
-- **It cannot make a binary system source-based.** That is decided by
-  the base, not by a tool above it.
-- **It does not sign anything**, and does not need to: its images
-  inherit Fedora's kernel and Fedora's signature, so they boot with
-  Secure Boot on. `nexus secureboot` explains what would change if a
-  kernel were ever built rather than inherited.
-- **No conditional dependencies.** RPM's `(a if b)` is recorded as an
-  unrepresented gap; Gentoo's USE conditions are evaluated against
-  flag defaults and the count of assumptions is reported.
+Nothing has been changed. To restart:
+    sudo nexus dualboot 1 --apply
+```
 
----
+## How it is built
 
-## The state of it
+- **Fedora bootc.** The system is a container image
+  (`image/Containerfile`), built from a profile: a list of what the
+  machine should be able to do, resolved to Fedora packages. The KDE
+  and minimal editions build from the same file with one argument
+  changed.
+- **Updated as one piece.** An update downloads a whole new image and
+  switches to it at the next restart; the old one stays in the boot
+  menu. Nothing is half-updated.
+- **Signed.** Images are signed with cosign by the weekly workflow
+  (`.github/workflows/weekly-image.yml`), and installed machines are
+  set to refuse unsigned ones.
+- **The installer ISO** is made with Fedora's `bootc-image-builder`:
+  `./image/build-installer.sh`. Every build writes down what went into
+  it (image digest, Nexus version, builder digest, ISO checksum).
+- **The kernel is Fedora's**, with Fedora's signature, which is why it
+  boots with Secure Boot on.
 
-A working tool, and one bootable image built from a profile.
-
-The image is a Fedora bootc build whose package list is generated from
-the `kde` profile. It boots through UEFI, reaches KDE, and asks
-on first boot what the machine should be — then reports that it
-already is what it was built to be, because the same profile produced
-both. `minimal` and `kde` build from the same Containerfile
-with one argument changed, at 2.88 GB and 3.91 GB.
-
-`./image/build-installer.sh` produces an installer ISO, which has
-been installed on real hardware and boots with Secure Boot enforcing.
-
-`./image/publish.sh` pushes an image to a registry, which is what
-makes updates possible: a bootc system pulls a newer image from where
-it was installed from, so an image that was never published can never
-send a fix to the machines running it.
-
-**Nothing is published yet**, so today's ISOs produce machines that
-cannot update. `nexus doctor` says so on such a machine rather than
-letting it look healthy.
-
----
+The `nexus` tool itself is C++20 and Qt 6 (the Shop). It decides and
+explains; Fedora's own tools (rpm-ostree, flatpak, bootc) do the work.
 
 ## Building
 
@@ -194,33 +148,48 @@ ctest --test-dir build
 ./build/cli/nexus doctor
 ```
 
-Needs a C++20 compiler and CMake 3.20; GoogleTest for the tests
-(`-DNEXUS_BUILD_TESTS=OFF` to skip). `dpkg`, `rpm`, `flatpak`, `snap`,
-`nix`, `distrobox`, `podman`, `zstd` and `wg` are used when present and
-reported when absent.
+Needs a C++20 compiler and CMake 3.20, Qt 6 for the Shop, and
+GoogleTest for the tests (`-DNEXUS_BUILD_TESTS=OFF` to skip).
+576 automated tests.
+
+To build an installer ISO from a published image:
+
+```
+PROFILE=kde IMAGE=ghcr.io/davidosdas-official/nexus-core:kde ./image/build-installer.sh
+```
+
+It needs about 20 GB of free disk space.
 
 ## Layout
 
 ```
-core/        the model: capabilities, resolution, conflicts, ordering
-system/      reading real systems: dpkg, apt, rpm, pacman, portage,
-             flatpak, snap, nix, containers, services, transactions
+cli/         the nexus command
+gui/         Nexus Shop (Qt Quick)
+core/        the model: capabilities, resolution, conflicts
+system/      reading real systems: rpm, dpkg, flatpak, bootc, disks, dual boot
 hardware/    what the machine is: devices, encryption, secure boot
-components/  profiles and per-ecosystem aliases — data, not code
-image/       a bootc image definition built from a profile
-docs/        specifications, decisions, and where this is going
+components/  profiles and add-ons, as data
+image/       the bootc image, installer, first start, updates, boot menu
+tests/       unit and differential tests
+docs/        decisions and specifications
 ```
 
-`docs/specifications/00-decisions.md` is the one worth reading: the
-reasoning that is not recoverable from the code. `docs/overview.md`
-describes the project in prose; `docs/vision.md` is where it is going.
+`docs/specifications/00-decisions.md` has the reasoning that is not
+recoverable from the code.
+
+## Reporting problems
+
+Open an [issue](https://github.com/DAVIDOSDAS-official/nexus-core/issues)
+with what you did, what happened, and the output of `nexus doctor`.
+For anything security-related, see [SECURITY.md](SECURITY.md).
 
 ## Licence
 
-The code is under the GNU General Public License, version 3: anyone
-may change it and share it, and anyone who shares a changed version
-must publish its source under the same licence. See `LICENSE`.
+The code is under the GNU General Public License, version 3. See
+`LICENSE`.
 
 The name Nexus-CORE and the node-graph N logo are trademarks and are
-not covered by the GPL. A changed version has to be renamed. See
+not covered by the GPL: a changed version has to be renamed. See
 `TRADEMARKS.md`.
+
+Made by [DAVIDOSDAS](https://davidosdas.netlify.app).
