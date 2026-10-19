@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#
+# Once, after logging in: "add-ons were not chosen; here is where".
+#
+# nexus-first-boot asks once, at the first start. When nothing was
+# chosen there -- skipped, no answer, no network -- it leaves
+# /var/lib/nexus/setup-not-chosen, and this says so in each person's
+# session, one time each, with the command and a button that opens it
+# in a terminal. It only reads and notifies; choosing is `nexus setup`.
+
+set -u
+
+NOT_CHOSEN="${NEXUS_SETUP_NOT_CHOSEN:-/var/lib/nexus/setup-not-chosen}"
+STATE="${XDG_STATE_HOME:-${HOME}/.local/state}/nexus"
+SHOWN="${STATE}/setup-reminder-shown"
+
+[ -e "${NOT_CHOSEN}" ] || exit 0
+[ -e "${SHOWN}" ] && exit 0
+command -v notify-send > /dev/null || exit 0
+
+# Written before showing: once means once, also when the notification
+# is closed without a click.
+mkdir -p "${STATE}"
+: > "${SHOWN}"
+
+terminal=""
+for candidate in konsole qterminal; do
+    if command -v "${candidate}" > /dev/null; then
+        terminal="${candidate}"
+        break
+    fi
+done
+
+action=()
+[ -n "${terminal}" ] && action=(-A choose="Choose add-ons")
+
+answer="$(notify-send -a Nexus -t 0 -i nexus-shop "${action[@]}" \
+    "Choose what this computer is for" \
+    "Add-ons (gaming, media, development, school, security, VPN) were not chosen at the first start. Choose any time in a terminal: nexus setup")"
+
+if [ "${answer}" = "choose" ] && [ -n "${terminal}" ]; then
+    # Its own unit, so it outlives this one.
+    systemd-run --user --quiet --collect --no-block \
+        "${terminal}" -e /usr/libexec/nexus/choose-add-ons
+fi
+
+exit 0

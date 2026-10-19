@@ -1,0 +1,8 @@
+[Unit]
+Description=Nexus: add-on reminder, a minute after login
+
+[Timer]
+OnStartupSec=1min
+
+[Install]
+WantedBy=timers.target

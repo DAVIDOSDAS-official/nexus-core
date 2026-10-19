@@ -802,6 +802,19 @@ RUN set -u; \
 COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
 COPY image/first-boot/nexus-first-boot.service \
      /usr/lib/systemd/system/nexus-first-boot.service
+# Desktops only (0.1.51): when nothing was chosen at the first start,
+# one notification after login says where to choose, with a button
+# that opens the question in a terminal. Switched on in /usr, like the
+# update notification.
+COPY image/first-boot/nexus-setup-reminder /usr/libexec/nexus/setup-reminder
+COPY image/first-boot/choose-add-ons /usr/libexec/nexus/choose-add-ons
+COPY image/first-boot/nexus-setup-reminder.service \
+     image/first-boot/nexus-setup-reminder.timer \
+     /usr/lib/systemd/user/
+RUN chmod 0755 /usr/libexec/nexus/setup-reminder /usr/libexec/nexus/choose-add-ons && \
+    mkdir -p /usr/lib/systemd/user/timers.target.wants && \
+    ln -sf ../nexus-setup-reminder.timer \
+        /usr/lib/systemd/user/timers.target.wants/nexus-setup-reminder.timer
 # Only what can be added to this desktop -- the one place this block
 # differs from base's copy, on purpose.
 #

@@ -22,9 +22,21 @@ Delete the marker to run it again.
 
 The unit carries `ConditionPathExists=!/var/lib/nexus/setup-complete`,
 so systemd skips it rather than starting a process that immediately
-exits. The marker is written on exit whatever happened -- including
-when somebody declines, because a setup that asks again every boot is
-worse than one that never asked.
+exits.
+
+Since 0.1.51 it asks once, at the first start, whatever happens: a
+choice, a skip, no answer within a minute (`NEXUS_SETUP_WAIT`, in
+seconds), or no network. Before, it waited fifteen minutes and asked
+again at every start until answered. Only a console that could not
+ask at all, or went away mid-question, is asked again: nobody decided
+anything there.
+
+When nothing was chosen it leaves `/var/lib/nexus/setup-not-chosen`.
+On desktops, `nexus-setup-reminder` (a user timer, a minute after
+login) shows one notification per person: add-ons were not chosen,
+choose with `nexus setup`, and a "Choose add-ons" button that opens
+`choose-add-ons` in Konsole or QTerminal. Choosing there removes the
+file.
 
 ## What is not handled
 

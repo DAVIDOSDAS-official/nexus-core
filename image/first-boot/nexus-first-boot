@@ -8,13 +8,22 @@
 # hardware is present. A second place that knows those things would
 # eventually disagree with the first.
 #
-# It runs once. The marker is written whatever happens, including when
-# somebody declines, because a setup that asks again every boot is
-# worse than one that never asked.
+# It runs once, at the first start. Since 0.1.51 (19 October) that is
+# true whatever happens -- a choice, a skip, no answer within a minute,
+# no network -- because a question that held every start for fifteen
+# minutes until it was answered cost more than it gave (David, on the
+# Asus). Whoever did not choose is told once, after logging in, where
+# to choose instead: a notification (nexus-setup-reminder) with the
+# command, and a button that opens it. Only a console that could not
+# ask at all, or went away mid-question, is asked again: nobody
+# decided anything there.
 
 set -uo pipefail
 
 MARKER="${NEXUS_SETUP_MARKER:-/var/lib/nexus/setup-complete}"
+# Present while nothing has been chosen; read by nexus-setup-reminder
+# in each person's session.
+NOT_CHOSEN="${NEXUS_SETUP_NOT_CHOSEN:-/var/lib/nexus/setup-not-chosen}"
 NEXUS="${NEXUS_BINARY:-/usr/bin/nexus}"
 
 if [ -e "${MARKER}" ]; then
@@ -45,7 +54,7 @@ ASKED=0
 #
 # So every exit waits for Enter, on a terminal only (with none there is
 # nobody to wait for), and not forever: an unattended machine still
-# reaches its login screen, five minutes later.
+# reaches its login screen, a minute later.
 SHOWN=0
 
 pause_before_leaving() {
@@ -60,7 +69,7 @@ pause_before_leaving() {
     # was scrolling past would otherwise count as the Enter.
     while read -r -s -t 0.05 -n 1 _ 2>/dev/null; do :; done
 
-    read -r -t 300 _ 2>/dev/null || true
+    read -r -t 60 _ 2>/dev/null || true
     echo
 }
 
@@ -74,6 +83,14 @@ finish() {
 
     mkdir -p "$(dirname "${MARKER}")" 2>/dev/null
     date -u +%Y-%m-%dT%H:%M:%SZ > "${MARKER}" 2>/dev/null
+}
+
+# Asked once and not chosen: not asked at start again, reminded once
+# after login instead.
+not_chosen() {
+    ASKED=1
+    mkdir -p "$(dirname "${NOT_CHOSEN}")" 2>/dev/null
+    : > "${NOT_CHOSEN}" 2>/dev/null
 }
 
 # Written even on interruption: a half-finished setup that asks again
@@ -361,13 +378,15 @@ if ! online; then
       a console      nmcli device wifi list
                      sudo nmcli --ask device wifi connect "NAME"
 
-  Then run:
+  Then choose in a terminal:
 
       nexus setup
 
-  Nothing has been changed, and this will ask again next time.
+  Nothing has been changed. This is not asked again at start: after
+  you log in, a notification shows where to choose.
 
 OFFLINE
+    not_chosen
     exit 0
 fi
 
@@ -416,9 +435,10 @@ if ! have_metadata; then
         echo "      sudo dnf makecache"
         echo "      nexus setup"
         echo
-        echo "  Nothing has been changed, and this will ask again next"
-        echo "  time."
+        echo "  Nothing has been changed. After you log in, a notification"
+        echo "  shows where to choose."
         echo
+        not_chosen
         exit 0
     fi
 
@@ -433,6 +453,7 @@ if ! have_metadata; then
         echo
         echo "  Run 'nexus setup' once 'sudo dnf makecache' works."
         echo
+        not_chosen
         exit 0
     fi
 
@@ -444,6 +465,7 @@ fi
 echo
 echo "  Type one or more names separated by commas, or press Enter"
 echo "  twice to skip. You can run 'nexus setup' again at any time."
+echo "  With no answer in a minute, this goes on to the login screen."
 echo
 # Keys pressed during boot wait in the console's buffer and are read
 # as though they were typed here. Somebody who pressed Enter at the
@@ -471,16 +493,17 @@ printf "  > "
 # nothing else on the machine starts until this is answered; a
 # keyboard that cannot reach it (Asus, 12 October) held the laptop at
 # this screen. After ANSWER_WAIT seconds it goes on to the login
-# screen, asks again at the next start, and says how to choose sooner.
-ANSWER_WAIT="${NEXUS_SETUP_WAIT:-900}"
+# screen. It was fifteen minutes, and asked again at every start until
+# answered; since 0.1.51 it is one minute, and once.
+ANSWER_WAIT="${NEXUS_SETUP_WAIT:-60}"
 
 no_answer() {
-    ASKED=0
     echo
-    echo "  No answer in $((ANSWER_WAIT / 60)) minutes. Nothing has been changed;"
-    echo "  going on to the login screen. This asks again at the next"
-    echo "  start, or choose any time with: sudo nexus setup"
+    echo "  No answer. Nothing has been changed; going on to the login"
+    echo "  screen. After you log in, a notification shows where to"
+    echo "  choose. In a terminal, any time: nexus setup"
     SHOWN=0
+    not_chosen
     exit 0
 }
 
@@ -531,8 +554,11 @@ if [ -z "${CHOICE}" ]; then
     echo "  Nothing has been changed. Run 'nexus setup' when you are"
     echo "  ready."
     echo
+    not_chosen
     exit 0
 fi
+
+rm -f "${NOT_CHOSEN}" 2>/dev/null
 
 echo
 "${NEXUS}" setup "${CHOICE}" --with-available --apply --yes

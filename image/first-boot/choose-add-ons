@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+#
+# What the "Choose add-ons" button opens: the same question as at the
+# first start, in a terminal. `nexus setup` shows and decides; this
+# only asks for the names and hands them back to it.
+
+set -u
+
+nexus setup --with-available || true
+
+echo
+echo "  Type one or more names separated by commas, or press Enter"
+echo "  to close. Nothing is installed until you type a name."
+echo
+printf "  > "
+read -r choice || choice=""
+choice="$(printf '%s' "${choice}" | tr -d '[:space:]')"
+
+if [ -z "${choice}" ]; then
+    echo "  Nothing has been changed. Any time: nexus setup"
+    sleep 2
+    exit 0
+fi
+
+echo
+echo "  Installing needs your password."
+echo
+if sudo sh -c 'nexus setup "$1" --with-available --apply --yes && rm -f /var/lib/nexus/setup-not-chosen' \
+        sh "${choice}"; then
+    echo
+    echo "  Done. 'nexus doctor' will tell you how the machine is."
+else
+    echo
+    echo "  Some things did not install. Try again with:"
+    echo "      sudo nexus setup ${choice} --apply"
+fi
+
+echo
+printf "  Press Enter to close. "
+read -r _ || true

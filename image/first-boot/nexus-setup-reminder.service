@@ -1,0 +1,12 @@
+[Unit]
+Description=Nexus: say where to choose add-ons, if none were chosen
+Documentation=man:nexus(1)
+# In the person's session, once per person (see the script). Only
+# reads and notifies. Nothing to do when add-ons were chosen.
+ConditionPathExists=/var/lib/nexus/setup-not-chosen
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nexus/setup-reminder
+# Waits while the notification is up, for its button.
+TimeoutStartSec=infinity
