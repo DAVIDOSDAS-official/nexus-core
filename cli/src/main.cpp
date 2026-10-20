@@ -6294,6 +6294,16 @@ int commandSetup(
         }
     }
 
+    // Something was chosen, so the one-time "add-ons were not chosen"
+    // reminder (image/first-boot/nexus-setup-reminder) has nothing left
+    // to say. First boot and the reminder's own button remove it; a
+    // `sudo nexus setup x --apply` typed by hand did not (Asus, 20
+    // October: gaming and media installed, reminder still armed).
+    if (done > 0) {
+        std::error_code ignored;
+        std::filesystem::remove("/var/lib/nexus/setup-not-chosen", ignored);
+    }
+
     std::cout
         << "\n" << done << " of " << total
         << " installed.\n";
