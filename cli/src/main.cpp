@@ -85,6 +85,7 @@ void printUsage() {
         << "    nexus update [--apply]   what is new; take it\n"
         << "    nexus app install|remove <flathub id> [--apply]\n"
         << "    nexus dualboot [add | remove | <number>] [--apply]  other systems on this disk\n"
+        << "    nexus gaming [--apply]   what this machine does for games\n"
         << "    nexus scan\n"
         << "    nexus what-provides <capability>\n"
         << "    nexus why <component>\n"
@@ -3434,6 +3435,201 @@ bool writeGrubCustom(const std::string& text, std::string& error) {
     return ok;
 }
 
+// nexus gaming: what this machine does for games, and the one thing
+// Nexus switches on for them.
+//
+// Honest about size: none of this makes games twice as fast. NTSync
+// is the one change with a measured gain -- Windows games under
+// Proton/Wine synchronise threads through the kernel instead of a
+// helper process, which helps CPU-heavy games most -- and the rest
+// is reported so somebody can see what is there and what is not.
+// Nothing changes without --apply, and then only one thing: NTSync
+// loaded now and at every start.
+//
+// On the Asus (21 October, kernel 7.2.11-200.fc44) the module was
+// there but not loaded; `modprobe ntsync` made /dev/ntsync, mode
+// crw-rw-rw-, so games running as the person can use it. Only the
+// loading at start was missing.
+namespace {
+
+const char* const kNtsyncConf = "/etc/modules-load.d/nexus-ntsync.conf";
+
+std::string firstLine(const std::string& text) {
+    const auto end = text.find('\n');
+    return end == std::string::npos ? text : text.substr(0, end);
+}
+
+}  // namespace
+
+int commandGaming(
+    const std::vector<std::string>& words,
+    bool apply,
+    const std::string& invocation
+) {
+    if (words.size() > 1 || (words.size() == 1 && words[0] != "tune")) {
+        std::cerr << "Use: nexus gaming          what this machine does for games\n"
+                     "     nexus gaming --apply  switch on NTSync, now and at every start\n";
+        return 2;
+    }
+
+    namespace fs = std::filesystem;
+    using nexus::system::commandExists;
+    using nexus::system::runCommand;
+
+    const bool deviceThere = fs::exists("/dev/ntsync");
+    const bool moduleThere =
+        deviceThere || runCommand("modinfo ntsync > /dev/null 2>&1", false).ok;
+    const bool loadedAtStart =
+        fs::exists(kNtsyncConf) ||
+        runCommand("grep -qsx ntsync /etc/modules-load.d/*.conf "
+                   "/usr/lib/modules-load.d/*.conf", false).ok;
+
+    auto line = [](const char* state, const std::string& what,
+                   const std::string& detail) {
+        std::cout << "  [" << state << "]  " << std::left << std::setw(13)
+                  << what << detail << "\n";
+    };
+
+    std::cout << "Games on this machine\n\n";
+
+    // NTSync
+    if (!moduleThere) {
+        line(" -- ", "NTSync", "this kernel has no NTSync; nothing to switch on.");
+    } else if (deviceThere && loadedAtStart) {
+        line(" ok ", "NTSync", "on, and loaded at every start.");
+    } else if (deviceThere) {
+        line("note", "NTSync", "on now, but not loaded at the next start.");
+    } else {
+        line("off ", "NTSync", "in the kernel, not switched on.");
+    }
+
+    // GameMode
+    if (commandExists("gamemoded")) {
+        line(" ok ", "GameMode",
+             firstLine(runCommand("gamemoded --version 2>&1", false).text) +
+             "; used by games started with gamemoderun.");
+    } else {
+        line(" -- ", "GameMode", "not installed (the gaming add-on brings it).");
+    }
+
+    // Overlays and the compositor
+    line(commandExists("mangohud") ? " ok " : " -- ", "MangoHud",
+         commandExists("mangohud")
+             ? "installed: FPS and temperatures over a game."
+             : "not installed (the gaming add-on brings it).");
+    line(commandExists("gamescope") ? " ok " : " -- ", "Gamescope",
+         commandExists("gamescope")
+             ? "installed: runs a game in its own small compositor."
+             : "not installed (the gaming add-on brings it).");
+
+    // Power profile
+    if (commandExists("powerprofilesctl")) {
+        const std::string profile =
+            firstLine(runCommand("powerprofilesctl get 2>/dev/null", false).text);
+        if (profile == "power-saver") {
+            line("note", "Power", "power-saver: games run slower. "
+                 "powerprofilesctl set balanced");
+        } else if (!profile.empty()) {
+            line(" ok ", "Power", profile + ".");
+        }
+    }
+
+    // vm.max_map_count -- some games (CS2, Hogwarts Legacy) crash
+    // below ~1 million. Fedora's default is 1048576.
+    {
+        std::ifstream in("/proc/sys/vm/max_map_count");
+        long long value = 0;
+        if (in >> value) {
+            line(value >= 1048576 ? " ok " : "note", "Memory maps",
+                 std::to_string(value) +
+                 (value >= 1048576 ? ": enough for every game."
+                                   : ": some games need 1048576."));
+        }
+    }
+
+    std::cout
+        << "\nIn Steam, for one game: Properties -> Launch options:\n"
+        << "    gamemoderun %command%           GameMode while it runs\n"
+        << "    mangohud gamemoderun %command%  and the overlay\n"
+        << "\nNone of this doubles frame rates. NTSync helps Windows "
+           "games under\nProton most, CPU-heavy ones above all; "
+           "the gain is usually small.\n";
+
+    const bool needed = moduleThere && !(deviceThere && loadedAtStart);
+
+    if (!needed) {
+        std::cout << "\nNothing to switch on.\n";
+        return 0;
+    }
+
+    std::cout
+        << "\nWhat Nexus will do\n"
+        << "  Load NTSync now (modprobe ntsync)\n"
+        << "  Load it at every start: " << kNtsyncConf << "\n"
+        << "\nIt will not\n"
+        << "  Change any game, Steam, or how the system updates\n"
+        << "  Change anything else about the kernel\n";
+
+    if (!apply) {
+        std::cout << "\nNothing has been changed. To do it:\n    sudo "
+                  << invocation << " --apply\n";
+        return 0;
+    }
+
+    if (!nexus::system::haveRootPrivileges()) {
+        std::cout << "\nThis needs root. Re-run with sudo:\n    sudo "
+                  << invocation << " --apply\n\nNothing has been changed.\n";
+        return 1;
+    }
+
+    nexus::system::TransactionRecord record;
+    record.when = nexus::system::currentTimestamp();
+    record.request = "gaming";
+    record.kind = nexus::system::TransactionKind::Install;
+    record.resolved = std::string("NTSync: ") + kNtsyncConf;
+    record.packages.insert("ntsync");
+
+    const std::string log = nexus::system::defaultTransactionLog();
+    const std::string marker = nexus::system::beginTransaction(log, record);
+
+    bool ok = true;
+    std::string error;
+    {
+        std::error_code ec;
+        fs::create_directories("/etc/modules-load.d", ec);
+        std::ofstream out(kNtsyncConf, std::ios::trunc);
+        out << "# Written by nexus gaming --apply: Windows games under\n"
+               "# Proton/Wine use it for thread synchronisation.\n"
+               "ntsync\n";
+        out.flush();
+        if (!out) {
+            ok = false;
+            error = std::string("could not write ") + kNtsyncConf;
+        }
+    }
+    if (ok) {
+        const auto loaded = runCommand("modprobe ntsync 2>&1", true);
+        if (!loaded.ok || !fs::exists("/dev/ntsync")) {
+            ok = false;
+            error = "modprobe ntsync: " + firstLine(loaded.text);
+        }
+    }
+
+    record.outcome = ok ? "switched on" : "failed";
+    record.succeeded = ok;
+    record.exitCode = ok ? 0 : 1;
+    nexus::system::finishTransaction(log, marker, record);
+
+    if (!ok) {
+        std::cout << "\nNot done: " << error << "\n";
+        return 1;
+    }
+
+    std::cout << "\nDone. NTSync is on, and loads at every start. Games "
+                 "started from now on\ncan use it; nothing needs a restart.\n";
+    return 0;
+}
+
 int commandDualboot(
     const std::vector<std::string>& words,
     bool apply,
@@ -5914,6 +6110,92 @@ std::string setupChoice(const std::vector<std::string>& positional) {
     return chosen;
 }
 
+// Requirements a profile fills from Flathub (Profile::flatpak) are met
+// by the installed Flatpak, not by a package. checkProfile only reads
+// the package database, so the list in `nexus setup` and `nexus
+// profile check` called them missing on a machine that had them: Asus,
+// 21 October -- gaming "4 of 11 missing" (Steam, Heroic, Lutris,
+// ProtonUp-Qt) and media "1 of 2" (VLC), while choosing them again
+// said there was nothing to install. One reading of Flatpak, here, for
+// every place that counts.
+std::set<std::string> installedFlatpakApps() {
+    std::set<std::string> apps;
+
+    if (!nexus::system::commandExists("flatpak")) {
+        return apps;
+    }
+
+    const auto listed = nexus::system::runCommand(
+        nexus::system::inPlainLocale(
+            "flatpak list --app --columns=application"), false);
+
+    for (const std::string& line : listed.lines) {
+        const auto start = line.find_first_not_of(" \t");
+        const auto end = line.find_last_not_of(" \t\r");
+        if (start != std::string::npos) {
+            apps.insert(line.substr(start, end - start + 1));
+        }
+    }
+
+    return apps;
+}
+
+void countInstalledFlatpaks(const nexus::Profile& profile,
+                            nexus::ProfileReport& report,
+                            const std::set<std::string>& apps) {
+    for (std::size_t index = 0;
+         index < profile.requirements.size() && index < report.items.size();
+         ++index) {
+        auto& item = report.items[index];
+        const auto& alternatives = profile.requirements[index].alternatives;
+
+        if (item.satisfied || alternatives.size() != 1) {
+            continue;
+        }
+
+        const auto found = profile.flatpak.find(alternatives[0].capability);
+
+        if (found != profile.flatpak.end() && apps.count(found->second)) {
+            item.satisfied = true;
+            item.provided = {found->second + " (Flatpak)"};
+            item.blockedOn.clear();
+            report.satisfied += 1;
+        }
+    }
+}
+
+// The add-on's wallpaper, for the first chosen name that has one.
+// First boot did this itself, so a choice made later -- `nexus setup
+// ... --apply` or the reminder's "Choose add-ons" -- installed the
+// add-on and left the wallpaper as it was (Asus, 21 October). Applied
+// at the next login by /usr/libexec/nexus/apply-wallpaper.
+void rememberWallpaper(const std::string& chosen) {
+    std::string name;
+    std::stringstream names(chosen);
+
+    while (std::getline(names, name, ',')) {
+        std::string clean;
+        for (char c : name) {
+            const char lowered = static_cast<char>(
+                std::tolower(static_cast<unsigned char>(c)));
+            if (std::isalnum(static_cast<unsigned char>(lowered)) ||
+                lowered == '-') {
+                clean += lowered;
+            }
+        }
+
+        if (!clean.empty() &&
+            std::filesystem::is_directory(
+                "/usr/share/wallpapers/nexus-" + clean)) {
+            std::error_code ignored;
+            std::filesystem::create_directories("/etc/nexus", ignored);
+            std::ofstream("/etc/nexus/wallpaper", std::ios::trunc)
+                << clean << "\n";
+            return;
+        }
+    }
+}
+
 int commandSetup(
     const nexus::AliasTable& aliases,
     const std::vector<Component>& installed,
@@ -5969,6 +6251,8 @@ int commandSetup(
     if (chosen.empty()) {
         std::cout << "What would you like this machine to be?\n\n";
 
+        const std::set<std::string> flatpakApps = installedFlatpakApps();
+
         for (const nexus::Profile& profile : loaded.profiles) {
             // base is not a choice. It is composed into every image
             // (see commandImage), so it is always "already satisfied"
@@ -5989,8 +6273,9 @@ int commandSetup(
             // Checking the whole universe reports every profile as
             // satisfied the moment its packages exist in an archive,
             // which is every profile.
-            const auto report = nexus::checkProfile(
+            auto report = nexus::checkProfile(
                 local, buildSolver(installed), aliases);
+            countInstalledFlatpaks(local, report, flatpakApps);
 
             const std::size_t missing =
                 report.items.size() - report.satisfied;
@@ -6162,6 +6447,15 @@ int commandSetup(
         std::cout
             << "\nThis machine already is what you asked for.\n";
 
+        // Chosen and already here is still a choice: the reminder has
+        // nothing left to say, and the add-on's wallpaper follows.
+        if (apply && nexus::system::haveRootPrivileges()) {
+            std::error_code ignored;
+            std::filesystem::remove("/var/lib/nexus/setup-not-chosen",
+                                    ignored);
+            rememberWallpaper(chosen);
+        }
+
         return 0;
     }
 
@@ -6304,6 +6598,8 @@ int commandSetup(
         std::filesystem::remove("/var/lib/nexus/setup-not-chosen", ignored);
     }
 
+    rememberWallpaper(chosen);
+
     std::cout
         << "\n" << done << " of " << total
         << " installed.\n";
@@ -6434,9 +6730,10 @@ int commandProfile(
         profile.architecture = architecture;
     }
 
-    const auto report =
+    auto report =
         nexus::checkProfile(
             profile, buildSolver(installed), aliases);
+    countInstalledFlatpaks(profile, report, installedFlatpakApps());
 
     // When archive data is loaded, a missing requirement can be
     // re-checked against everything available. That turns "you do not
@@ -6478,9 +6775,12 @@ int commandProfile(
         if (item.satisfied) {
             std::cout
                 << "  [ok]      " << item.requirement << "\n"
-                << "            met by " << item.provided.front()
-                << " (+" << (item.provided.size() - 1)
-                << " dependencies)\n";
+                << "            met by " << item.provided.front();
+            if (item.provided.size() > 1) {
+                std::cout << " (+" << (item.provided.size() - 1)
+                          << " dependencies)";
+            }
+            std::cout << "\n";
         } else {
             std::cout
                 << "  [missing] " << item.requirement << "\n";
@@ -6880,6 +7180,13 @@ int main(int argc, char** argv) {
             std::vector<std::string>(positional.begin() + 1,
                                      positional.end()),
             apply);
+    }
+
+    if (command == "gaming") {
+        return commandGaming(
+            std::vector<std::string>(positional.begin() + 1,
+                                     positional.end()),
+            apply, invocation);
     }
 
     if (command == "dualboot") {
