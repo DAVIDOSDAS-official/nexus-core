@@ -1,10 +1,81 @@
 # Nexus-CORE — status
 
-Updated 16 October 2026. Paste this at the start of a new session; it is
+Updated 23 October 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.50** (patches 1–74). **576 automated tests**, all passing.
-**Preview 2 released 8 Oct 2026** (both editions, 0.1.34).
+**Version 0.1.54** (patches 1–80). **576 automated tests**, all passing.
+**Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
+Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
+below.
+
+## Since Preview 3 (17–23 October)
+
+**Released 18–19 Oct:** archive.org/details/nexus-core-preview3 (KDE,
+0.1.50, 3.2G, sha256 0a353971bd5206786f0b9539bddc6c83a71bc282331fd8e9af285d462e36bfc1)
+and archive.org/details/nexus-core-minimal-preview3 (0.1.49, 2.9G, sha256
+3a551a20bb6ec81bba2442ab7ade32685e4862f19fc20a4ecd62f4d9d3dccdc8), both
+in Community Software. KDE ISO tested in the VM first (install, boot,
+`systemctl --failed` 0, `nexus doctor` all ok). Nexus website v5
+(release.js Preview 3, dual-boot callout and limits, Shop / Next to
+your Linux / gamecheck panels). GitHub release `preview3` (Latest, on
+38f9a3f). Portfolio updated (compact Nexus card, Preview 3 metadata,
+footer mail icon removed). Bing Webmaster Tools verified for both sites.
+
+**Repo (patch 75):** new README (download table, disk warning, commands,
+how it is built), SECURITY.md (private vulnerability reports enabled),
+CONTRIBUTING.md, docs/logo.svg. About box + topics set. Profile README
+repo DAVIDOSDAS-official. Leftover HANDOFF.md.orig/.rej removed.
+
+**Patch 76:** the monthly Fedora check asks Bodhi (state=current) which
+releases are out; issue #1 "URGENT: Fedora 44 near EOL" was a false
+alarm (quay.io carries development tags 45/46). Run 19 Oct: "Released
+Fedora versions: 43 44".
+
+**Patch 77 (0.1.51): first boot asks once.** One minute, then the login
+screen; a skip, no answer or no network all count as asked
+(/var/lib/nexus/setup-complete) and leave /var/lib/nexus/setup-not-chosen;
+desktops get one notification per person a minute after login
+(nexus-setup-reminder user timer, "Choose add-ons" button opens
+/usr/libexec/nexus/choose-add-ons in Konsole/QTerminal). Only a missing
+or broken console is asked again. Tested in the VM (minimal) and on
+the Asus.
+
+**Patch 78 (0.1.52):** `nexus setup --apply` that installs anything
+removes setup-not-chosen. **Patch 79 (0.1.53):** installed Flatpaks
+count as met in the `nexus setup` list and `nexus profile check`
+(gaming showed 4/11 missing = Steam, Heroic, Lutris, ProtonUp-Qt;
+media 1/2 = VLC); any `nexus setup --apply`, also "already is what you
+asked for", writes /etc/nexus/wallpaper and clears the reminder; new
+`nexus gaming [--apply]`: reports NTSync, GameMode, MangoHud, Gamescope,
+power profile, vm.max_map_count; --apply writes
+/etc/modules-load.d/nexus-ntsync.conf and loads ntsync (history).
+Asus 23 Oct: all four checks PASSED (kernel 7.2.11-200.fc44, ntsync
+module present, /dev/ntsync crw-rw-rw- root, GameMode 1.8.2).
+**Patch 80 (0.1.54):** after --apply, `nexus gaming` prints NTSync's
+new state (the report above it is from before the change).
+
+**Promotion:** 25 s vertical dual-boot video (TikTok/IG/X/LinkedIn).
+r/Fedora: standalone project posts are not allowed (rule 4: weekly
+Project Showcase thread; screenshots Saturdays only) -- posted there.
+**Reddit removes every netlify.app link site-wide**: link GitHub only
+on Reddit; an own domain would fix it. Next: r/linux, Universal Blue
+forum, r/unixporn on a Saturday, DistroWatch later.
+
+**Preview 4 plan:** 1) first boot once DONE, 2) gaming DONE, 3) server:
+Cockpit, `nexus server add minecraft|website|app`, status/logs/backup,
+firewall + SSH, honest about port forwarding, 4) VPN: `nexus vpn check`
+(route + DNS leak), kill switch, Mullvad/Proton/Tailscale setup. Then
+Development (toolchains, `nexus dev help <topic>`, opt-in Kali container
+small/medium/full) and **Showcase**: "insane UI for everything, desktop
+to terminal, like from another universe" incl. a graphical add-on
+picker. Later: NVIDIA (separate image + MOK signing key, needs NVIDIA
+hardware to test), Nexus share (on LocalSend's protocol so phones
+work), multi-user, Nexus-pet, greenboot, minimal < 600 MB.
+
+**Next test on the Asus:** Pop!_OS next to Nexus. Secure Boot off
+(Pop's systemd-boot is unsigned), Pop first via Custom (Advanced) with
+30+ GB left empty, no encryption, then Nexus; `nexus dualboot` knows
+systemd-bootx64.efi but it is untested.
 
 ## What it is
 

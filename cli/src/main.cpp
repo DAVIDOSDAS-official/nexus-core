@@ -3625,8 +3625,16 @@ int commandGaming(
         return 1;
     }
 
-    std::cout << "\nDone. NTSync is on, and loads at every start. Games "
-                 "started from now on\ncan use it; nothing needs a restart.\n";
+    // The report above was read before the change; say how it is now,
+    // so the last NTSync line on screen is not the old "off" (Asus,
+    // 23 October).
+    std::cout << "\nNow:\n";
+    std::cout << "  [ ok ]  " << std::left << std::setw(13) << "NTSync"
+              << (fs::exists("/dev/ntsync") ? "on" : "not on yet")
+              << (fs::exists(kNtsyncConf) ? ", and loaded at every start.\n"
+                                          : ".\n");
+    std::cout << "\nDone. Games started from now on can use it; nothing "
+                 "needs a restart.\n";
     return 0;
 }
 
