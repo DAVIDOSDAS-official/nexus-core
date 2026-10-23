@@ -3,7 +3,7 @@
 Updated 23 October 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.54** (patches 1–80). **576 automated tests**, all passing.
+**Version 0.1.55** (patches 1–81). **582 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -53,6 +53,24 @@ Asus 23 Oct: all four checks PASSED (kernel 7.2.11-200.fc44, ntsync
 module present, /dev/ntsync crw-rw-rw- root, GameMode 1.8.2).
 **Patch 80 (0.1.54):** after --apply, `nexus gaming` prints NTSync's
 new state (the report above it is from before the change).
+
+**Patch 81 (0.1.55): `nexus server`** -- servers as Podman Quadlet
+containers (/etc/containers/systemd/nexus-<name>.container ->
+nexus-<name>.service, started at boot, Restart=always; data in
+/var/lib/nexus/servers/<name>, kept on remove). `nexus server` lists
+them (kind, state, ports), the LAN address, firewall and Cockpit state.
+`add minecraft` (itzg/minecraft-server, Java; needs --accept-eula,
+nothing ticks Mojang's EULA for you; memory 40% of RAM in 256 MB steps,
+1024-4096 MB -> 1280M on the Asus; --port, --memory), `add website
+<folder>` (Caddy 2, copies the folder to .../site, plain http on 8080
+or --domain for HTTPS on 80/443; adding again updates the files),
+`logs`, `backup` (stop, tar.gz to /var/lib/nexus/backups, start),
+`remove` (data stays, ports closed), `cockpit` (enable cockpit.socket +
+firewall service). Ports opened only when firewalld runs. Everything
+behind --apply and in history. New add-on **hosting** (podman, cockpit,
+cockpit-podman, firewall) offered on both editions. Not yet tested on
+hardware. Lanewright is NOT tested on Nexus (David, 23 Oct: keep it
+separate).
 
 **Promotion:** 25 s vertical dual-boot video (TikTok/IG/X/LinkedIn).
 r/Fedora: standalone project posts are not allowed (rule 4: weekly

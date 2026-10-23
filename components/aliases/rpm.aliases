@@ -49,6 +49,15 @@ Resolves-To: chrony | systemd-timesyncd
 Capability: ssh-server
 Resolves-To: openssh-server
 
+Capability: container-runtime
+Resolves-To: podman
+
+Capability: web-admin
+Resolves-To: cockpit
+
+Capability: container-admin
+Resolves-To: cockpit-podman
+
 Capability: compiler-toolchain
 Resolves-To: gcc-c++ | gcc
 

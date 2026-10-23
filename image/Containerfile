@@ -842,6 +842,7 @@ RUN chmod 0755 /usr/libexec/nexus/setup-reminder /usr/libexec/nexus/choose-add-o
 COPY components/profiles/base.profile \
      components/profiles/development.profile \
      components/profiles/gaming.profile \
+     components/profiles/hosting.profile \
      components/profiles/media.profile \
      components/profiles/school.profile \
      components/profiles/security.profile \
@@ -850,8 +851,8 @@ COPY components/profiles/base.profile \
 RUN set -eu; \
     mkdir -p /usr/share/nexus/profiles; \
     case "${NEXUS_PROFILE}" in \
-        minimal) offered="base development media school security vpn" ;; \
-        *)       offered="base development gaming media school security vpn" ;; \
+        minimal) offered="base development hosting media school security vpn" ;; \
+        *)       offered="base development gaming hosting media school security vpn" ;; \
     esac; \
     for name in ${offered}; do \
         cp "/usr/share/nexus/profile-pool/${name}.profile" /usr/share/nexus/profiles/; \

@@ -34,6 +34,7 @@ add_library(nexus_system
     src/compression.cpp
     src/catalogue.cpp
     src/dualboot.cpp
+    src/server.cpp
 )
 
 target_include_directories(nexus_system
