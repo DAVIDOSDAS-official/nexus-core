@@ -568,6 +568,29 @@ COPY image/clock/nexus-clock.service \
 RUN chmod 0755 /usr/libexec/nexus/clock \
     && systemctl enable nexus-clock.service
 
+# A firewall, on (0.1.56). Until 24 October there was none: firewalld
+# was not even installed, so anything listening was reachable by
+# everyone on the same network -- harmless at home, not on a cafe's or
+# a university's Wi-Fi (found by `nexus server` on the Asus: "Firewall:
+# not running, so every port is open to your network").
+#
+# The zone is "public" with what a desktop needs coming in: DHCPv6,
+# finding printers and other devices (mdns), Windows shares on the
+# network (samba-client) and KDE Connect. Not Fedora Workstation's own
+# zone, which opens every port above 1024. `nexus server` opens exactly
+# the ports its servers use, and closes them when one is removed.
+#
+# Set in the image's /etc: on a machine that updates, new files there
+# arrive with the update, so existing machines get the firewall too.
+RUN set -eu; \
+    rpm -q firewalld > /dev/null || \
+        { dnf install -y --setopt=install_weak_deps=False firewalld && dnf clean all; }; \
+    firewall-offline-cmd --set-default-zone=public; \
+    for service in dhcpv6-client mdns samba-client kdeconnect; do \
+        firewall-offline-cmd --zone=public --add-service="${service}"; \
+    done; \
+    systemctl enable firewalld.service
+
 # Nexus first in the start list, once per machine: corrects the dead
 # "Fedora" entry bootupd writes for the other system's EFI partition
 # when Nexus is installed next to another Linux. See the script.

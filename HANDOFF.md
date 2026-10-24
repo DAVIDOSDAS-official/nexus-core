@@ -3,7 +3,7 @@
 Updated 23 October 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.55** (patches 1–81). **582 automated tests**, all passing.
+**Version 0.1.56** (patches 1–82). **582 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -71,6 +71,16 @@ behind --apply and in history. New add-on **hosting** (podman, cockpit,
 cockpit-podman, firewall) offered on both editions. Not yet tested on
 hardware. Lanewright is NOT tested on Nexus (David, 23 Oct: keep it
 separate).
+
+**Asus 24 Oct (0.1.55):** hosting add-on installed ("already
+satisfied" after); `nexus server` status ok; Cockpit `--apply` done
+(browser login not yet confirmed); Minecraft and website only
+previewed. Found: **no firewall at all** (firewalld not installed).
+**Patch 82 (0.1.56):** firewalld installed and on in every image,
+default zone public + dhcpv6-client, mdns, samba-client, kdeconnect (not
+FedoraWorkstation, which opens every port >1024); `nexus server` opens
+and closes its own ports. Unknown `nexus server` options suggest the
+right one ("--accept-elua" -> "Did you mean --accept-eula?").
 
 **Promotion:** 25 s vertical dual-boot video (TikTok/IG/X/LinkedIn).
 r/Fedora: standalone project posts are not allowed (rule 4: weekly

@@ -3854,7 +3854,16 @@ int commandServer(
         } else if (raw[i] == "--accept-eula") {
             acceptEula = true;
         } else if (!raw[i].empty() && raw[i][0] == '-') {
+            // "--accept-elua" on the Asus (24 October): say the right
+            // word rather than only that this one is wrong.
             std::cerr << "Unknown option: " << raw[i] << "\n";
+            for (const char* known :
+                 {"--accept-eula", "--port", "--memory", "--domain"}) {
+                if (closeSpelling(raw[i], known)) {
+                    std::cerr << "Did you mean " << known << "?\n";
+                    return 2;
+                }
+            }
             serverUsage();
             return 2;
         } else {
