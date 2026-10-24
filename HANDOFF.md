@@ -3,7 +3,7 @@
 Updated 23 October 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.56** (patches 1–82). **582 automated tests**, all passing.
+**Version 0.1.57** (patches 1–83). **582 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -81,6 +81,21 @@ default zone public + dhcpv6-client, mdns, samba-client, kdeconnect (not
 FedoraWorkstation, which opens every port >1024); `nexus server` opens
 and closes its own ports. Unknown `nexus server` options suggest the
 right one ("--accept-elua" -> "Did you mean --accept-eula?").
+
+**Weekly build #53 failed** on patch 82: firewall-offline-cmd exits 16
+(ZONE_ALREADY_SET) when the zone is already public. **Patch 83
+(0.1.57)** sets zone/services only when not already so, and adds
+**making room** to the installer %pre: one internal disk, UEFI, GPT,
+under 30 GiB free -> an unencrypted, unmounted ext4 partition that can
+give enough (keeps used+20 GiB and at least half) is offered on tty6:
+"<PRETTY_NAME from its os-release> uses the whole disk ... Type YES".
+Only on mains power (or no battery), only after e2fsck -f -p is clean;
+resize2fs below target, sfdisk -N <n> to target, resize2fs to fill;
+any failure or no YES in 120 s -> the installer asks as before. Tested
+here on a loop disk shaped like Pop's (EFI, full ext4, swap at the end):
+300 MB file intact (sha256), e2fsck clean, free space appeared between
+the ext4 and swap. Not yet on hardware: Asus left with Pop on the whole
+disk (229.5 GiB /, 11 GiB used) as the test case.
 
 **Promotion:** 25 s vertical dual-boot video (TikTok/IG/X/LinkedIn).
 r/Fedora: standalone project posts are not allowed (rule 4: weekly

@@ -222,6 +222,181 @@ def table_type(disk):
     return subprocess.run(["lsblk", "-d", "-n", "-o", "PTTYPE", "/dev/" + disk],
                           capture_output=True, text=True).stdout.strip()
 
+# Making room (0.1.57). Another Linux installed the usual way takes the
+# whole disk -- Pop!_OS on the Asus, 24 October: 229.5 GiB for / with
+# 11 GiB used, 4 MiB free -- and then the only way to install Nexus
+# next to it was another USB stick, GParted, and an hour on a slow
+# laptop. Now the installer offers to do it, and asks first:
+#
+#   - only an unencrypted ext4 partition (what Pop, Mint, Ubuntu and
+#     Debian use by default) -- ext4 shrinks safely; XFS cannot shrink,
+#     encrypted or LVM ones are left for the person to decide;
+#   - only with a YES typed on the screen; no answer in two minutes,
+#     or anything else, and the installer asks as before;
+#   - only on mains power: a laptop that dies in the middle of a
+#     shrink can lose that system's files;
+#   - only after e2fsck says the filesystem is clean;
+#   - the other system keeps at least its files plus 20 GiB, and at
+#     least half of what it had; its EFI, recovery and swap partitions
+#     are not touched.
+#
+# How: e2fsck, resize2fs to below the new size, sfdisk to the new size,
+# resize2fs to fill it exactly -- the order that never leaves a
+# filesystem bigger than its partition.
+GIB = 1024 ** 3
+
+def ext4_candidates(disk):
+    found = subprocess.run(
+        ["lsblk", "-n", "-b", "-P", "-o", "NAME,TYPE,FSTYPE,SIZE,MOUNTPOINTS", "/dev/" + disk],
+        capture_output=True, text=True).stdout
+    out = []
+    for row in found.splitlines():
+        f = dict(t.split("=", 1) for t in shlex.split(row) if "=" in t)
+        kind = f.get("FSTYPE") or subprocess.run(
+            ["blkid", "-s", "TYPE", "-o", "value", "/dev/" + f.get("NAME", "")],
+            capture_output=True, text=True).stdout.strip()
+        if f.get("TYPE") == "part" and kind == "ext4" and not f.get("MOUNTPOINTS"):
+            out.append((f["NAME"], int(f.get("SIZE") or 0)))
+    return out
+
+def ext4_used(name):
+    head = subprocess.run(["dumpe2fs", "-h", "/dev/" + name],
+                          capture_output=True, text=True).stdout
+    values = {}
+    for line in head.splitlines():
+        if ":" in line:
+            key, value = line.split(":", 1)
+            values[key.strip()] = value.strip()
+    try:
+        block = int(values["Block size"])
+        return (int(values["Block count"]) - int(values["Free blocks"])) * block
+    except (KeyError, ValueError):
+        return None
+
+def system_name(name):
+    import os
+    os.makedirs("/tmp/nexus-peek", exist_ok=True)
+    if subprocess.run(["mount", "-o", "ro", "/dev/" + name, "/tmp/nexus-peek"]).returncode != 0:
+        return "another system"
+    try:
+        for line in open("/tmp/nexus-peek/etc/os-release"):
+            if line.startswith("PRETTY_NAME="):
+                return line.split("=", 1)[1].strip().strip(chr(34))
+    except OSError:
+        pass
+    finally:
+        subprocess.run(["umount", "/tmp/nexus-peek"])
+    return "another system"
+
+def on_mains():
+    import glob
+    supplies = glob.glob("/sys/class/power_supply/*")
+    mains = [p for p in supplies if open(p + "/type").read().strip() == "Mains"]
+    batteries = [p for p in supplies if open(p + "/type").read().strip() == "Battery"]
+    if not batteries:
+        return True
+    return any(read_int(p + "/online") == 1 for p in mains)
+
+def ask(text_lines, seconds):
+    # The installer's screen is not up yet; ask on a console of our own
+    # and come back to the one that was showing.
+    import select
+    current = subprocess.run(["fgconsole"], capture_output=True, text=True).stdout.strip() or "1"
+    try:
+        tty = open("/dev/tty6", "r+")
+    except OSError:
+        print("No console to ask on: not shrinking.")
+        return ""
+    subprocess.run(["chvt", "6"])
+    tty.write(chr(10).join([""] * 3 + text_lines + ["", "  > "]))
+    tty.flush()
+    ready, _, _ = select.select([tty], [], [], seconds)
+    answer = tty.readline().strip() if ready else ""
+    tty.write(chr(10) + "  Thank you. Starting the installer..." + chr(10))
+    tty.flush()
+    tty.close()
+    subprocess.run(["chvt", current])
+    return answer
+
+def offer_shrink(disk, gap):
+    best = None
+    for name, size in ext4_candidates(disk):
+        used = ext4_used(name)
+        if used is None:
+            continue
+        keep = max(used + 20 * GIB, size // 2)
+        keep = (keep + GIB - 1) // GIB * GIB
+        freed = size - keep
+        print("  ext4", name, round(size / GIB, 1), "GiB, used", round(used / GIB, 1),
+              "GiB: could keep", keep // GIB, "GiB and free", round(freed / GIB, 1), "GiB")
+        if gap + freed >= NEEDED and (best is None or freed > best[3]):
+            best = (name, size, keep, freed, used)
+    if best is None:
+        print("No ext4 partition can make room: the installer asks.")
+        return gap
+    name, size, keep, freed, used = best
+    if not on_mains():
+        ask(["  Nexus could make room next to the system on this disk, but only",
+             "  with the charger plugged in: a laptop that turns off in the middle",
+             "  of shrinking a partition can lose that system's files.",
+             "",
+             "  Plug it in and start the installer again, or press Enter to",
+             "  choose in the installer yourself."], 120)
+        print("On battery: not shrinking.")
+        return gap
+    who = system_name(name)
+    answer = ask([
+        "  Nexus-CORE installer",
+        "",
+        "  " + who + " uses the whole disk (" + name + ": " + str(round(size / GIB)) +
+        " GiB, " + str(round(used / GIB)) + " GiB of it used).",
+        "",
+        "  Nexus can make room: " + who + " becomes " + str(keep // GIB) +
+        " GiB, and Nexus installs",
+        "  in the " + str(round(freed / GIB)) + " GiB this frees. " + who +
+        " and its files stay;",
+        "  its start-up, recovery and swap partitions are not touched.",
+        "",
+        "  Back up anything important first: shrinking is safe, but a",
+        "  backup is what makes it certain.",
+        "",
+        "  Type YES and press Enter to make room. Anything else, or nothing",
+        "  for two minutes: nothing is changed and the installer asks.",
+    ], 120)
+    if answer != "YES":
+        print("Not confirmed (" + repr(answer) + "): nothing changed, the installer asks.")
+        return gap
+    print("Confirmed. Shrinking", name, "to", keep // GIB, "GiB.")
+    check = subprocess.run(["e2fsck", "-f", "-p", "/dev/" + name])
+    if check.returncode > 1:
+        print("e2fsck found problems (exit", check.returncode, "): not shrinking.")
+        return gap
+    number = read_int("/sys/class/block/" + name + "/partition")
+    margin = keep - 256 * 1024 ** 2
+    steps = [
+        ["resize2fs", "/dev/" + name, str(margin // 1024) + "K"],
+        ["sfdisk", "--no-reread", "-N", str(number), "/dev/" + disk],
+        ["resize2fs", "/dev/" + name],
+    ]
+    for step in steps:
+        print("Running:", " ".join(step))
+        if step[0] == "sfdisk":
+            done = subprocess.run(step, input=", " + str(keep // 1024 ** 2) + "MiB" + chr(10),
+                                  text=True)
+            for tool in (["partx", "-u", "/dev/" + disk], ["udevadm", "settle"]):
+                try:
+                    subprocess.run(tool)
+                except OSError:
+                    pass
+        else:
+            done = subprocess.run(step)
+        if done.returncode != 0:
+            print("Failed:", " ".join(step), "exit", done.returncode, "- stopping here.")
+            return largest_gap(disk)
+    gap = largest_gap(disk)
+    print("Done. Largest free space now:", round(gap / GIB, 1), "GiB")
+    return gap
+
 beside = ""
 
 if len(disks) == 1 and in_use(disks[0]):
@@ -237,10 +412,18 @@ if len(disks) == 1 and in_use(disks[0]):
         print("Started without UEFI: the installer asks.")
     elif table_type(disk) != "gpt":
         print("Partition table is", table_type(disk) or "unknown", "not GPT: the installer asks.")
-    elif gap < NEEDED:
-        print("Less than 30 GiB free in one piece: the installer asks.")
     else:
-        beside = disk
+        if gap < NEEDED:
+            print("Less than 30 GiB free in one piece; looking for room to make.")
+            try:
+                gap = offer_shrink(disk, gap)
+            except Exception as problem:
+                print("Making room stopped:", repr(problem))
+                gap = largest_gap(disk)
+        if gap < NEEDED:
+            print("Less than 30 GiB free in one piece: the installer asks.")
+        else:
+            beside = disk
     disks = disks + ["(in use)"]
 
 if beside:

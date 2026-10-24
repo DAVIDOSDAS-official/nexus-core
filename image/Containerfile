@@ -580,14 +580,20 @@ RUN chmod 0755 /usr/libexec/nexus/clock \
 # zone, which opens every port above 1024. `nexus server` opens exactly
 # the ports its servers use, and closes them when one is removed.
 #
+# Each step only when needed: firewall-offline-cmd fails (exit 16,
+# ZONE_ALREADY_SET) when asked for what is already so, and that failed
+# the weekly build on 24 October.
+#
 # Set in the image's /etc: on a machine that updates, new files there
 # arrive with the update, so existing machines get the firewall too.
 RUN set -eu; \
     rpm -q firewalld > /dev/null || \
         { dnf install -y --setopt=install_weak_deps=False firewalld && dnf clean all; }; \
-    firewall-offline-cmd --set-default-zone=public; \
+    [ "$(firewall-offline-cmd --get-default-zone)" = public ] || \
+        firewall-offline-cmd --set-default-zone=public; \
     for service in dhcpv6-client mdns samba-client kdeconnect; do \
-        firewall-offline-cmd --zone=public --add-service="${service}"; \
+        firewall-offline-cmd --zone=public --query-service="${service}" > /dev/null || \
+            firewall-offline-cmd --zone=public --add-service="${service}"; \
     done; \
     systemctl enable firewalld.service
 
