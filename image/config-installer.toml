@@ -297,17 +297,32 @@ def on_mains():
         return True
     return any(read_int(p + "/online") == 1 for p in mains)
 
+def active_vt():
+    try:
+        return int(open("/sys/class/tty/tty0/active").read().strip()[3:])
+    except (OSError, ValueError):
+        return 1
+
+def switch_vt(number):
+    # The kernel's own call (VT_ACTIVATE, then VT_WAITACTIVE), not chvt:
+    # the installer has neither chvt nor fgconsole -- the first ISO with
+    # this step stopped there with FileNotFoundError (Asus, 28 October).
+    import fcntl
+    with open("/dev/tty0", "w") as console:
+        fcntl.ioctl(console, 0x5606, number)
+        fcntl.ioctl(console, 0x5607, number)
+
 def ask(text_lines, seconds):
     # The installer's screen is not up yet; ask on a console of our own
     # and come back to the one that was showing.
     import select
-    current = subprocess.run(["fgconsole"], capture_output=True, text=True).stdout.strip() or "1"
+    current = active_vt()
     try:
         tty = open("/dev/tty6", "r+")
-    except OSError:
-        print("No console to ask on: not shrinking.")
+        switch_vt(6)
+    except OSError as problem:
+        print("No console to ask on (" + repr(problem) + "): not shrinking.")
         return ""
-    subprocess.run(["chvt", "6"])
     tty.write(chr(10).join([""] * 3 + text_lines + ["", "  > "]))
     tty.flush()
     ready, _, _ = select.select([tty], [], [], seconds)
@@ -315,7 +330,10 @@ def ask(text_lines, seconds):
     tty.write(chr(10) + "  Thank you. Starting the installer..." + chr(10))
     tty.flush()
     tty.close()
-    subprocess.run(["chvt", current])
+    try:
+        switch_vt(current)
+    except OSError:
+        pass
     return answer
 
 def offer_shrink(disk, gap):
@@ -335,6 +353,11 @@ def offer_shrink(disk, gap):
         print("No ext4 partition can make room: the installer asks.")
         return gap
     name, size, keep, freed, used = best
+    import shutil
+    missing = [t for t in ("e2fsck", "resize2fs", "sfdisk") if not shutil.which(t)]
+    if missing:
+        print("Missing in the installer:", missing, "- not shrinking.")
+        return gap
     if not on_mains():
         ask(["  Nexus could make room next to the system on this disk, but only",
              "  with the charger plugged in: a laptop that turns off in the middle",

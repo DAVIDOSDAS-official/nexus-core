@@ -3,7 +3,7 @@
 Updated 23 October 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.57** (patches 1–83). **582 automated tests**, all passing.
+**Version 0.1.58** (patches 1–84). **582 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -96,6 +96,14 @@ here on a loop disk shaped like Pop's (EFI, full ext4, swap at the end):
 300 MB file intact (sha256), e2fsck clean, free space appeared between
 the ext4 and swap. Not yet on hardware: Asus left with Pop on the whole
 disk (229.5 GiB /, 11 GiB used) as the test case.
+
+**Asus 28 Oct, 0.1.57 KDE ISO next to Pop (229.5 GiB ext4, 13.6 GiB
+used):** the plan was right ("could keep 115 GiB and free 114.5 GiB")
+but "Making room stopped: FileNotFoundError" -- the installer has no
+fgconsole/chvt. **Patch 84 (0.1.58):** switches consoles with the
+kernel's VT_ACTIVATE/VT_WAITACTIVE ioctls; checks e2fsck, resize2fs,
+sfdisk exist before asking. The question screen itself is still
+untested (next: a VM with a full ext4 disk).
 
 **Promotion:** 25 s vertical dual-boot video (TikTok/IG/X/LinkedIn).
 r/Fedora: standalone project posts are not allowed (rule 4: weekly
