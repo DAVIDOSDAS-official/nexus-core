@@ -1,9 +1,9 @@
 # Nexus-CORE — status
 
-Updated 23 October 2026. Paste this at the start of a new session; it is
+Updated 29 October 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.58** (patches 1–84). **582 automated tests**, all passing.
+**Version 0.1.59** (patches 1–85). **582 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -104,6 +104,29 @@ fgconsole/chvt. **Patch 84 (0.1.58):** switches consoles with the
 kernel's VT_ACTIVATE/VT_WAITACTIVE ioctls; checks e2fsck, resize2fs,
 sfdisk exist before asking. The question screen itself is still
 untested (next: a VM with a full ext4 disk).
+
+**Asus 28 Oct: Nexus 0.1.57 (KDE) next to Pop!_OS 24.04 PASSED.**
+Pop shrunk by hand in the installer console (the same steps as the
+make-room code: resize2fs 114G, sfdisk -N 3 to 117760MiB, resize2fs;
+e2fsck -f -n clean), then the installer planned Nexus by itself into
+the 114.5 GiB gap (p5-p7, / encrypted 111.9 GiB). `sudo nexus dualboot`
+found "Pop!_OS 24.04 LTS ... started by /EFI/systemd/systemd-bootx64.efi
+on /dev/nvme0n1p1" -- systemd-boot chainload works; `dualboot 1
+--apply` restarted straight into Pop (Secure Boot off: Pop's
+systemd-boot is unsigned).
+Restarting Pop returns to Nexus; `nexus server` says "Firewall: on";
+the disk password is asked at Nexus's start (its / is encrypted).
+
+**Asus 29 Oct: `nexus server add website <folder> --apply` WORKS** on
+the Asus itself (Caddy on 8080, port opened). The phone did not load
+it -- most likely the phone was on mobile data or its VPN (to confirm).
+Hosting from home for everyone is not done: it needs a domain, port
+forwarding and a public IP (CGNAT often), and it shows the home IP.
+Planned: `nexus server publish` through a tunnel (see docs/ROADMAP.md).
+
+**Patch 85 (0.1.59):** baresip (SIP calls, scriptable from Python;
+Pop offers it too) + Opus + PipeWire or PulseAudio module in the
+desktop image, so people can build calling on it with nothing to add.
 
 **Promotion:** 25 s vertical dual-boot video (TikTok/IG/X/LinkedIn).
 r/Fedora: standalone project posts are not allowed (rule 4: weekly

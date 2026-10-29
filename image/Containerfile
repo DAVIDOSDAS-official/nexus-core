@@ -828,6 +828,22 @@ RUN set -u; \
     done; \
     dnf clean all; \
     ls /usr/share/swcatalog/xml/
+# Calls (0.1.59): baresip, the open-source calling program (SIP) that
+# Pop!_OS also offers, in the image so people can build on it -- from
+# a terminal or from Python -- without adding anything first. On Nexus
+# adding a package means a restart, so it is here already. Small, and
+# nothing of it runs until somebody starts it.
+#
+# Opus for the sound. For the speakers and microphone the PipeWire
+# module when Fedora has one, otherwise PulseAudio's, which PipeWire
+# also speaks.
+RUN set -eu; \
+    dnf install -y --setopt=install_weak_deps=False baresip baresip-opus; \
+    dnf install -y --setopt=install_weak_deps=False baresip-pipewire || \
+        { echo "No baresip-pipewire; using baresip-pulse"; \
+          dnf install -y --setopt=install_weak_deps=False baresip-pulse; }; \
+    dnf clean all; \
+    rpm -q baresip baresip-opus
 COPY image/first-boot/nexus-first-boot /usr/bin/nexus-first-boot
 COPY image/first-boot/nexus-first-boot.service \
      /usr/lib/systemd/system/nexus-first-boot.service
