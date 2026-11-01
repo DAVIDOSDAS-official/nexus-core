@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+#
+# What the "Choose time zone" button opens: `nexus-timezone pick` in a
+# terminal, held open at the end so the result can be read.
+
+set -u
+
+echo
+nexus-timezone pick || true
+
+echo
+printf "  Press Enter to close. "
+read -r _ || true

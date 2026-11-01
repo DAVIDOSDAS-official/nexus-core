@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#
+# Once, after logging in: "the time zone is the installer's default".
+#
+# When nothing is chosen in the installer, the machine ends up on New
+# York time (the Asus, 12 October and 1 November). This says so in
+# each person's session, one time each, with a button that opens
+# `nexus-timezone pick` in a terminal. It only reads and notifies;
+# nothing is looked up online -- that stays `sudo nexus-timezone auto
+# on`, for whoever wants it.
+
+set -u
+
+STATE="${XDG_STATE_HOME:-${HOME}/.local/state}/nexus"
+SHOWN="${STATE}/timezone-reminder-shown"
+
+[ -e "${SHOWN}" ] && exit 0
+command -v notify-send > /dev/null || exit 0
+nexus-timezone check --quiet || exit 0
+
+# Written before showing: once means once, also when the notification
+# is closed without a click.
+mkdir -p "${STATE}"
+: > "${SHOWN}"
+
+terminal=""
+for candidate in konsole qterminal; do
+    if command -v "${candidate}" > /dev/null; then
+        terminal="${candidate}"
+        break
+    fi
+done
+
+action=()
+[ -n "${terminal}" ] && action=(-A pick="Choose time zone")
+
+answer="$(notify-send -a Nexus -t 0 -i preferences-system-time "${action[@]}" \
+    "Is the time zone right?" \
+    "It is America/New_York, what the installer sets when nothing is chosen. Elsewhere the clock shows the wrong hour. Change it in a terminal: nexus-timezone pick -- or keep it: sudo nexus-timezone keep")"
+
+if [ "${answer}" = "pick" ] && [ -n "${terminal}" ]; then
+    # Its own unit, so it outlives this one.
+    systemd-run --user --quiet --collect --no-block \
+        "${terminal}" -e /usr/libexec/nexus/choose-timezone
+fi
+
+exit 0

@@ -568,6 +568,38 @@ COPY image/clock/nexus-clock.service \
 RUN chmod 0755 /usr/libexec/nexus/clock \
     && systemctl enable nexus-clock.service
 
+# The clock catches up whenever it is wrong (0.1.61), not only just
+# after starting.
+#
+# Fedora's chrony.conf has `makestep 1.0 3`: the clock is set straight
+# only in chrony's first three updates; after that a wrong clock is
+# only slewed -- sped up or slowed by at most 1/12 -- so a laptop that
+# wakes from sleep days behind takes weeks to catch up. The Asus sat
+# three days behind on 1 November with network time "on", and Firefox
+# refused every HTTPS site (their certificates looked not yet valid).
+# `makestep 1.0 -1`: set it straight whenever it is more than a second
+# off. Right for a laptop that sleeps; a jump of the clock is what
+# such a laptop needs, and nothing on a desktop depends on it never
+# jumping.
+#
+# Changed in the image's /etc/chrony.conf, so machines that update get
+# it -- unless somebody edited their own chrony.conf, which is kept.
+RUN set -eu; \
+    conf=/etc/chrony.conf; \
+    rpm -q chrony > /dev/null || \
+        { dnf install -y --setopt=install_weak_deps=False chrony && dnf clean all; }; \
+    test -f "${conf}"; \
+    if grep -Eq '^[[:space:]]*makestep[[:space:]]' "${conf}"; then \
+        sed -Ei 's/^[[:space:]]*makestep[[:space:]].*/makestep 1.0 -1/' "${conf}"; \
+    else \
+        printf '%s\n' '' \
+            '# Nexus: set the clock straight whenever it is over 1 s off.' \
+            'makestep 1.0 -1' >> "${conf}"; \
+    fi; \
+    [ "$(grep -Ec '^[[:space:]]*makestep[[:space:]]' "${conf}")" = 1 ]; \
+    grep -qx 'makestep 1.0 -1' "${conf}"; \
+    echo "chrony: $(grep -x 'makestep 1.0 -1' "${conf}")"
+
 # A firewall, on (0.1.56). Until 24 October there was none: firewalld
 # was not even installed, so anything listening was reachable by
 # everyone on the same network -- harmless at home, not on a cafe's or
@@ -860,6 +892,18 @@ RUN chmod 0755 /usr/libexec/nexus/setup-reminder /usr/libexec/nexus/choose-add-o
     mkdir -p /usr/lib/systemd/user/timers.target.wants && \
     ln -sf ../nexus-setup-reminder.timer \
         /usr/lib/systemd/user/timers.target.wants/nexus-setup-reminder.timer
+# Desktops only (0.1.61): when the time zone is still the installer's
+# default (America/New_York, nothing chosen), one notification after
+# login says so, with a button that opens `nexus-timezone pick`.
+# Nothing is looked up online. Gone once a zone is set or kept.
+COPY image/timezone/nexus-timezone-reminder /usr/libexec/nexus/timezone-reminder
+COPY image/timezone/choose-timezone /usr/libexec/nexus/choose-timezone
+COPY image/timezone/nexus-timezone-reminder.service \
+     image/timezone/nexus-timezone-reminder.timer \
+     /usr/lib/systemd/user/
+RUN chmod 0755 /usr/libexec/nexus/timezone-reminder /usr/libexec/nexus/choose-timezone && \
+    ln -sf ../nexus-timezone-reminder.timer \
+        /usr/lib/systemd/user/timers.target.wants/nexus-timezone-reminder.timer
 # Only what can be added to this desktop -- the one place this block
 # differs from base's copy, on purpose.
 #

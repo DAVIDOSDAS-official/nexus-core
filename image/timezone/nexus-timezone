@@ -3,10 +3,13 @@
 # nexus-timezone -- the time zone, set by hand or following the network.
 #
 #     nexus-timezone                     what it is, and whether auto is on
+#     nexus-timezone pick                type your city, choose from a list
 #     sudo nexus-timezone Europe/Skopje  set it
+#     sudo nexus-timezone keep           the current one is right; stop asking
 #     sudo nexus-timezone now            look it up once from your IP address
 #     sudo nexus-timezone auto on        look it up whenever a network connects
 #     sudo nexus-timezone auto off       stop
+#     nexus-timezone check               say so if nobody chose it (scripts)
 #
 # Off unless somebody turns it on. Looking a time zone up means asking a
 # server where this IP address is, and a distribution that collects
@@ -15,12 +18,24 @@
 # GeoIP service -- the same one Fedora's installer uses. It sees the IP
 # address, like any website. Nothing else is sent; no GPS, no wifi
 # scanning. The answer is used for the time zone and not kept.
+#
+# Nobody chose it (0.1.61). When nothing is picked in the installer,
+# Fedora's installer leaves America/New_York -- the Asus came out on
+# New York time twice (12 October, 1 November) and nothing said so.
+# Nexus does not guess the zone (that would be the lookup above, which
+# stays opt-in); it says so instead: at the first start, once after
+# each person logs in, and in `nexus doctor`, until a zone is set
+# here or `sudo nexus-timezone keep` says New York is right.
 
 set -uo pipefail
 
 SERVICE="https://geoip.fedoraproject.org/city"
 STATE=/etc/nexus/auto-timezone
 ZONES=/usr/share/zoneinfo
+# Written whenever a zone is set or kept here. Its absence, with the
+# installer's default in place, is what "nobody chose it" means.
+CHOSEN="${NEXUS_TIMEZONE_CHOSEN:-/etc/nexus/timezone-chosen}"
+INSTALLER_DEFAULT=America/New_York
 
 current() {
     timedatectl show --property=Timezone --value 2>/dev/null || echo unknown
@@ -50,7 +65,99 @@ set_zone() {
         return 1
     fi
 
-    timedatectl set-timezone "$1" && echo "Time zone: $1"
+    timedatectl set-timezone "$1" || return 1
+    mark_chosen
+    echo "Time zone: $1"
+}
+
+mark_chosen() {
+    mkdir -p "$(dirname "${CHOSEN}")" 2>/dev/null
+    : > "${CHOSEN}" 2>/dev/null || true
+}
+
+# Exit 0 (and, unless --quiet, the lines to show) when nobody chose
+# the zone; 1 when there is nothing to say.
+not_chosen() {
+    [ -e "${CHOSEN}" ] && return 1
+    [ "$(current)" = "${INSTALLER_DEFAULT}" ]
+}
+
+check() {
+    not_chosen || return 1
+    [ "${1:-}" = "--quiet" ] && return 0
+    echo "Time zone: ${INSTALLER_DEFAULT} -- what the installer sets when"
+    echo "nothing is chosen. If you are not in New York, the clock shows"
+    echo "the wrong hour. To change it:   nexus-timezone pick"
+    echo "If New York is right:           sudo nexus-timezone keep"
+    return 0
+}
+
+# Type a city, get the zones that match, choose one. For people who do
+# not know their zone is called "Europe/Belgrade".
+pick() {
+    echo "Time zone now: $(current)"
+    echo
+    echo "Zones are named after a large city, e.g. Europe/Belgrade,"
+    echo "America/Chicago, Asia/Tokyo. Type yours, or one near you."
+
+    local query pattern zone answer
+    local -a matches
+    while true; do
+        echo
+        printf "City or region (Enter to stop): "
+        read -r query || return 0
+        query="$(printf '%s' "${query}" | sed 's/^ *//; s/ *$//')"
+        [ -z "${query}" ] && { echo "Nothing changed."; return 0; }
+
+        # "new york" is America/New_York; fixed text, never a pattern.
+        pattern="${query// /_}"
+        mapfile -t matches < <(timedatectl list-timezones 2>/dev/null \
+            | grep -iF -- "${pattern}")
+
+        if [ "${#matches[@]}" -eq 0 ]; then
+            echo "No zone matches '${query}'. Try the capital or a big city"
+            echo "nearby, or the region (Europe, America, Asia, Africa)."
+            continue
+        fi
+        if [ "${#matches[@]}" -gt 25 ]; then
+            echo "${#matches[@]} zones match '${query}'; type more of the name."
+            continue
+        fi
+
+        if [ "${#matches[@]}" -eq 1 ]; then
+            zone="${matches[0]}"
+        else
+            local i
+            for i in "${!matches[@]}"; do
+                printf '  %2d  %s\n' "$((i + 1))" "${matches[$i]}"
+            done
+            printf "Number (Enter to search again): "
+            read -r answer || return 0
+            case "${answer}" in
+                ''|*[!0-9]*) continue ;;
+            esac
+            if [ "${answer}" -lt 1 ] || [ "${answer}" -gt "${#matches[@]}" ]; then
+                echo "No number ${answer} in the list."
+                continue
+            fi
+            zone="${matches[$((answer - 1))]}"
+        fi
+
+        printf "Set the time zone to %s? [y/N] " "${zone}"
+        read -r answer || return 0
+        case "${answer}" in
+            y|Y|yes|YES|Yes) ;;
+            *) echo "Not changed."; continue ;;
+        esac
+
+        if [ "$(id -u)" -eq 0 ]; then
+            set_zone "${zone}"
+        else
+            echo "Changing it needs your password."
+            sudo "$0" "${zone}"
+        fi
+        return
+    done
 }
 
 lookup() {
@@ -84,6 +191,21 @@ case "${1:-}" in
         else
             echo "Automatic: off"
         fi
+        if not_chosen; then
+            echo
+            check
+        fi
+        ;;
+    check)
+        check "${2:-}"
+        ;;
+    pick)
+        pick
+        ;;
+    keep)
+        need_root
+        mark_chosen
+        echo "Time zone kept: $(current). Nexus will not ask about it again."
         ;;
     now)
         need_root
@@ -111,7 +233,7 @@ case "${1:-}" in
         esac
         ;;
     -h|--help|help)
-        sed -n '3,10p' "$0" | sed 's/^# \{0,1\}//'
+        sed -n '3,13p' "$0" | sed 's/^# \{0,1\}//'
         ;;
     *)
         need_root

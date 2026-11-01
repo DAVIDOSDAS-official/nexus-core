@@ -36,6 +36,7 @@ add_library(nexus_system
     src/dualboot.cpp
     src/server.cpp
     src/specs.cpp
+    src/clock.cpp
 )
 
 target_include_directories(nexus_system

@@ -1,0 +1,12 @@
+[Unit]
+Description=Nexus: say so if the time zone is the installer's default
+# In the person's session, once per person (see the script). Only
+# reads and notifies. Nothing to do once a zone was set or kept with
+# nexus-timezone.
+ConditionPathExists=!/etc/nexus/timezone-chosen
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nexus/timezone-reminder
+# Waits while the notification is up, for its button.
+TimeoutStartSec=infinity

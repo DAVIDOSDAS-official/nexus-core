@@ -60,6 +60,7 @@
 #include <nexus/system/version.hpp>
 #include <nexus/system/gamecheck.hpp>
 #include <nexus/system/specs.hpp>
+#include <nexus/system/clock.hpp>
 #include <nexus/system/language.hpp>
 #include <nexus/system/update.hpp>
 #include <nexus/system/catalogue.hpp>
@@ -2252,15 +2253,56 @@ nexus::Finding checkClock() {
         }
     }
 
+    // How far off network time the clock is, as chrony sees it
+    // (0.1.61). Network time "on" is not the same as right: Fedora's
+    // chrony only set the clock straight in its first three updates,
+    // so the Asus woke from sleep three days behind on 1 November,
+    // with NTP on, and stayed there -- Firefox refused every HTTPS
+    // site. Images from 0.1.61 set it straight whenever it is off;
+    // this says so on machines that are off now.
+    std::optional<double> offset;
+    if (ntp == "yes" && nexus::system::commandExists("chronyc")) {
+        const std::string prefix =
+            nexus::system::commandExists("timeout") ? "timeout 5 " : "";
+        const auto tracking = nexus::system::runCommand(
+            prefix + "chronyc -n tracking 2>/dev/null", false);
+        offset = nexus::system::parseChronyOffset(tracking.text);
+    }
+    constexpr double kOffBy = 60.0;  // seconds: past drift, a wrong clock
+    // `chronyc makestep` sets it straight now; only with chrony there.
+    const std::string stepNow =
+        nexus::system::commandExists("chronyc")
+            ? "sudo chronyc makestep"
+            : "sudo timedatectl set-ntp true";
+
     if (notAlive || (newest > 0 && now + 3600 < newest)) {
         f.health = nexus::Health::Problem;
         f.detail = "The clock is behind: some installed packages were"
                    " built after the date it shows, and the package"
                    " database skips them.";
+        if (offset && *offset > kOffBy) {
+            f.detail += " It is " + nexus::system::describeOffset(*offset) +
+                        " behind network time.";
+        }
         f.examples.push_back("this makes installed programs look missing"
                              " and requirements look broken");
         f.total = 1;
-        f.suggestion = "sudo timedatectl set-ntp true";
+        f.suggestion = ntp == "yes" ? stepNow
+                                    : "sudo timedatectl set-ntp true";
+    } else if (offset && *offset > kOffBy) {
+        f.health = nexus::Health::Problem;
+        f.detail = "The clock is " +
+                   nexus::system::describeOffset(*offset) +
+                   " behind network time and only catching up slowly."
+                   " Websites' certificates look not yet valid, and"
+                   " newer packages look signed in the future.";
+        f.suggestion = stepNow;
+    } else if (offset && *offset < -kOffBy) {
+        f.health = nexus::Health::Warning;
+        f.detail = "The clock is " +
+                   nexus::system::describeOffset(*offset) +
+                   " ahead of network time and only catching up slowly.";
+        f.suggestion = stepNow;
     } else if (ntp == "no") {
         f.health = nexus::Health::Warning;
         f.detail = "Automatic time is off; the clock is only as right as"
@@ -2283,6 +2325,42 @@ nexus::Finding checkClock() {
     } else {
         f.health = nexus::Health::Unknown;
         f.detail = "Could not be checked.";
+    }
+    return f;
+}
+
+// The time zone (0.1.61). With nothing chosen in the installer, the
+// machine is on New York time -- hours off almost everywhere else, and
+// nothing said so (the Asus, 12 October and 1 November). Not guessed:
+// looking it up online stays opt-in (`sudo nexus-timezone auto on`).
+// Empty when it cannot be read: a line that says "?" about the time
+// zone helps nobody.
+std::optional<nexus::Finding> checkTimezone() {
+    if (!nexus::system::commandExists("timedatectl")) return std::nullopt;
+
+    auto zone = nexus::system::runCommand(
+        "timedatectl show -p Timezone --value 2>/dev/null", false).text;
+    while (!zone.empty() && std::isspace(static_cast<unsigned char>(zone.back()))) {
+        zone.pop_back();
+    }
+    if (zone.empty()) return std::nullopt;
+
+    std::error_code ec;
+    const bool chosen =
+        std::filesystem::exists("/etc/nexus/timezone-chosen", ec);
+
+    nexus::Finding f;
+    f.check = "Time zone";
+    if (nexus::system::timezoneNotChosen(zone, chosen)) {
+        f.health = nexus::Health::Warning;
+        f.detail = zone + ", what the installer sets when nothing is"
+                   " chosen. Anywhere else the clock shows the wrong"
+                   " hour.";
+        f.suggestion = "nexus-timezone pick   (New York is right: "
+                       "sudo nexus-timezone keep)";
+    } else {
+        f.health = nexus::Health::Ok;
+        f.detail = zone + ".";
     }
     return f;
 }
@@ -5372,6 +5450,7 @@ int commandDoctor(
     const nexus::Finding clock = checkClock();
     const bool clockBehind = clock.health == nexus::Health::Problem;
     findings.push_back(clock);
+    if (auto zone = checkTimezone()) findings.push_back(std::move(*zone));
 
     // Whether the system can be examined at all: every finding
     // below this one is worthless if it failed.

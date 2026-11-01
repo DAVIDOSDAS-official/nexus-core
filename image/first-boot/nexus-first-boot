@@ -318,6 +318,18 @@ cat <<'BANNER'
 
 BANNER
 
+# The time zone, when nobody chose one in the installer (0.1.61): it
+# is then New York, and the clock is hours off almost everywhere else.
+# Said here and once after login; changed with `nexus-timezone pick`.
+# Nothing is looked up online.
+if command -v nexus-timezone > /dev/null 2>&1; then
+    tz_note="$(nexus-timezone check 2>/dev/null)"
+    if [ -n "${tz_note}" ]; then
+        printf '%s\n' "${tz_note}" | sed 's/^/  /'
+        echo
+    fi
+fi
+
 # --with-available matters: without the archive nothing is available,
 # every missing requirement reports that nothing provides it, and the
 # machine looks unimprovable rather than unconfigured.

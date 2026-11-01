@@ -1,0 +1,9 @@
+[Unit]
+Description=Nexus: time-zone reminder, two minutes after login
+
+[Timer]
+# A minute after the add-on reminder, so the two do not arrive at once.
+OnStartupSec=2min
+
+[Install]
+WantedBy=timers.target
