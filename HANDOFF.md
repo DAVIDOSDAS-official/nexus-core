@@ -3,7 +3,7 @@
 Updated 29 October 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.59** (patches 1–85). **582 automated tests**, all passing.
+**Version 0.1.60** (patches 1–86). **582 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -127,6 +127,38 @@ Planned: `nexus server publish` through a tunnel (see docs/ROADMAP.md).
 **Patch 85 (0.1.59):** baresip (SIP calls, scriptable from Python;
 Pop offers it too) + Opus + PipeWire or PulseAudio module in the
 desktop image, so people can build calling on it with nothing to add.
+
+**Patch 86 (0.1.60): `nexus specs`.** The machine in one screen: the
+Nexus node-graph logo in colour + a 16-colour and true-colour test
+bar, then host, model, Nexus version/edition, base, kernel, uptime,
+desktop, resolution, shell, CPU, GPU(s), RAM, disks, battery, and the
+Nexus-only lines (Secure Boot, encryption, firewall, NTSync, add-ons,
+image signature, build date). All read from /proc, /sys, os-release
+and rpm-ostree -- nothing installed, nothing guessed; a failed read
+goes to "Could not read:", never shown as a value. `--plain` drops
+colour (bug reports), `--json` for scripts. Colour only when stdout is
+a terminal. New system/specs.{hpp was already there, cpp new} + 9
+specs_test cases. 591 tests pass. Tested here (container: fields with
+no data correctly drop out); the full picture shows on the Asus.
+
+**Verified Asus (1 Nov):** Minecraft server passed -- `Done (13.0s)`,
+rcon `list` answered, `nc` from the Acer reached 25565. Website reached
+from the Acer (`curl -I` -> 200 from Caddy); the phone failure was the
+phone (Firefox HTTPS-Only / guest Wi-Fi), not Nexus. `nexus server
+remove minecraft --apply` removes the unit, keeps the world.
+
+**Two bugs found 1 Nov, fix in the NEXT patch:**
+1. CLOCK: chrony's `makestep 1.0 3` only steps the clock in its first
+   3 checks, so a laptop that wakes with a wrong clock never catches
+   up (the Asus sat 3 days behind; Firefox then rejected every HTTPS
+   cert). Fix: a drop-in letting chrony step whenever off by >1s.
+2. TIME ZONE: with nothing chosen in the installer, the machine ends
+   up America/New_York. Fix: first boot points it out and says how to
+   change it (no online lookup).
+Also queued: `nexus install` should fetch the package list itself
+(not make the user run `dnf makecache`) and give a "did you mean"
+hint for a mistyped package (java-lastest -> java-latest-openjdk);
+plain `sudo dnf install` should point to `sudo nexus install`.
 
 **Promotion:** 25 s vertical dual-boot video (TikTok/IG/X/LinkedIn).
 r/Fedora: standalone project posts are not allowed (rule 4: weekly

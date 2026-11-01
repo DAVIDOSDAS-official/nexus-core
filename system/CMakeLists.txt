@@ -35,6 +35,7 @@ add_library(nexus_system
     src/catalogue.cpp
     src/dualboot.cpp
     src/server.cpp
+    src/specs.cpp
 )
 
 target_include_directories(nexus_system
