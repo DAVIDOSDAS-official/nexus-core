@@ -483,6 +483,25 @@ RUN set -eu; \
     fi; \
     echo "Redistribution: Fedora packages only"
 
+# OpenGL ES for the compositor (0.1.62). KDE Plasma 6.8.2 arrived with
+# Fedora's updates on 1 November, and its KWin opens libGLESv2.so.2 at
+# start instead of linking it -- so no package requires it, and with
+# weak dependencies off nothing brought it in. KWin crashed at start
+# ("Couldn't open libGLESv2.so.2", core dump in EglContext), the login
+# screen never appeared, and the Asus showed a black screen on 0.1.61.
+# A few hundred kilobytes; the build now fails if any compositor in
+# the image cannot find it, so the next such change stops here and not
+# on somebody's laptop.
+RUN set -eu; \
+    dnf install -y --setopt=install_weak_deps=False libglvnd-gles; \
+    dnf clean all; \
+    ldconfig; \
+    ldconfig -p | grep -q 'libGLESv2\.so\.2 '; \
+    for compositor in /usr/bin/kwin_wayland /usr/bin/labwc; do \
+        [ -x "${compositor}" ] || continue; \
+        echo "OpenGL ES: found for ${compositor}"; \
+    done
+
 # Flathub's remote definition, carried in the image.
 #
 # The gaming profile takes Steam from Flathub (see its Flatpak: line),

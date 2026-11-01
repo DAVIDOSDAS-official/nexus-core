@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.61** (patches 1–87). **596 automated tests**, all passing.
+**Version 0.1.62** (patches 1–88). **596 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -166,6 +166,17 @@ remove minecraft --apply` removes the unit, keeps the world.
    Test on the Asus: `timedatectl` -> `System clock synchronized: yes`;
    `grep makestep /etc/chrony.conf`; `nexus doctor`; `nexus-timezone
    pick`. The notification only shows on a machine still on New York.
+**Asus 1 Nov, 0.1.61 KDE: BLACK SCREEN after update.** Fedora's
+weekly updates brought KDE Plasma 6.7.5 -> 6.8.2 (no kernel change).
+TTY3 login worked; sddm running; kwin_wayland 6.8.2 dumped core:
+"Couldn't open libGLESv2.so.2" (KWin opens it at start, no package
+requires it, weak deps are off). Rolled back to 0.1.59 from the boot
+menu (0.1.60 was never installed on the Asus: two deployments kept).
+**Patch 88 (0.1.62):** libglvnd-gles in every desktop image; the
+build fails if libGLESv2.so.2 is missing. Lesson: a weekly rebuild
+can break the desktop with no Nexus change -- test the KDE image in
+the VM before updating the Asus.
+
 Also queued: `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
 hint for a mistyped package (java-lastest -> java-latest-openjdk);
