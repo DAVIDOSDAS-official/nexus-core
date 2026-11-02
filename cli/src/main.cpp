@@ -61,6 +61,7 @@
 #include <nexus/system/gamecheck.hpp>
 #include <nexus/system/specs.hpp>
 #include <nexus/system/clock.hpp>
+#include <nexus/system/suggest.hpp>
 #include <nexus/system/language.hpp>
 #include <nexus/system/update.hpp>
 #include <nexus/system/catalogue.hpp>
@@ -1040,6 +1041,10 @@ PackageFacts dnfFacts(const std::string& name) {
     return facts;
 }
 
+// Whether any package lists (repositories, Flathub) were read this run.
+// Without them "no package named X" would be a guess about the archive.
+bool gAvailableLoaded = false;
+
 int commandInstall(
     const nexus::AliasTable& aliases,
     const std::vector<Component>& universe,
@@ -1062,6 +1067,55 @@ int commandInstall(
     );
 
     const auto solution = buildSolver(universe).solve(request);
+
+    // Nothing by that name at all (0.1.63): almost always a typo, and
+    // the solver's "No combination of components satisfies every
+    // requirement" said nothing a person could act on
+    // (java-lastest-openjdk on the Asus, 1 November).
+    if (solution.status != nexus::SolverStatus::Success &&
+        !aliases.knows(capability)) {
+        bool named = false;
+        std::vector<std::string> names;
+        names.reserve(universe.size());
+        for (const Component& component : universe) {
+            if (component.name() == capability) { named = true; break; }
+            for (const auto& provided : component.providedCapabilities()) {
+                if (provided.name() == capability) { named = true; break; }
+            }
+            if (named) break;
+            names.push_back(component.name());
+        }
+        if (!named && !gAvailableLoaded) {
+            std::cout << "Nothing installed is called " << capability
+                      << ", and the package lists are not downloaded,\n"
+                         "so Nexus cannot see what is available.\n\n";
+            if (useRpm) {
+                std::cout << "    sudo nexus install " << capability
+                          << "      (fetches them first; installs nothing"
+                             " without --apply)\n";
+            } else {
+                std::cout << "    sudo apt update      then again: nexus install "
+                          << capability << "\n";
+            }
+            return 1;
+        }
+        if (!named) {
+            std::cout << "No package named " << capability << ".\n";
+            const auto near =
+                nexus::system::spellingSuggestions(names, capability);
+            if (!near.empty()) {
+                std::cout << "Did you mean " << near.front() << "?\n";
+                for (std::size_t i = 1; i < near.size(); ++i) {
+                    std::cout << "        or " << near[i] << "?\n";
+                }
+                std::cout << "\n    nexus install " << near.front() << "\n";
+            } else {
+                std::cout << "Search for it:\n\n    nexus options " << capability
+                          << "\n    flatpak search " << capability << "\n";
+            }
+            return 1;
+        }
+    }
 
     if (solution.status != nexus::SolverStatus::Success) {
         std::cout
@@ -5606,6 +5660,14 @@ int commandDoctor(
                     "Not judged while the clock is behind (see Clock): " +
                     finding.detail;
             }
+            // "Unused" with nothing to judge it against is a question
+            // mark on a healthy machine (the Asus, 2 November): on an
+            // image-based system nothing records what was wanted, so
+            // the line could never say anything. Shown only when it can.
+            if (finding.check == "Unused" &&
+                finding.health == nexus::Health::Unknown) {
+                continue;
+            }
             findings.push_back(finding);
         }
     }
@@ -5687,18 +5749,16 @@ int commandDoctor(
 
             updates.health = nexus::Health::Ok;
 
-            if (layered) {
-                updates.detail =
-                    "Image-based, with packages layered on top: "
-                    "rpm-ostree upgrade pulls a newer image and keeps "
-                    "them. (bootc upgrade refuses a machine with "
-                    "layered packages.)";
-                updates.suggestion = "sudo rpm-ostree upgrade";
-            } else {
-                updates.detail =
-                    "Image-based; bootc upgrade will pull a newer one.";
-                updates.suggestion = "sudo bootc upgrade";
-            }
+            // `nexus update` is the way in, either way (0.1.63): it
+            // runs rpm-ostree upgrade, which keeps layered packages,
+            // and it writes the update to `nexus history`. Suggesting
+            // `bootc upgrade` sent people around Nexus, so the update
+            // never showed in history (seen on the Asus, 2 November).
+            updates.detail =
+                layered ? "Image-based, with packages added on top;"
+                          " updating keeps them."
+                        : "Image-based; updates are new signed images.";
+            updates.suggestion = "nexus update   (take it: sudo nexus update --apply)";
         }
 
         findings.push_back(std::move(updates));
@@ -6595,30 +6655,26 @@ INSTALLING AND REMOVING
   and refuses to apply one )" << manager << R"( will not agree to.
 
 UPDATING
-
-  Nexus does not update the system. Use )"
-              << (useRpm && imageBased ? "rpm-ostree" : manager)
-              << R"( directly:
 )";
 
     if (useRpm && imageBased) {
         std::cout << R"(
-      sudo rpm-ostree upgrade          pull a newer image, keep what
-                                       you added on top of it
-      sudo reboot                      and boot into it
+      nexus update                     what is new for this machine
+      sudo nexus update --apply        take it: the new system and app
+                                       updates, written to nexus history
+      sudo reboot                      the new system starts here
 
   An image-based system updates by replacing the whole image rather
   than by changing packages one at a time, so the change arrives at
-  a reboot and the previous one stays bootable if it does not work.
+  a reboot and the previous one stays in the boot menu if it does not
+  work. nexus update hands the work to rpm-ostree upgrade, which keeps
+  what you added on top of the image.
 
-      sudo rpm-ostree rollback         go back to the previous one
+      sudo rpm-ostree rollback         make the previous one the default
 
-  Not bootc upgrade, unless nothing has ever been added to this
-  machine. bootc refuses a deployment with packages layered on top,
-  and that is what `nexus install` and first-boot setup do here.
-  rpm-ostree upgrade pulls the same new image and puts the layered
-  packages back on it. And not dnf upgrade: /usr is part of the
-  image, so dnf cannot change it in place.
+  Not bootc upgrade: it refuses a machine with packages added on top,
+  and it does not write to nexus history. Not dnf upgrade either: /usr
+  is part of the image, so dnf cannot change it in place.
 
   If there is nothing to pull, this machine was installed from an
   image that was never published, and cannot update. That is a
@@ -6626,18 +6682,23 @@ UPDATING
 )";
     } else if (useRpm) {
         std::cout << R"(
+  Nexus does not update this system; dnf does:
+
       sudo dnf upgrade --refresh       update everything
 )";
     } else {
         std::cout << R"(
+  Nexus does not update this system; apt does:
+
       sudo apt update                  refresh what is available
       sudo apt upgrade                 update everything
 )";
     }
 
     std::cout << R"(
-  Updating is one operation with one correct implementation, and it
-  already exists. A second one would only be a way to get it wrong.
+  Nexus never updates anything by its own means: the work is always
+  the package manager's. A second implementation would only be a way
+  to get it wrong.
 
 SETTING UP A MACHINE
 
@@ -8830,10 +8891,54 @@ int main(int argc, char** argv) {
                 // install the cache really is empty, and the honest
                 // answer is that Nexus cannot see any packages yet --
                 // not that none exist.
-                std::cerr
-                    << "No package metadata read from " << rpmCache
-                    << "; continuing with installed packages only.\n"
-                    << "Run 'sudo dnf makecache' to fetch it.\n";
+                // Fetched here when it can be (0.1.63), instead of
+                // telling the person to run dnf themselves (the Asus,
+                // 1 November: `nexus install` gave up on a machine
+                // whose lists had simply never been downloaded).
+                // Fetching lists changes no part of the system -- it
+                // is dnf's cache -- so it needs no --apply. Only for
+                // commands that are about to offer packages, and only
+                // as root: dnf writes that cache as root, and reads
+                // that need no root stay that way.
+                const bool offers = command == "install" ||
+                                    command == "setup" ||
+                                    command == "options" ||
+                                    command == "source";
+                bool fetched = false;
+                if (offers && ::geteuid() == 0 &&
+                    nexus::system::commandExists("dnf")) {
+                    std::cerr << "Fetching the package lists (dnf makecache); "
+                                 "this takes a moment.\n" << std::flush;
+                    const int rc = std::system(nexus::system::inPlainLocale(
+                        "dnf makecache -q").c_str());
+                    if (rc == 0) {
+                        auto again = repositories.load();
+                        if (!again.components.empty()) {
+                            const std::size_t loadedCount =
+                                again.components.size();
+                            universe = nexus::system::mergeAvailable(
+                                universe, again.components,
+                                versionComparator());
+                            availableOnly = std::move(again.components);
+                            haveAvailable = true;
+                            fetched = true;
+                            std::cerr << "Loaded " << loadedCount
+                                      << " available packages.\n";
+                        }
+                    }
+                }
+                if (!fetched) {
+                    std::cerr
+                        << "No package lists here yet, so Nexus can only see "
+                           "what is installed.\n";
+                    if (::geteuid() != 0 && offers) {
+                        std::cerr << "Run it with sudo and it fetches them "
+                                     "first (nothing is installed without "
+                                     "--apply).\n";
+                    } else {
+                        std::cerr << "Fetch them: sudo dnf makecache\n";
+                    }
+                }
             }
         } else if (withAvailable) {
             const nexus::system::AptSource apt(listsDir);
@@ -8945,6 +9050,7 @@ int main(int argc, char** argv) {
                 aliases, availableOnly, argument, profileDir, arch);
         }
 
+        gAvailableLoaded = haveAvailable;
         if (command == "install") {
             if (argument.empty()) {
                 std::cerr << "install requires a capability name.\n";

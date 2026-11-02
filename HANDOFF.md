@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.62** (patches 1–88). **596 automated tests**, all passing.
+**Version 0.1.63** (patches 1–89). **602 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -177,7 +177,34 @@ build fails if libGLESv2.so.2 is missing. Lesson: a weekly rebuild
 can break the desktop with no Nexus change -- test the KDE image in
 the VM before updating the Asus.
 
-Also queued: `nexus install` should fetch the package list itself
+**Asus 1-2 Nov: 0.1.61 + 0.1.62 PASSED.** `grep makestep
+/etc/chrony.conf` -> `makestep 1.0 -1`; timedatectl "System clock
+synchronized: yes"; doctor all ok incl. the new Clock and Time zone
+lines (zone Europe/Skopje, so no New York nudge -- that path untested
+on hardware); `nexus-timezone pick` runs; KDE back on 0.1.62 (no
+layered libglvnd-gles needed). The 0.1.62 update came through `nexus
+update` (history: "update -> Nexus 0.1.62 [applied]"), not by itself.
+
+**Patch 89 (0.1.63), not yet on the Asus:**
+- `nexus install <typo>`: "No package named X. Did you mean Y?" (new
+  system/suggest.{hpp,cpp}, 6 tests; java-lastest-openjdk ->
+  java-latest-openjdk). With no package lists read it says so instead
+  of guessing.
+- install/setup/options/source as root fetch the package lists
+  themselves (`dnf makecache -q`) when none are there; without root
+  they say "run it with sudo and it fetches them first".
+- /etc/profile.d/nexus-dnf-hint.sh: interactive `dnf`/`sudo dnf`
+  install/remove/upgrade that FAILS is followed by the Nexus command
+  for it. dnf itself runs unchanged; `command sudo dnf` bypasses.
+- doctor: Updates suggests `nexus update` (was `sudo bootc upgrade`,
+  which bypasses history); the "Unused ?" line is hidden when it has
+  nothing to judge. `nexus guide` UPDATING rewritten around `nexus
+  update`.
+Test on the Asus: `nexus install java-lastest-openjdk`; `sudo dnf
+install vlc` (dnf's error, then the hint); `nexus doctor` (Updates line,
+no Unused line).
+
+Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
 hint for a mistyped package (java-lastest -> java-latest-openjdk);
 plain `sudo dnf install` should point to `sudo nexus install`.

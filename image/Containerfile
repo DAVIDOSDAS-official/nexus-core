@@ -577,6 +577,15 @@ COPY image/timezone/90-nexus-timezone \
 RUN chmod 0755 /usr/bin/nexus-timezone \
         /usr/lib/NetworkManager/dispatcher.d/90-nexus-timezone
 
+# When dnf cannot change this system, say what can (0.1.63). /usr is
+# part of the image, so `sudo dnf install x` fails with Fedora's own
+# error and no next step (the Asus, 1 November). In interactive shells
+# dnf still runs exactly as typed; only when an install, remove or
+# upgrade FAILS does one hint follow (`sudo nexus install x`, ...).
+# `command sudo dnf ...` bypasses it entirely.
+COPY image/dnf-hint/nexus-dnf-hint.sh /etc/profile.d/nexus-dnf-hint.sh
+RUN chmod 0644 /etc/profile.d/nexus-dnf-hint.sh
+
 # The clock: network time on and the hardware clock in universal time,
 # once per machine. The installer leaves network time off when it had
 # no network, and the Asus came out reading its hardware clock as local
