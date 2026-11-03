@@ -239,6 +239,22 @@ VpnReport assessVpn(const VpnFacts& f) {
         r.kind = tunnelKind(*findLink(f.links, f.route4));
     }
 
+    // Proton's kill switch is a dummy interface: pvpnksintrf0, and
+    // pvpnksintrf1 for the advanced (permanent) one (seen on the Asus,
+    // 3 November). Visible without root.
+    bool protonKs = false;
+    for (const auto& l : f.links) if (startsWith(l.name, "pvpnksintrf")) protonKs = true;
+
+    // Disconnected with the kill switch on: traffic is routed into the
+    // blocking interface, not out. That is the kill switch working.
+    if (startsWith(f.route4, "pvpnksintrf")) {
+        r.lines.push_back({"VPN", VpnHealth::Ok,
+                           "Proton VPN is not connected, and its kill switch is blocking internet"
+                           " traffic until it is. Nothing goes out unprotected.",
+                           ""});
+        return r;
+    }
+
     if (r.tunnel.empty()) {
         VpnLine vpn{"VPN", VpnHealth::Info, "", ""};
         const NetLink* ts = nullptr;
@@ -335,7 +351,6 @@ VpnReport assessVpn(const VpnFacts& f) {
     // Kill switch: would traffic stop, or go out directly, if the tunnel dropped?
     {
         VpnLine ks{"Kill switch", VpnHealth::Ok, "", ""};
-        bool protonKs = findLink(f.links, "pvpnksintrf0") != nullptr;
         if (r.kind == "Proton VPN" && protonKs) {
             ks.detail = "On (Proton VPN's kill switch).";
         } else if (r.kind == "Mullvad") {

@@ -205,3 +205,26 @@ TEST(VpnCheckTest, NoVpnAndTailscaleWithoutExitNode) {
     EXPECT_NE(line(r, "VPN").detail.find("None active"), std::string::npos);
     EXPECT_EQ(r.lines.size(), 1u);
 }
+
+// The Asus, 3 November: Proton's advanced kill switch is pvpnksintrf1,
+// and the check said "Off".
+TEST(VpnCheckTest, ProtonKillSwitchAnyNumberAndWithoutRoot) {
+    VpnFacts f;
+    f.links = {{"wlo1", true, false, false}, {"pvpnksintrf1", true, false, false},
+               {"proton0", true, true, false}};
+    f.route4 = "proton0";
+    f.rulesetRead = false;                     // no root needed
+    const auto r = assessVpn(f);
+    EXPECT_EQ(r.kind, "Proton VPN");
+    EXPECT_EQ(line(r, "Kill switch").health, VpnHealth::Ok);
+}
+
+TEST(VpnCheckTest, ProtonDisconnectedKillSwitchBlocking) {
+    VpnFacts f;
+    f.links = {{"wlo1", true, false, false}, {"pvpnksintrf1", true, false, false}};
+    f.route4 = "pvpnksintrf1";
+    const auto r = assessVpn(f);
+    ASSERT_EQ(r.lines.size(), 1u);
+    EXPECT_EQ(r.lines[0].health, VpnHealth::Ok);
+    EXPECT_NE(r.lines[0].detail.find("blocking"), std::string::npos);
+}

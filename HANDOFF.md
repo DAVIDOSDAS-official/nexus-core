@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.64** (patches 1–90). **615 automated tests**, all passing.
+**Version 0.1.65** (patches 1–91). **617 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -222,6 +222,16 @@ address (needs a server). New system/vpn_check.{hpp,cpp} + 13 tests.
 Tested here with stand-in ip/resolvectl only. Test on the Asus: with no
 VPN, then with Proton/Mullvad (free tiers) or the Acer's WireGuard,
 plain and with sudo.
+
+**Asus 3 Nov: 0.1.64 vpn check PASSED** with no VPN and with Proton
+(proton0: IPv4, IPv6, DNS 10.2.0.1 + 2a07:b944::2:1 all inside). Bug:
+Proton's ADVANCED kill switch is `pvpnksintrf1`, only `...0` was known
+-> "Off". (nft tables there: netavark, firewalld, nm-wg-proton0.)
+**Patch 91 (0.1.65):** any pvpnksintrf* = Proton's kill switch (no root
+needed); disconnected with the kill switch blocking (route into
+pvpnksintrf*) is reported as the kill switch working, not "no VPN".
++2 tests. Test: `nexus vpn check` (no sudo) with Proton connected, then
+disconnect Proton (kill switch on) and run it again.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
