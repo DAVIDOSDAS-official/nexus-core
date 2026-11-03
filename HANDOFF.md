@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.63** (patches 1–89). **602 automated tests**, all passing.
+**Version 0.1.64** (patches 1–90). **615 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -203,6 +203,25 @@ update` (history: "update -> Nexus 0.1.62 [applied]"), not by itself.
 Test on the Asus: `nexus install java-lastest-openjdk`; `sudo dnf
 install vlc` (dnf's error, then the hint); `nexus doctor` (Updates line,
 no Unused line).
+
+**Asus 3 Nov: 0.1.63 PASSED** -- typo hint (java-lastest -> java-latest),
+install staged with dnf agreeing, `sudo dnf install vlc` showed Fedora's
+read-only error then the Nexus hint, doctor all ok with the new Updates
+line. Auto `dnf makecache` not exercised (lists were present).
+
+**Patch 90 (0.1.64): `nexus vpn check`** (also plain `nexus vpn`; was
+`keys`). Read-only, sends nothing. Lines: VPN (which kind, on which
+interface: Mullvad, Proton VPN, Tailscale, NordVPN, WireGuard, OpenVPN),
+Traffic (`ip route get 1.1.1.1`), IPv6 (`ip -6 route get`: LEAK when it
+leaves outside the tunnel), DNS (resolvectl: servers actually used --
+"~." links win, else +DefaultRoute links + global -- each checked with
+`ip route get`; LEAK when outside), Kill switch (Proton pvpnksintrf0,
+Mullvad lockdown-mode, else `nft list ruleset` as root: `oifname !=
+"<tun>" ... reject|drop`). Exit 1 on a leak. Not checked: the public
+address (needs a server). New system/vpn_check.{hpp,cpp} + 13 tests.
+Tested here with stand-in ip/resolvectl only. Test on the Asus: with no
+VPN, then with Proton/Mullvad (free tiers) or the Acer's WireGuard,
+plain and with sudo.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

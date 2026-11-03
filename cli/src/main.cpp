@@ -36,6 +36,7 @@
 #include <nexus/system/snap_source.hpp>
 #include <nexus/system/portage_source.hpp>
 #include <nexus/system/vpn.hpp>
+#include <nexus/system/vpn_check.hpp>
 #include <nexus/system/source_build.hpp>
 #include <nexus/system/alias_file.hpp>
 #include <nexus/removal.hpp>
@@ -108,6 +109,7 @@ void printUsage() {
         << "    nexus doctor\n"
         << "    nexus history\n"
         << "    nexus largest [count] [--unused]\n"
+        << "    nexus vpn [check]        is a VPN carrying traffic; DNS and IPv6 leaks; kill switch\n"
         << "    nexus vpn keys | vpn config --address A --peer-key K --endpoint H:P\n"
         << "    nexus services [--all]\n"
         << "    nexus hardware\n"
@@ -6341,6 +6343,77 @@ int commandSpecs(const std::string& sysfsRoot, bool plain, bool json) {
 // The parts Nexus cannot know are required rather than defaulted. A
 // config with placeholders looks finished and does not work, and the
 // failure arrives later looking like something else.
+// nexus vpn check (0.1.64): read-only, and sends nothing anywhere.
+int commandVpnCheck() {
+    using namespace nexus::system;
+    if (!commandExists("ip")) {
+        std::cerr << "The 'ip' command is not here, so the routes cannot be read.\n";
+        return 1;
+    }
+    auto run = [](const std::string& c) {
+        return runCommand(inPlainLocale(c + " 2>&1"), false).text;
+    };
+
+    VpnFacts f;
+    f.links = parseLinks(run("ip -o -d link show"));
+    f.route4 = parseRouteDev(run("ip route get 1.1.1.1"));
+    f.route6 = parseRouteDev(run("ip -6 route get 2606:4700:4700::1111"));
+    f.ipv6Reachable = !f.route6.empty();
+
+    if (commandExists("resolvectl")) f.dns = parseResolvectl(run("resolvectl status --no-pager"));
+    if (!f.dns.resolved) {
+        std::ifstream rc("/etc/resolv.conf");
+        std::stringstream buf; buf << rc.rdbuf();
+        f.dns.globalServers = parseResolvConf(buf.str());
+    }
+    for (const auto& [server, link] : dnsInUse(f.dns)) {
+        if (server.find('%') != std::string::npos) continue;
+        // Only addresses go into the command: a server line is data
+        // from resolvectl, never a shell fragment.
+        if (server.find_first_not_of("0123456789abcdefABCDEF.:") != std::string::npos) continue;
+        f.dnsRoute[server] = parseRouteDev(run("ip route get " + server));
+    }
+
+    if (::geteuid() == 0 && commandExists("nft")) {
+        const auto rules = runCommand("nft list ruleset 2>/dev/null", false);
+        f.rulesetRead = rules.ok;
+        f.ruleset = rules.text;
+    }
+    if (commandExists("mullvad")) f.mullvadLockdown = parseMullvadLockdown(run("mullvad lockdown-mode get"));
+
+    // Which config file, for the advice (readable only as root).
+    {
+        const std::string dev = f.route4;
+        std::error_code ec;
+        if (!dev.empty() && dev.find('/') == std::string::npos &&
+            std::filesystem::exists("/etc/wireguard/" + dev + ".conf", ec)) {
+            f.configPath = "/etc/wireguard/" + dev + ".conf";
+        }
+    }
+
+    const VpnReport report = assessVpn(f);
+    std::cout << "VPN check: nothing is changed, and nothing is sent anywhere.\n\n";
+    bool problem = false;
+    for (const auto& l : report.lines) {
+        std::string mark;
+        switch (l.health) {
+            case VpnHealth::Ok:      mark = " ok "; break;
+            case VpnHealth::Warning: mark = "warn"; break;
+            case VpnHealth::Problem: mark = "LEAK"; problem = true; break;
+            case VpnHealth::Info:    mark = " -- "; break;
+        }
+        std::string name = l.check;
+        while (name.size() < 13) name.push_back(' ');
+        std::cout << "  [" << mark << "]  " << name << l.detail << "\n";
+        if (!l.suggestion.empty()) std::cout << "              try: " << l.suggestion << "\n";
+    }
+    if (!report.tunnel.empty()) {
+        std::cout << "\nNot checked: the address websites see. That needs asking a server,\n"
+                     "and this check sends nothing.\n";
+    }
+    return problem ? 1 : 0;
+}
+
 int commandVpn(
     const std::string& action,
     const nexus::system::TunnelSettings& settings,
@@ -6348,6 +6421,10 @@ int commandVpn(
     bool overwrite,
     bool apply
 ) {
+    if (action == "check" || action == "status") {
+        return commandVpnCheck();
+    }
+
     if (!nexus::system::wireguardAvailable()) {
         std::cerr
             << "wg is not installed.\n"
@@ -6380,6 +6457,7 @@ int commandVpn(
     if (action != "config") {
         std::cerr
             << "Unknown vpn action: " << action << "\n"
+            << "    nexus vpn check\n"
             << "    nexus vpn keys\n"
             << "    nexus vpn config --address A --peer-key K "
             << "--endpoint H:P\n";
@@ -9155,7 +9233,7 @@ int main(int argc, char** argv) {
                     : vpnPath;
 
             return commandVpn(
-                argument.empty() ? "keys" : argument,
+                argument.empty() ? "check" : argument,
                 settings, path, showAll, apply);
         }
 

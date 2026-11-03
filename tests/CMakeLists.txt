@@ -53,6 +53,7 @@ add_executable(component_test
     unit/specs_test.cpp
     unit/clock_test.cpp
     unit/suggest_test.cpp
+    unit/vpn_check_test.cpp
 )
 
 target_link_libraries(component_test
