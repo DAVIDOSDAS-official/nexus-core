@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.65** (patches 1–91). **617 automated tests**, all passing.
+**Version 0.1.66** (patches 1–92). **618 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -232,6 +232,12 @@ needed); disconnected with the kill switch blocking (route into
 pvpnksintrf*) is reported as the kill switch working, not "no VPN".
 +2 tests. Test: `nexus vpn check` (no sudo) with Proton connected, then
 disconnect Proton (kill switch on) and run it again.
+
+**Asus 4 Nov: 0.1.65 PASSED** -- Proton advanced kill switch "On";
+disconnected: "kill switch is blocking". Bug: IPv6 routed into
+pvpnksintrf1 (Proton blocking IPv6) showed as LEAK. **Patch 92
+(0.1.66):** IPv6 into pvpnksintrf*/ipv6leakintrf* = "Blocked by Proton
+VPN", ok. +1 test.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

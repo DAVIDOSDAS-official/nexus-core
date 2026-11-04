@@ -296,6 +296,11 @@ VpnReport assessVpn(const VpnFacts& f) {
             v6.detail = "No IPv6 route, so nothing can leak there.";
         } else if (f.route6 == r.tunnel || isTunnel(f.route6)) {
             v6.detail = "Goes through " + f.route6 + ".";
+        } else if (startsWith(f.route6, "pvpnksintrf") || startsWith(f.route6, "ipv6leakintrf")) {
+            // Proton sends IPv6 into its blocking interface when the
+            // server has none (the Asus, 4 November): blocked, not
+            // leaked. Said as what it is.
+            v6.detail = "Blocked by Proton VPN: nothing goes out over IPv6, so it cannot leak.";
         } else {
             v6.health = VpnHealth::Problem;
             v6.detail = "Goes out through " + f.route6 +

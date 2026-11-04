@@ -228,3 +228,17 @@ TEST(VpnCheckTest, ProtonDisconnectedKillSwitchBlocking) {
     EXPECT_EQ(r.lines[0].health, VpnHealth::Ok);
     EXPECT_NE(r.lines[0].detail.find("blocking"), std::string::npos);
 }
+
+// The Asus, 4 November: IPv6 routed into Proton's kill-switch
+// interface was reported as a LEAK. It is blocked.
+TEST(VpnCheckTest, IPv6IntoProtonsBlockerIsBlockedNotLeaked) {
+    VpnFacts f;
+    f.links = {{"wlo1", true, false, false}, {"pvpnksintrf1", true, false, false},
+               {"proton0", true, true, false}};
+    f.route4 = "proton0";
+    f.ipv6Reachable = true;
+    f.route6 = "pvpnksintrf1";
+    const auto r = assessVpn(f);
+    EXPECT_EQ(line(r, "IPv6").health, VpnHealth::Ok);
+    EXPECT_NE(line(r, "IPv6").detail.find("Blocked"), std::string::npos);
+}
