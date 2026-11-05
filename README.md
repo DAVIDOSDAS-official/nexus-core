@@ -61,7 +61,7 @@ before touching anything. Dual boot with Windows is not supported.
 ## What you get
 
 - **It asks what the machine is for.** At first start you pick add-ons
-  (media, gaming, development, school, security, VPN). Nexus shows what
+  (media, gaming, development, school, cybersecurity, VPN). Nexus shows what
   each would add on *your* hardware and installs nothing until you agree.
 - **Nexus Shop.** Flathub, Fedora and RPM Fusion side by side, with
   what Nexus suggests and why: who packaged the app, whether it needs a

@@ -37,6 +37,10 @@ if [ -r /etc/nexus/wallpaper ]; then
     wanted="$(head -n 1 /etc/nexus/wallpaper | tr -cd 'a-z0-9-')"
 fi
 
+# The security add-on was renamed cybersecurity (0.1.67); its picture
+# kept the old name.
+[ "${wanted}" = cybersecurity ] && wanted=security
+
 if [ -z "${wanted}" ] && [ -r /etc/os-release ]; then
     wanted="$(. /etc/os-release && printf '%s' "${VARIANT_ID:-}" \
         | tr -cd 'a-z0-9-')"

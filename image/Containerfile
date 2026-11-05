@@ -962,14 +962,14 @@ COPY components/profiles/base.profile \
      components/profiles/hosting.profile \
      components/profiles/media.profile \
      components/profiles/school.profile \
-     components/profiles/security.profile \
+     components/profiles/cybersecurity.profile \
      components/profiles/vpn.profile \
      /usr/share/nexus/profile-pool/
 RUN set -eu; \
     mkdir -p /usr/share/nexus/profiles; \
     case "${NEXUS_PROFILE}" in \
-        minimal) offered="base development hosting media school security vpn" ;; \
-        *)       offered="base development gaming hosting media school security vpn" ;; \
+        minimal) offered="base cybersecurity development hosting media school vpn" ;; \
+        *)       offered="base cybersecurity development gaming hosting media school vpn" ;; \
     esac; \
     for name in ${offered}; do \
         cp "/usr/share/nexus/profile-pool/${name}.profile" /usr/share/nexus/profiles/; \

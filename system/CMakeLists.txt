@@ -39,6 +39,7 @@ add_library(nexus_system
     src/clock.cpp
     src/suggest.cpp
     src/vpn_check.cpp
+    src/cyber.cpp
 )
 
 target_include_directories(nexus_system

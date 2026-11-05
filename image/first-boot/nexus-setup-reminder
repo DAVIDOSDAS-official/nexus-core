@@ -36,7 +36,7 @@ action=()
 
 answer="$(notify-send -a Nexus -t 0 -i nexus-shop "${action[@]}" \
     "Choose what this computer is for" \
-    "Add-ons (gaming, media, development, school, security, VPN) were not chosen at the first start. Choose any time in a terminal: nexus setup")"
+    "Add-ons (gaming, media, development, school, cybersecurity, VPN) were not chosen at the first start. Choose any time in a terminal: nexus setup")"
 
 if [ "${answer}" = "choose" ] && [ -n "${terminal}" ]; then
     # Its own unit, so it outlives this one.

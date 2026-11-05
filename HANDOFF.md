@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.66** (patches 1–92). **618 automated tests**, all passing.
+**Version 0.1.67** (patches 1–93). **621 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -238,6 +238,31 @@ disconnected: "kill switch is blocking". Bug: IPv6 routed into
 pvpnksintrf1 (Proton blocking IPv6) showed as LEAK. **Patch 92
 (0.1.66):** IPv6 into pvpnksintrf*/ipv6leakintrf* = "Blocked by Proton
 VPN", ok. +1 test.
+
+**Asus 4 Nov: 0.1.66 PASSED** (vpn check complete).
+
+**Patch 93 (0.1.67): cybersecurity add-on + `nexus cyber`.**
+- Add-on renamed security -> **cybersecurity** (profile file renamed;
+  `nexus setup security` still works and becomes cybersecurity; the
+  wallpaper maps to the old security picture). Same six native tools
+  plus distrobox.
+- `nexus cyber`: Kali's tools in a rootless Distrobox container
+  "nexus-cyber" (docker.io/kalilinux/kali-rolling), sizes small =
+  kali-tools-top10, medium = kali-linux-default, full =
+  kali-linux-everything. `create <size> [--root] --apply` (apt inside
+  shows the exact download and asks), `shell`, `run <tool> [args]`,
+  `export <tool> [--app] --apply` (distrobox-export to ~/.local/bin or
+  the menu), `remove --apply`. Refuses sudo (the box is the user's);
+  `--root` box for Wi-Fi monitor mode / raw sockets. Legal line shown.
+  create/export/remove in the user's history
+  (~/.local/state/nexus/transactions.log). New system/cyber.{hpp,cpp}
+  + 3 tests. Tested here with a stand-in distrobox only.
+- NOT done: BlackArch (`--from blackarch`, planned), development
+  add-on toolchains and `nexus dev help` (next).
+Test on the Asus: `sudo nexus setup cybersecurity --apply`, restart,
+`nexus cyber`, `nexus cyber create small --apply`, `nexus cyber run nmap
+--version`, `nexus cyber export nmap --apply` then `nmap --version`,
+`nexus cyber remove --apply`.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
