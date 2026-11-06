@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.67** (patches 1–93). **621 automated tests**, all passing.
+**Version 0.1.68** (patches 1–94). **621 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -263,6 +263,18 @@ Test on the Asus: `sudo nexus setup cybersecurity --apply`, restart,
 `nexus cyber`, `nexus cyber create small --apply`, `nexus cyber run nmap
 --version`, `nexus cyber export nmap --apply` then `nmap --version`,
 `nexus cyber remove --apply`.
+
+**Asus 6 Nov: 0.1.67 PASSED** -- setup cybersecurity (first try failed
+only because Proton's advanced kill switch had cut the internet:
+"0 of 7 installed", nothing changed), `nexus cyber create small` (apt in
+Kali installed kali-tools-top10 incl. burpsuite), export nmap -> `nmap
+--version` = Nmap 7.991 from the box, `remove --apply` also removed the
+exported nmap (distrobox does it).
+**Patch 94 (0.1.68):** a mistyped command is named before any flag is
+read, with the closest real one (`nexus cuber run nmap --version` had
+printed Nexus's version); `nexus cyber run <tool> ...` passes every
+later word to the tool (`--version`, `-h`, even `--root`); remove's
+text says exported commands go with the box.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

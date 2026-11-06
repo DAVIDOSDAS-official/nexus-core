@@ -3996,6 +3996,8 @@ int commandCyber(
     std::vector<std::string> words;
     bool rootBox = false, asApp = false;
     for (const auto& w : raw) {
+        // After `run <tool>`, every word is the tool's, even --root.
+        if (words.size() >= 2 && words[0] == "run") { words.push_back(w); continue; }
         if (w == "--root") rootBox = true;
         else if (w == "--app") asApp = true;
         else words.push_back(w);
@@ -4189,8 +4191,8 @@ int commandCyber(
         }
         std::cout << "Removes " << box << " and every tool and file inside it.\n"
                      "Your own files (your home folder) are not touched.\n"
-                     "Commands exported with `nexus cyber export` stop working; delete\n"
-                     "them from ~/.local/bin if you exported any.\n";
+                     "Commands and menu entries exported with `nexus cyber export` go\n"
+                     "with it.\n";
         if (!apply) {
             std::cout << "\nNothing has been changed. To do it:\n    " << invocation << " --apply\n";
             return 0;
@@ -8519,6 +8521,46 @@ int main(int argc, char** argv) {
     std::string vpnPath;
     int vpnKeepalive = 0;
     std::vector<std::string> positional;
+
+    // Before any flag is read (0.1.68):
+    //
+    // A mistyped command used to fall through to the flags, so `nexus
+    // cuber run nmap --version` printed Nexus's own version (the Asus,
+    // 6 November) -- --version was taken as Nexus's flag. Unknown
+    // commands are now named at once, with the closest real one.
+    if (!arguments.empty() && !arguments[0].empty() && arguments[0][0] != '-') {
+        static const std::vector<std::string> kCommands = {
+            "app", "conflicts", "container", "cyber", "cybersecurity", "doctor",
+            "dualboot", "gamecheck", "gaming", "gaps", "guide", "hardware", "help",
+            "history", "image", "inspect", "install", "language", "largest",
+            "options", "plan", "profile", "remove", "scan", "secure-boot",
+            "secureboot", "server", "services", "setup", "solve", "source", "specs",
+            "update", "vpn", "what-provides", "why"};
+        const std::string& first = arguments[0];
+        if (std::find(kCommands.begin(), kCommands.end(), first) == kCommands.end()) {
+            std::cerr << "Unknown command: " << first << "\n";
+            const auto near = nexus::system::spellingSuggestions(kCommands, first, 1);
+            if (!near.empty()) {
+                std::string fixed = "nexus " + near.front();
+                for (std::size_t i = 1; i < arguments.size(); ++i) fixed += " " + arguments[i];
+                std::cerr << "Did you mean " << near.front() << "?\n\n    " << fixed << "\n";
+            } else {
+                std::cerr << "\n    nexus help     every command\n";
+            }
+            return 2;
+        }
+    }
+
+    // `nexus cyber run <tool> ...`: everything after the tool is the
+    // tool's, not Nexus's -- `nexus cyber run nmap --version` is nmap's
+    // version, and -h is nmap's help.
+    if (arguments.size() >= 2 &&
+        (arguments[0] == "cyber" || arguments[0] == "cybersecurity") &&
+        arguments[1] == "run") {
+        return commandCyber(
+            std::vector<std::string>(arguments.begin() + 1, arguments.end()),
+            false, invocation);
+    }
 
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         if (arguments[index] == "--status" && index + 1 < arguments.size()) {
