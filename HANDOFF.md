@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.68** (patches 1–94). **621 automated tests**, all passing.
+**Version 0.1.69** (patches 1–95). **625 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -275,6 +275,28 @@ read, with the closest real one (`nexus cuber run nmap --version` had
 printed Nexus's version); `nexus cyber run <tool> ...` passes every
 later word to the tool (`--version`, `-h`, even `--root`); remove's
 text says exported commands go with the box.
+
+**0.1.68 PASSED on the Acer** (typo hints: cuber -> cyber, instal -> install).
+
+**Patch 95 (0.1.69): `nexus dev`** -- languages on request: cpp, python,
+js, java, rust, go, ruby (names like c++, py, node, golang, rb work).
+`nexus dev add rust,go --apply` creates "nexus-dev" from
+registry.fedoraproject.org/fedora-toolbox:<VERSION_ID> if needed, runs
+`sudo dnf install` inside (dnf asks), exports the commands to
+~/.local/bin with distrobox-export and prints each version. A language
+whose main command is already on the system is skipped (C/C++ and
+Python come with the development add-on). `remove <langs> --apply`
+unexports and dnf-removes; `remove all --apply` deletes the box;
+`shell`; `nexus dev help <topic>`: git python js java rust go ruby cpp
+containers ports ssh. Refuses sudo. History records add/remove.
+New system/dev.{hpp,cpp} + 4 tests. Tested with a stand-in distrobox
+only; package names (java-devel, nodejs-npm, clippy, rubygem-bundler...)
+are unverified until the Asus runs it.
+Test on the Asus: `sudo nexus setup development --apply` (if not
+installed), restart, `nexus dev`, `nexus dev add js,java,rust,go,ruby
+--apply`, new terminal, `node --version; cargo --version; go version;
+java -version; ruby --version`, `nexus dev help rust`, `nexus dev remove
+go --apply`.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

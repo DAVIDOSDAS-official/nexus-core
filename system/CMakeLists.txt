@@ -40,6 +40,7 @@ add_library(nexus_system
     src/suggest.cpp
     src/vpn_check.cpp
     src/cyber.cpp
+    src/dev.cpp
 )
 
 target_include_directories(nexus_system
