@@ -655,7 +655,21 @@ RUN set -eu; \
         firewall-offline-cmd --zone=public --query-service="${service}" > /dev/null || \
             firewall-offline-cmd --zone=public --add-service="${service}"; \
     done; \
+    if firewall-offline-cmd --zone=public --query-service=ssh > /dev/null; then \
+        firewall-offline-cmd --zone=public --remove-service=ssh; \
+    fi; \
     systemctl enable firewalld.service
+
+# No remote login by default (0.1.70). Fedora's base image starts sshd,
+# and the public zone let SSH in, so on the Asus (8 November) anyone
+# on the same Wi-Fi could try passwords. A desktop does not need that
+# door. Both closed above and here; turning it on is one line, and
+# `nexus doctor` shows the state:
+#     sudo systemctl enable --now sshd
+#     sudo firewall-cmd --add-service=ssh --permanent && sudo firewall-cmd --reload
+RUN if systemctl list-unit-files sshd.service > /dev/null 2>&1; then \
+        systemctl disable sshd.service; \
+    fi
 
 # Nexus first in the start list, once per machine: corrects the dead
 # "Fedora" entry bootupd writes for the other system's EFI partition

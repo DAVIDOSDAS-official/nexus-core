@@ -2403,6 +2403,38 @@ nexus::Finding checkClock() {
 // looking it up online stays opt-in (`sudo nexus-timezone auto on`).
 // Empty when it cannot be read: a line that says "?" about the time
 // zone helps nobody.
+// Remote login (0.1.70). Fedora's base image starts sshd, and the
+// firewall's public zone lets SSH in: on the Asus (8 November) anyone
+// on the same Wi-Fi could try passwords -- "passwordauthentication
+// yes". Not SSHole (that needs musl without PAM; Nexus is glibc with
+// PAM), but a door a desktop does not need open. Images from 0.1.70
+// ship with it closed; this says so on machines where it is open.
+std::optional<nexus::Finding> checkRemoteLogin() {
+    if (!nexus::system::commandExists("systemctl")) return std::nullopt;
+    const auto active = nexus::system::runCommand(
+        "systemctl is-active sshd.service 2>/dev/null", false).text;
+    nexus::Finding f;
+    f.check = "Remote login";
+    if (active.rfind("active", 0) != 0) {
+        f.health = nexus::Health::Ok;
+        f.detail = "Off: nobody can log in to this machine over the network.";
+        return f;
+    }
+    bool firewallLetsIn = true;
+    if (nexus::system::commandExists("firewall-cmd")) {
+        const auto q = nexus::system::runCommand(
+            "firewall-cmd --query-service=ssh 2>/dev/null", false);
+        if (q.text.rfind("no", 0) == 0) firewallLetsIn = false;
+    }
+    f.health = firewallLetsIn ? nexus::Health::Warning : nexus::Health::Ok;
+    f.detail = firewallLetsIn
+        ? "SSH is on and the firewall lets it in: anyone on your network can try to log in"
+          " with your password. Fine if you log in remotely; otherwise close it."
+        : "SSH is running, but the firewall keeps it closed to the network.";
+    if (firewallLetsIn) f.suggestion = "sudo systemctl disable --now sshd";
+    return f;
+}
+
 std::optional<nexus::Finding> checkTimezone() {
     if (!nexus::system::commandExists("timedatectl")) return std::nullopt;
 
@@ -6031,6 +6063,7 @@ int commandDoctor(
     const bool clockBehind = clock.health == nexus::Health::Problem;
     findings.push_back(clock);
     if (auto zone = checkTimezone()) findings.push_back(std::move(*zone));
+    if (auto ssh = checkRemoteLogin()) findings.push_back(std::move(*ssh));
 
     // Whether the system can be examined at all: every finding
     // below this one is worthless if it failed.

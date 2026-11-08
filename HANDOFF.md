@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.69** (patches 1–95). **625 automated tests**, all passing.
+**Version 0.1.70** (patches 1–96). **625 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -297,6 +297,21 @@ installed), restart, `nexus dev`, `nexus dev add js,java,rust,go,ruby
 --apply`, new terminal, `node --version; cargo --version; go version;
 java -version; ruby --version`, `nexus dev help rust`, `nexus dev remove
 go --apply`.
+
+**Asus 8 Nov: 0.1.69 PASSED** -- node v22.23.1, cargo 1.99.1, go 1.26.10,
+ruby 4.0.9 from nexus-dev; `nexus dev help rust`; `remove go` (dnf's
+"remove failed: /usr/bin/go" lines are golang's alternatives links,
+harmless). `java -version` showed 27-ea: that is the host's layered
+java-latest-openjdk from the 3 Nov install test, so dev add skipped Java.
+SSHole check: sshd is glibc (libc.so.6) with usepam yes -> not affected.
+BUT sshd was active with passwordauthentication yes and the public zone
+allowed ssh.
+**Patch 96 (0.1.70):** desktop images disable sshd.service and remove
+ssh from the public zone; doctor "Remote login" line (warn when sshd is
+active and the firewall lets ssh in; suggests `sudo systemctl disable
+--now sshd`). Existing machines: the zone change arrives only if
+/etc/firewalld/zones/public.xml was never changed locally (nexus server
+changes it), so doctor is how they find out.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
