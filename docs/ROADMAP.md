@@ -116,7 +116,7 @@ Full report: `docs/research/distro-features-2026-11.md`. Nothing here is
 decided; each is a candidate, with the report's own verdict.
 - **Probably next:** keyless cosign + SBOM + provenance for the images;
   auto-rollback when a new image fails to boot -- DONE in 0.1.72 as
-  Nexus's own boot check (not greenboot), see HANDOFF; `nexus rollback` / `nexus rebase`
+  Nexus's own boot check (not greenboot), see HANDOFF; `nexus rollback` / `nexus rebase` (DONE in 0.1.73)
   that warn when /etc changes would be lost; one component description
   driving first boot, a settings app and the CLI help (Bazzite Portal
   style); gaming baseline: `kernel.split_lock_mitigate=0` (Intel),

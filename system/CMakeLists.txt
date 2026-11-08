@@ -41,6 +41,7 @@ add_library(nexus_system
     src/vpn_check.cpp
     src/cyber.cpp
     src/dev.cpp
+    src/rollback.cpp
 )
 
 target_include_directories(nexus_system

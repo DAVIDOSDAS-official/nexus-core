@@ -60,7 +60,9 @@ desktop_up() {
 }
 
 failed=1
+reason="desktop did not start within ${WAIT}s"
 if [ -e "${TEST}" ]; then
+    reason="TEST: test-fail switch, nothing was wrong"
     echo "Test file ${TEST} present: treating this start as failed, once."
     rm -f "${TEST}"
 else
@@ -79,12 +81,12 @@ fi
 stamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 if [ -z "${last_good}" ]; then
     # Nothing known to be better: rolling back would be a guess.
-    echo "${stamp} ${current} desktop did not start; no earlier version known to work, so nothing was changed" >> "${LOG}"
+    echo "${stamp} ${current} ${reason}; no earlier version known to work, so nothing was changed" >> "${LOG}"
     echo "The desktop did not start, and no earlier version is known to work. Nothing changed."
     exit 0
 fi
 
-echo "${stamp} ${current} desktop did not start within ${WAIT}s; went back to ${last_good}" >> "${LOG}"
+echo "${stamp} ${current} ${reason}; went back to ${last_good}" >> "${LOG}"
 echo "The desktop did not start on this new system version. Going back to the one that worked."
 if command -v bootc > /dev/null 2>&1; then
     bootc rollback || rpm-ostree rollback || exit 1

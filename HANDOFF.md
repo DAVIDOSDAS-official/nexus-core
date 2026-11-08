@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.72** (patches 1–98). **625 automated tests**, all passing.
+**Version 0.1.73** (patches 1–99). **629 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -340,6 +340,29 @@ log only. Skipped without a display manager or with
 `sudo touch /var/lib/nexus/boot-check/test-fail`, update, restart ->
 it should roll back by itself; `nexus doctor` then warns "Boot check".
 Tested here with stand-ins only.
+
+**Asus 8 Nov: 0.1.72 boot check PASSED with the test switch** -- went
+back by itself to the 17:30 build (● on it, 18:41 below), failures.log
+written, doctor warned. The boot menu entry "(ostree:0)" is always the
+default, so after a rollback it IS the older version.
+
+**Patch 99 (0.1.73):**
+- `nexus rollback [--apply]`: shows now / go back to (version, build
+  time, digest), apps added on top that the older one lacks, and files
+  in /etc changed while this version ran (mtime newer than the
+  deployment's .origin and different from the other deployment's /etc,
+  under /ostree/deploy/<stateroot>/deploy/<id>/etc). --apply (root)
+  saves those to /var/lib/nexus/etc-saved/<time>/ first, then
+  `rpm-ostree rollback`; history records it. Refuses while an update is
+  staged (points to `rpm-ostree cleanup --pending`).
+- `nexus rebase`: status (follows which ref, pinned or not);
+  `kde|minimal` switch edition; `sha256:<64hex>` pin one build;
+  `latest` follow the edition's tag again. `rpm-ostree rebase`, history.
+- boot check: the test switch is now logged as "TEST: ..." and doctor
+  says "Test rollback ... worked. Nothing was wrong." (no warning).
+New system/rollback.{hpp,cpp} + 4 tests. Tested with stand-ins only.
+Test on the Asus: `nexus rollback` (read the /etc list), `sudo nexus
+rollback --apply`, restart, `rpm-ostree status`; `nexus rebase`.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
