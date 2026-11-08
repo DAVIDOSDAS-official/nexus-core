@@ -656,10 +656,15 @@ RUN set -eu; \
             firewall-offline-cmd --zone=public --add-service="${service}"; \
     done; \
     if firewall-offline-cmd --zone=public --query-service=ssh > /dev/null; then \
-        firewall-offline-cmd --zone=public --remove-service=ssh; \
+        firewall-offline-cmd --zone=public --remove-service-from-zone=ssh; \
     fi; \
     systemctl enable firewalld.service
 
+# (--remove-service-from-zone, not --remove-service: firewall-offline-cmd
+# reads --remove-service as the old lokkit option, which cannot be
+# combined with --zone -- "Can't use lokkit options with other
+# options", the failed builds of 8 November.)
+#
 # No remote login by default (0.1.70). Fedora's base image starts sshd,
 # and the public zone let SSH in, so on the Asus (8 November) anyone
 # on the same Wi-Fi could try passwords. A desktop does not need that

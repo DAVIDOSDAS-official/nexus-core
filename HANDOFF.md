@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.70** (patches 1–96). **625 automated tests**, all passing.
+**Version 0.1.71** (patches 1–97). **625 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -312,6 +312,15 @@ active and the firewall lets ssh in; suggests `sudo systemctl disable
 --now sshd`). Existing machines: the zone change arrives only if
 /etc/firewalld/zones/public.xml was never changed locally (nexus server
 changes it), so doctor is how they find out.
+
+**Patch 96's image build FAILED (8 Nov, both editions):**
+`firewall-offline-cmd --zone=public --remove-service=ssh` -> "Can't use
+lokkit options with other options" (--remove-service is also lokkit's).
+**Patch 97 (0.1.71):** `--remove-service-from-zone=ssh`. Also: the
+research report on other distributions is in
+docs/research/distro-features-2026-11.md, summarised in ROADMAP.md as
+"To consider". (Patch 96 was committed with the 0.1.69 message by
+mistake; harmless.)
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

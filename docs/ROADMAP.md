@@ -111,6 +111,36 @@ Tested 29 Oct: `nexus server add website` works on the Asus itself. The phone wa
 - NEXUS-PACK ("Privacy, protection and control")
 - Paid features later (about half a year out); everything free until then
 
+### To consider: lessons from other distributions (research, 8 Nov 2026)
+Full report: `docs/research/distro-features-2026-11.md`. Nothing here is
+decided; each is a candidate, with the report's own verdict.
+- **Probably next:** keyless cosign + SBOM + provenance for the images;
+  Greenboot auto-rollback when a new image fails to boot (would have
+  caught the KDE 6.8 black screen); `nexus rollback` / `nexus rebase`
+  that warn when /etc changes would be lost; one component description
+  driving first boot, a settings app and the CLI help (Bazzite Portal
+  style); gaming baseline: `kernel.split_lock_mitigate=0` (Intel),
+  NTSYNC, MangoHud, gamescope session, a `nexus gaming doctor`;
+  a default hardening tier + `nexus security audit` as the honest core
+  of "Nexus antivirus" (not a ClamAV wrapper); `nexus specs` modelled on
+  Mint 22.3's System Information (USB, GPU, PCI, BIOS pages).
+- **Later:** a declarative manifest with generations and `nexus diff`;
+  `nexus server` family (Caddy + Quadlet catalogue + LinuxGSM + restic);
+  a WireGuard VPS edge (`nexus server expose`) shared with the VPN add-on
+  for hosting without exposing the home IP; Kali box with its own
+  home folder (now it shares $HOME); "Protect" hardening tier; DNS over
+  TLS; Aeon-style install ladder (Flatpak -> box -> layering);
+  Warpinator for Nexus share (GPL-3.0, works with Mint and Android);
+  Zorin-style .exe helper.
+- **Skip:** systemd-sysext add-ons (unsupported on bootc); rebuilding
+  Fedora for x86-64-v3; gamemode/ananicy as headline features;
+  real-time ClamAV; Paranoid hardening on by default; Umbrel, Cosmos,
+  ZimaOS (licences).
+- **Checked by David:** Fedora does not ship the sched_ext schedulers
+  (build from source); uupd is Apache-2.0, yafti's licence still
+  unconfirmed; Stripe takes 2.9% + $0.30 per card payment, so a $1
+  unlock keeps about $0.67 -- a pay-what-you-want $1-3 works better.
+
 ---
 
 ## 5. Suggested order
