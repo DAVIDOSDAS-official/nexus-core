@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.71** (patches 1–97). **625 automated tests**, all passing.
+**Version 0.1.72** (patches 1–98). **625 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -321,6 +321,25 @@ research report on other distributions is in
 docs/research/distro-features-2026-11.md, summarised in ROADMAP.md as
 "To consider". (Patch 96 was committed with the 0.1.69 message by
 mistake; harmless.)
+
+**Asus 8 Nov: 0.1.71 PASSED** (image builds again; doctor "Remote login:
+Off"; services 42 -> 41).
+
+**Patch 98 (0.1.72): automatic rollback when the desktop does not start.**
+Own unit, not greenboot (greenboot-rs is in Fedora 44, but its checks
+may run before the display manager -- a check waiting for the login
+screen could then fail every update; unverified, so not risked).
+nexus-boot-check.service (After=display-manager, WantedBy graphical)
+runs /usr/libexec/nexus/boot-check: only for a NEW deployment (ostree
+commit differs from /var/lib/nexus/boot-check/last-good); waits up to
+150 s for sddm-greeter | plasmashell | lxqt-panel; pass -> remember as
+good; fail with a known-good one -> log to failures.log, `bootc
+rollback` (rpm-ostree rollback as fallback), reboot. No known-good ->
+log only. Skipped without a display manager or with
+/etc/nexus/no-boot-check. Test switch (once):
+`sudo touch /var/lib/nexus/boot-check/test-fail`, update, restart ->
+it should roll back by itself; `nexus doctor` then warns "Boot check".
+Tested here with stand-ins only.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

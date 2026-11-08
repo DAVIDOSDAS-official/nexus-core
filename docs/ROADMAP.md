@@ -115,8 +115,8 @@ Tested 29 Oct: `nexus server add website` works on the Asus itself. The phone wa
 Full report: `docs/research/distro-features-2026-11.md`. Nothing here is
 decided; each is a candidate, with the report's own verdict.
 - **Probably next:** keyless cosign + SBOM + provenance for the images;
-  Greenboot auto-rollback when a new image fails to boot (would have
-  caught the KDE 6.8 black screen); `nexus rollback` / `nexus rebase`
+  auto-rollback when a new image fails to boot -- DONE in 0.1.72 as
+  Nexus's own boot check (not greenboot), see HANDOFF; `nexus rollback` / `nexus rebase`
   that warn when /etc changes would be lost; one component description
   driving first boot, a settings app and the CLI help (Bazzite Portal
   style); gaming baseline: `kernel.split_lock_mitigate=0` (Intel),

@@ -2435,6 +2435,50 @@ std::optional<nexus::Finding> checkRemoteLogin() {
     return f;
 }
 
+// The boot check (0.1.72): did a new system version fail to show the
+// desktop, and did Nexus go back? Read from what the check wrote.
+std::optional<nexus::Finding> checkBootCheck() {
+    const std::string dir = "/var/lib/nexus/boot-check";
+    std::error_code ec;
+    if (!std::filesystem::exists(dir, ec)) return std::nullopt;
+
+    nexus::Finding f;
+    f.check = "Boot check";
+    std::string last;
+    {
+        std::ifstream in(dir + "/failures.log");
+        std::string line;
+        while (std::getline(in, line)) if (!line.empty()) last = line;
+    }
+    // "2026-11-08T16:44:29Z <commit> desktop did not start ...; went back to <commit>"
+    bool recent = false;
+    if (last.size() >= 10) {
+        std::tm tm{};
+        std::istringstream ts(last.substr(0, 10));
+        ts >> std::get_time(&tm, "%Y-%m-%d");
+        if (!ts.fail()) {
+            const std::time_t when = timegm(&tm);
+            recent = std::time(nullptr) - when < 30L * 24 * 3600;
+        }
+    }
+    if (recent && last.find("went back") != std::string::npos) {
+        f.health = nexus::Health::Warning;
+        f.detail = "On " + last.substr(0, 10) + " a new system version started without a desktop,"
+                   " so Nexus went back to the one that worked. Updating again pulls the same"
+                   " version until a fixed one is built.";
+        f.suggestion = "nexus update   (check the date of what is offered before taking it)";
+    } else if (recent) {
+        f.health = nexus::Health::Warning;
+        f.detail = "On " + last.substr(0, 10) + " the desktop did not start, and no earlier"
+                   " version was known to work, so nothing was changed.";
+    } else {
+        f.health = nexus::Health::Ok;
+        f.detail = "Each new system version is checked at its first start; if the desktop"
+                   " does not come up, Nexus goes back to the one that worked.";
+    }
+    return f;
+}
+
 std::optional<nexus::Finding> checkTimezone() {
     if (!nexus::system::commandExists("timedatectl")) return std::nullopt;
 
@@ -6064,6 +6108,7 @@ int commandDoctor(
     findings.push_back(clock);
     if (auto zone = checkTimezone()) findings.push_back(std::move(*zone));
     if (auto ssh = checkRemoteLogin()) findings.push_back(std::move(*ssh));
+    if (auto boot = checkBootCheck()) findings.push_back(std::move(*boot));
 
     // Whether the system can be examined at all: every finding
     // below this one is worthless if it failed.

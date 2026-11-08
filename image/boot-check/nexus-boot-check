@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+#
+# The first start of a new system version: did the desktop come up?
+# If not, go back to the version that worked, by itself (0.1.72).
+#
+# On 1 November a Fedora update (KDE Plasma 6.8.2) gave the Asus a
+# black screen: the system ran, but KWin crashed, so no login screen.
+# Getting back meant a forced power-off and knowing to pick the older
+# entry in the boot menu. This does that automatically.
+#
+# How it decides, once per system version:
+#   - the version that last passed is remembered (by its ostree commit);
+#     a start of that same version is not checked again;
+#   - a NEW version passes when the login screen (or a desktop session,
+#     with automatic login) is running within 150 seconds;
+#   - if it does not, and there is a version that passed before, Nexus
+#     makes that one the default (bootc rollback), writes down why, and
+#     restarts. The failed version stays installed and can be chosen in
+#     the boot menu; `nexus doctor` tells the person what happened.
+#
+# Not checked: machines that boot to a console (no display manager),
+# and any machine with /etc/nexus/no-boot-check. Nothing is sent
+# anywhere. Not greenboot: its checks may run before the display
+# manager starts, and a check that waits for the login screen would
+# then fail every update.
+#
+# Testing it on purpose: `sudo touch /var/lib/nexus/boot-check/test-fail`,
+# then update and restart. The new version is treated as failed once
+# (and the file removed), so the rollback can be watched. In /var, not
+# /etc: /var is shared by every system version, so removing it there
+# removes it for all of them -- a copy left in an older version's /etc
+# would fail every later update.
+
+set -u
+
+STATE="${NEXUS_BOOT_CHECK_STATE:-/var/lib/nexus/boot-check}"
+GOOD="${STATE}/last-good"
+LOG="${STATE}/failures.log"
+TEST="${NEXUS_BOOT_CHECK_TEST:-${STATE}/test-fail}"
+WAIT="${NEXUS_BOOT_CHECK_WAIT:-150}"
+
+mkdir -p "${STATE}"
+
+[ -e "${NEXUS_BOOT_CHECK_BOOTED:-/run/ostree-booted}" ] || exit 0
+[ -e /etc/nexus/no-boot-check ] && exit 0
+systemctl is-enabled --quiet display-manager.service 2>/dev/null || exit 0
+
+# "* default 3f5c...e1.0" -- the booted deployment is the one with "*".
+current="$(ostree admin status 2>/dev/null | awk '$1 == "*" { print $3; exit }')"
+[ -n "${current}" ] || exit 0
+
+last_good="$(cat "${GOOD}" 2>/dev/null || true)"
+if [ "${current}" = "${last_good}" ]; then
+    exit 0
+fi
+
+desktop_up() {
+    # the login screen, or a desktop someone is already logged in to
+    pgrep -f 'sddm-greeter|plasmashell|lxqt-panel' > /dev/null 2>&1
+}
+
+failed=1
+if [ -e "${TEST}" ]; then
+    echo "Test file ${TEST} present: treating this start as failed, once."
+    rm -f "${TEST}"
+else
+    for _ in $(seq 1 $((WAIT / 5))); do
+        if desktop_up; then failed=0; break; fi
+        sleep 5
+    done
+fi
+
+if [ "${failed}" -eq 0 ]; then
+    echo "${current}" > "${GOOD}"
+    echo "Desktop started on this system version; remembered as good."
+    exit 0
+fi
+
+stamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+if [ -z "${last_good}" ]; then
+    # Nothing known to be better: rolling back would be a guess.
+    echo "${stamp} ${current} desktop did not start; no earlier version known to work, so nothing was changed" >> "${LOG}"
+    echo "The desktop did not start, and no earlier version is known to work. Nothing changed."
+    exit 0
+fi
+
+echo "${stamp} ${current} desktop did not start within ${WAIT}s; went back to ${last_good}" >> "${LOG}"
+echo "The desktop did not start on this new system version. Going back to the one that worked."
+if command -v bootc > /dev/null 2>&1; then
+    bootc rollback || rpm-ostree rollback || exit 1
+else
+    rpm-ostree rollback || exit 1
+fi
+systemctl reboot

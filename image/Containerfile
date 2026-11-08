@@ -939,6 +939,16 @@ RUN chmod 0755 /usr/libexec/nexus/setup-reminder /usr/libexec/nexus/choose-add-o
     mkdir -p /usr/lib/systemd/user/timers.target.wants && \
     ln -sf ../nexus-setup-reminder.timer \
         /usr/lib/systemd/user/timers.target.wants/nexus-setup-reminder.timer
+# Back to the version that worked, by itself (0.1.72). At the first
+# start of a new system version, if neither the login screen nor a
+# desktop is up within 150 seconds, Nexus makes the previous version
+# the default again and restarts (the KDE 6.8 black screen of
+# 1 November). Machines that boot to a console are not checked.
+COPY image/boot-check/nexus-boot-check /usr/libexec/nexus/boot-check
+COPY image/boot-check/nexus-boot-check.service /usr/lib/systemd/system/
+RUN chmod 0755 /usr/libexec/nexus/boot-check && \
+    systemctl enable nexus-boot-check.service
+
 # Desktops only (0.1.61): when the time zone is still the installer's
 # default (America/New_York, nothing chosen), one notification after
 # login says so, with a button that opens `nexus-timezone pick`.

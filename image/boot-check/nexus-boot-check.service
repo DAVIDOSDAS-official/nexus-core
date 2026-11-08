@@ -1,0 +1,14 @@
+[Unit]
+Description=Nexus: did the desktop start on this new system version? (goes back if not)
+# Runs once the login screen should be up. Only new system versions are
+# checked; see /usr/libexec/nexus/boot-check.
+After=display-manager.service
+ConditionPathExists=/run/ostree-booted
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nexus/boot-check
+TimeoutStartSec=300
+
+[Install]
+WantedBy=graphical.target
