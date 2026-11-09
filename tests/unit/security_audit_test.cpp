@@ -131,3 +131,41 @@ TEST(SecurityAuditTest, ATrustedZoneIsJudgedByWhatIsInIt) {
     EXPECT_EQ(parseZoneInfo("trusted (active)\n  target: ACCEPT\n  interfaces: pvpnksintrf0 proton0\n").interfaces,
               "pvpnksintrf0 proton0");
 }
+
+// The Asus, 9 November: podman's network is in "trusted" as a source.
+TEST(SecurityAuditTest, PodmansNetworkAsASourceIsContainers) {
+    ZoneInfo z;
+    z.sources = "10.88.0.0/16";
+    EXPECT_EQ(trustedReach(z), TrustedReach::Containers);
+    z.sources = "192.168.0.0/24";
+    EXPECT_EQ(trustedReach(z), TrustedReach::Network);
+    // A bridge here, on a network of its own.
+    const auto local = parseIpAddresses(
+        "1: lo    inet 127.0.0.1/8 scope host lo\n"
+        "3: wlo1    inet 192.168.0.13/24 brd 192.168.0.255 scope global wlo1\n"
+        "7: podman1    inet 10.89.0.1/24 brd 10.89.0.255 scope global podman1\n");
+    ASSERT_EQ(local.size(), 3u);
+    EXPECT_EQ(local[2].interface, "podman1");
+    z.sources = "10.89.0.0/24";
+    EXPECT_EQ(trustedReach(z, local), TrustedReach::Containers);
+    // The same range as the Wi-Fi is the real network.
+    z.sources = "192.168.0.0/24";
+    EXPECT_EQ(trustedReach(z, local), TrustedReach::Network);
+}
+
+// A more exact scope under Nexus's own wins for those images: it must
+// require the key too.
+TEST(SecurityAuditTest, AMoreExactScopeWithoutTheKeyIsNotEnforced) {
+    const std::string key = "/etc/pki/containers/nexus-core.pub";
+    const std::string policy =
+        R"({"default":[{"type":"reject"}],"transports":{"docker":{)"
+        R"("ghcr.io/davidosdas-official": [{"type":"sigstoreSigned","keyPath":"/etc/pki/containers/nexus-core.pub"}],)"
+        R"("ghcr.io/davidosdas-official/nexus-core": [{"type":"insecureAcceptAnything"}]}}})";
+    EXPECT_FALSE(policyRequiresKey(policy, "ghcr.io/davidosdas-official", key));
+    // The words present but not as the rule's type: no.
+    const std::string words =
+        R"({"transports":{"docker":{"ghcr.io/davidosdas-official": [{"type":"insecureAcceptAnything",)"
+        R"("note":"sigstoreSigned /etc/pki/containers/nexus-core.pub"}]}}})";
+    EXPECT_FALSE(policyRequiresKey(words, "ghcr.io/davidosdas-official", key));
+    EXPECT_FALSE(policyRequiresKey("not json", "ghcr.io/davidosdas-official", key));
+}

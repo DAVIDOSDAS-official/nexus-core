@@ -5055,19 +5055,22 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
                 if (acceptAll) {
                     // What it lets everything in from is what counts.
                     using nexus::system::TrustedReach;
-                    const auto reach = nexus::system::trustedReach(now);
+                    const auto reach = nexus::system::trustedReach(now, nexus::system::parseIpAddresses(
+                        runCommand("ip -o -f inet addr show 2>/dev/null", false).text));
                     const std::string what = !now.sources.empty() ? "from " + now.sources
                                            : "on " + now.interfaces;
                     if (reach == TrustedReach::Network)
                         line("FAIL", "Firewall", "zone " + zone + " lets everything in " + what + ".",
-                             "move it to zone public: sudo firewall-cmd --permanent --zone=public --change-interface=<name> && sudo firewall-cmd --reload");
+                             !now.sources.empty()
+                                 ? "sudo firewall-cmd --permanent --zone=" + zone + " --remove-source=<range> && sudo firewall-cmd --reload"
+                                 : "sudo firewall-cmd --permanent --zone=public --change-interface=<name> && sudo firewall-cmd --reload");
                     else if (reach == TrustedReach::Tunnel)
                         line("warn", "Firewall", "zone " + zone + " lets everything in " + what +
                              ": whoever is at the other end of that tunnel reaches every port.",
                              "if this machine serves nothing over it: sudo firewall-cmd --permanent --zone=public --change-interface=<name>");
                     else
                         line(" ok ", "Firewall", "zone " + zone + " lets everything in " + what +
-                             " (this machine's own containers and VMs).");
+                             " (this machine's own containers and VMs: they can reach every port here).");
                 } else if (!wide.empty()) {
                     line("warn", "Firewall", "zone " + zone + " opens " + wide + ": any program listening there is reachable.",
                          "sudo firewall-cmd --permanent --zone=" + zone + " --remove-port=" + wide + " && sudo firewall-cmd --reload");
@@ -5193,7 +5196,8 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
                      "nexus rebase kde   (the signed Nexus image)");
             const auto days = nexus::system::daysSince(d.date, static_cast<long>(std::time(nullptr)));
             if (days) {
-                if (*days <= 14) line(" ok ", "Updates", "system built " + std::to_string(*days) + " day(s) ago.");
+                if (*days <= 14) line(" ok ", "Updates", *days == 0 ? std::string("system built today.")
+                                                                    : "system built " + std::to_string(*days) + (*days == 1 ? " day ago." : " days ago."));
                 else if (*days <= 30) line("warn", "Updates", "system built " + std::to_string(*days) + " days ago; security fixes come with updates.", "sudo nexus update --apply");
                 else line("FAIL", "Updates", "system built " + std::to_string(*days) + " days ago: a month of security fixes missing.", "sudo nexus update --apply");
             }

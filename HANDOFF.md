@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.78** (patches 1–104). **654 automated tests**, all passing.
+**Version 0.1.79** (patches 1–105). **656 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -495,6 +495,25 @@ saying for what (not from Nexus either).
   dropping it alone would fail every publish. qcow2 is not published by
   CI (no artifact upload) -- keep it that way.
 +3 tests.
+
+**Asus 9 Nov, 0.1.78:** active zones = public (wlo1, pvpnksintrf1) and
+trusted (source 10.88.0.0/16 -- podman's network, put there by
+netavark). The audit FAILed it as a real network, with a fix for
+interfaces. ssh warning worked; David removed ssh from public.
+**Fourth outside review of 0.1.78: pass** (scratch dirs, quoting, mount
+options, security module checked; no new injection).
+
+**Patch 105 (0.1.79):**
+- trustedReach judges sources too: podman's/docker's default networks,
+  or the network of a container bridge here (from `ip -o -f inet addr
+  show`, parseIpAddresses) = Containers (ok: "they can reach every
+  port here"); any other range = FAIL, fix --remove-source.
+- policyRequiresKey parses policy.json (json.hpp) instead of a text
+  scan: every docker scope at or under Nexus's (more exact ones win for
+  those images) needs a sigstoreSigned rule with the key.
+- "system built today / 1 day ago".
++2 tests. Accepted risk: image/config.toml's nexus/nexus wheel account
+is for a local test VM only; CI uploads no qcow2. Never publish one.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

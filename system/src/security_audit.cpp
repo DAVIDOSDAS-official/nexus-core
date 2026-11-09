@@ -1,4 +1,7 @@
 #include <nexus/system/security_audit.hpp>
+#include <cstdint>
+#include <arpa/inet.h>
+#include <nexus/system/json.hpp>
 #include <initializer_list>
 
 #include <ctime>
@@ -131,35 +134,104 @@ std::string wideOpenRange(const std::string& ports) {
 
 bool policyRequiresKey(const std::string& policyJson, const std::string& scope,
                        const std::string& keyPath) {
-    const auto at = policyJson.find("\"" + scope + "\"");
-    if (at == std::string::npos) return false;
-    // Up to the next scope entry (a key ending in ": [") or the end.
-    auto next = policyJson.find("\": [", at + scope.size() + 2);
-    next = next == std::string::npos ? policyJson.size() : policyJson.rfind('"', next - 1);
-    const std::string block = policyJson.substr(at, next == std::string::npos ? std::string::npos : next - at);
-    return block.find("sigstoreSigned") != std::string::npos &&
-           block.find(keyPath) != std::string::npos;
+    // Parsed, not searched (0.1.79, fourth outside review: a text scan
+    // could find the words in the wrong place and say yes). Every
+    // docker scope that covers Nexus's images -- the scope itself and
+    // any more exact one under it, which would win for those images --
+    // must hold a sigstoreSigned rule with this key.
+    const auto parsed = parseJson(policyJson);
+    if (!parsed.error.empty()) return false;
+    const JsonValue& docker = parsed.value["transports"]["docker"];
+    if (!docker.isObject()) return false;
+    bool sawScope = false;
+    for (const auto& [name, rules] : docker.fields) {
+        const bool covers = name == scope ||
+                            (name.size() > scope.size() && name.rfind(scope, 0) == 0 &&
+                             (name[scope.size()] == '/' || name[scope.size()] == ':' || name[scope.size()] == '@'));
+        if (!covers) continue;
+        if (name == scope) sawScope = true;
+        bool signedWithKey = false;
+        if (rules.isArray()) {
+            for (const auto& rule : rules.items) {
+                if (rule["type"].asString() != "sigstoreSigned") continue;
+                if (rule["keyPath"].asString() == keyPath) signedWithKey = true;
+                for (const auto& k : rule["keyPaths"].items)
+                    if (k.asString() == keyPath) signedWithKey = true;
+            }
+        }
+        if (!signedWithKey) return false;
+    }
+    return sawScope;
 }
 
-TrustedReach trustedReach(const ZoneInfo& zone) {
-    if (!zone.sources.empty()) return TrustedReach::Network;
-    auto starts = [](const std::string& name, std::initializer_list<const char*> prefixes) {
-        for (const char* p : prefixes)
-            if (name.rfind(p, 0) == 0) return true;
-        return false;
-    };
+namespace {
+
+bool startsWithAny(const std::string& name, std::initializer_list<const char*> prefixes) {
+    for (const char* p : prefixes)
+        if (name.rfind(p, 0) == 0) return true;
+    return false;
+}
+
+bool isContainerInterface(const std::string& name) {
+    return name == "lo" ||
+           startsWithAny(name, {"docker", "br-", "podman", "cni", "virbr", "veth", "lxc", "vnet"});
+}
+
+// "10.88.0.1/16" -> network and prefix, IPv4 only.
+bool ipv4Network(const std::string& cidr, std::uint32_t& network, int& prefix) {
+    const auto slash = cidr.find('/');
+    if (slash == std::string::npos) return false;
+    in_addr a{};
+    if (inet_pton(AF_INET, cidr.substr(0, slash).c_str(), &a) != 1) return false;
+    try { prefix = std::stoi(cidr.substr(slash + 1)); } catch (...) { return false; }
+    if (prefix < 0 || prefix > 32) return false;
+    const std::uint32_t mask = prefix == 0 ? 0 : 0xFFFFFFFFu << (32 - prefix);
+    network = ntohl(a.s_addr) & mask;
+    return true;
+}
+
+bool sameNetwork(const std::string& a, const std::string& b) {
+    std::uint32_t na = 0, nb = 0;
+    int pa = 0, pb = 0;
+    return ipv4Network(a, na, pa) && ipv4Network(b, nb, pb) && na == nb && pa == pb;
+}
+
+}  // namespace
+
+std::vector<LocalNetwork> parseIpAddresses(const std::string& output) {
+    std::vector<LocalNetwork> out;
+    std::istringstream in(output);
+    std::string line;
+    while (std::getline(in, line)) {
+        std::istringstream words(line);
+        std::string index, name, family, cidr;
+        if (!(words >> index >> name >> family >> cidr) || family != "inet") continue;
+        out.push_back({name, cidr});
+    }
+    return out;
+}
+
+TrustedReach trustedReach(const ZoneInfo& zone, const std::vector<LocalNetwork>& local) {
     TrustedReach worst = TrustedReach::Nothing;
+    auto raise = [&](TrustedReach r) {
+        if (static_cast<int>(r) > static_cast<int>(worst)) worst = r;
+    };
     std::istringstream in(zone.interfaces);
     std::string name;
     while (in >> name) {
-        TrustedReach reach;
-        if (name == "lo" || starts(name, {"docker", "br-", "podman", "cni", "virbr", "veth", "lxc", "vnet"}))
-            reach = TrustedReach::Containers;
-        else if (starts(name, {"tun", "tap", "wg", "proton", "pvpn", "ipv6leak", "tailscale", "zt", "nordlynx", "mullvad"}))
-            reach = TrustedReach::Tunnel;
-        else
-            reach = TrustedReach::Network;
-        if (static_cast<int>(reach) > static_cast<int>(worst)) worst = reach;
+        if (isContainerInterface(name)) raise(TrustedReach::Containers);
+        else if (startsWithAny(name, {"tun", "tap", "wg", "proton", "pvpn", "ipv6leak", "tailscale", "zt", "nordlynx", "mullvad"}))
+            raise(TrustedReach::Tunnel);
+        else raise(TrustedReach::Network);
+    }
+    std::istringstream sources(zone.sources);
+    std::string source;
+    while (sources >> source) {
+        bool containers = sameNetwork(source, "10.88.0.0/16") ||    // podman
+                          sameNetwork(source, "172.17.0.0/16");     // docker
+        for (const auto& l : local)
+            if (isContainerInterface(l.interface) && sameNetwork(source, l.cidr)) containers = true;
+        raise(containers ? TrustedReach::Containers : TrustedReach::Network);
     }
     return worst;
 }

@@ -91,6 +91,20 @@ ZoneInfo parseZoneInfo(const std::string& output);
 // of the machine's own containers and VMs are one thing, a VPN tunnel
 // another, a real network or an address range something else again.
 enum class TrustedReach { Nothing, Containers, Tunnel, Network };
-TrustedReach trustedReach(const ZoneInfo& zone);
+
+// An address on one of this machine's interfaces: `ip -o -f inet addr
+// show` gives "3: podman0    inet 10.88.0.1/16 brd ...".
+struct LocalNetwork {
+    std::string interface;
+    std::string cidr;   // 10.88.0.1/16
+};
+std::vector<LocalNetwork> parseIpAddresses(const std::string& output);
+
+// Sources are judged too (the Asus, 9 November: podman's network,
+// 10.88.0.0/16, is put in "trusted" by netavark so containers reach the
+// host -- 0.1.78 called that a real network). A source is the
+// machine's own containers when it is the network of a container
+// bridge here, or podman's or docker's default network.
+TrustedReach trustedReach(const ZoneInfo& zone, const std::vector<LocalNetwork>& local = {});
 
 }  // namespace nexus::system
