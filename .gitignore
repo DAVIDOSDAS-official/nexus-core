@@ -24,3 +24,6 @@ heaptrack.*.zst
 # image/signing/README.md
 *.key
 cosign.key
+
+# Local build output, never committed.
+build.log

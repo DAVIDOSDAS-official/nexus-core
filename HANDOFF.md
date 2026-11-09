@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.77** (patches 1–103). **651 automated tests**, all passing.
+**Version 0.1.78** (patches 1–104). **654 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -466,6 +466,35 @@ fixed or improved; four new points, all fixed in **patch 103 (0.1.77)**:
   needs the host path passed in; do it with a real test.
 +1 test (parseZoneInfo). Still open: argv execution (posix_spawn),
 cyber home, pinned digests/SHAs.
+
+**9 Nov: 0.1.77 PASSED on the Acer (ufw on) and the Asus** (harden added
+4 settings, all 14 on, harden off removed the file, history right).
+The Asus showed: zone public lets in ssh (sshd off) -- a locally changed
+public.xml keeps it past 0.1.71's image change (ostree keeps edited
+/etc files) -- and 8080/tcp (not from Nexus); zone trusted FAIL without
+saying for what (not from Nexus either).
+
+**Patch 104 (0.1.78): third outside review + the Asus.**
+- **Guessable /tmp names** (/tmp/nexus-plan-check[-dnf]-<pid>,
+  -decompress-, -pacman-) for child stderr, written as root under sudo:
+  a pre-planted symlink would be followed (Fedora's protected_symlinks=1
+  blocks it; no longer relied on). New `ScratchDirectory` (mkdtemp 0700,
+  removed in its destructor; "/dev/null" if none -- the per-file
+  remove() calls were dropped so /dev/null is never removed as root).
+- **Missed in 102:** values quoted '...' across two source lines --
+  `requested` in both plan checks (apt, dnf: under sudo install),
+  flatpak remote/app ids, skopeo origin, curl url. All shellQuote now.
+- **Firewall audit:** a target-ACCEPT zone judged by what is in it
+  (trustedReach): containers/VMs ok, VPN tunnel warn, real interface or
+  sources FAIL; names the interfaces. ssh allowed in a zone while sshd
+  is not enabled: warn with the remove-service command.
+- Peek mounts (installer, boot-entry) ro,nodev,nosuid,noexec; build.log
+  removed and ignored.
+- Not changed: publish.sh's verify --insecure-ignore-tlog matches
+  signing with --tlog-upload=false (keys are what machines check);
+  dropping it alone would fail every publish. qcow2 is not published by
+  CI (no artifact upload) -- keep it that way.
++3 tests.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

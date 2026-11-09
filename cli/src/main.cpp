@@ -2668,7 +2668,7 @@ std::string fetchUrl(const std::string& url) {
         return {};
     }
     const auto result = nexus::system::runCommand(
-        "curl -fsSL --max-time 20 --retry 2 '" + url + "' 2>/dev/null",
+        "curl -fsSL --max-time 20 --retry 2 " + shellQuote(url) + " 2>/dev/null",
         false);
     return result.ok ? result.text : std::string{};
 }
@@ -3267,8 +3267,8 @@ int commandApp(
                 ? "/usr/share/nexus/flathub.flatpakrepo"
                 : "https://dl.flathub.org/repo/flathub.flatpakrepo";
         nexus::system::runCommand(
-            "flatpak remote-add --system --if-not-exists flathub '" +
-            remote + "'");
+            "flatpak remote-add --system --if-not-exists flathub " +
+            shellQuote(remote));
     }
 
     nexus::system::TransactionRecord record;
@@ -5053,9 +5053,21 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
                                      now.ports != saved.ports;
                 std::string lets = now.services + (now.ports.empty() ? "" : (now.services.empty() ? "" : ", ") + now.ports);
                 if (acceptAll) {
-                    line("FAIL", "Firewall", "zone " + zone + " lets everything in (target ACCEPT" +
-                         (now.target == "ACCEPT" ? "" : ", once restarted") + ").",
-                         "sudo firewall-cmd --permanent --zone=" + zone + " --set-target=default && sudo firewall-cmd --reload");
+                    // What it lets everything in from is what counts.
+                    using nexus::system::TrustedReach;
+                    const auto reach = nexus::system::trustedReach(now);
+                    const std::string what = !now.sources.empty() ? "from " + now.sources
+                                           : "on " + now.interfaces;
+                    if (reach == TrustedReach::Network)
+                        line("FAIL", "Firewall", "zone " + zone + " lets everything in " + what + ".",
+                             "move it to zone public: sudo firewall-cmd --permanent --zone=public --change-interface=<name> && sudo firewall-cmd --reload");
+                    else if (reach == TrustedReach::Tunnel)
+                        line("warn", "Firewall", "zone " + zone + " lets everything in " + what +
+                             ": whoever is at the other end of that tunnel reaches every port.",
+                             "if this machine serves nothing over it: sudo firewall-cmd --permanent --zone=public --change-interface=<name>");
+                    else
+                        line(" ok ", "Firewall", "zone " + zone + " lets everything in " + what +
+                             " (this machine's own containers and VMs).");
                 } else if (!wide.empty()) {
                     line("warn", "Firewall", "zone " + zone + " opens " + wide + ": any program listening there is reachable.",
                          "sudo firewall-cmd --permanent --zone=" + zone + " --remove-port=" + wide + " && sudo firewall-cmd --reload");
@@ -5065,6 +5077,19 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
                          "sudo firewall-cmd --reload   (back to the saved rules)");
                 } else {
                     line(" ok ", "Firewall", "on, zone " + zone + (lets.empty() ? ": lets nothing in." : "; lets in: " + lets));
+                }
+                // ssh let through with remote login off (the Asus, 9 Nov:
+                // a locally changed zone file keeps it past the image's
+                // 0.1.71 change -- ostree keeps local /etc edits).
+                {
+                    std::istringstream sv(now.services + " " + saved.services);
+                    std::string one;
+                    bool ssh = false;
+                    while (sv >> one) if (one == "ssh") ssh = true;
+                    if (ssh && firstLine(runCommand("systemctl is-enabled sshd.service 2>/dev/null", false).text) != "enabled")
+                        line("warn", "Firewall", "zone " + zone + " still lets ssh in, with remote login off:"
+                             " turning sshd on would open it at once.",
+                             "sudo firewall-cmd --permanent --zone=" + zone + " --remove-service=ssh && sudo firewall-cmd --reload");
                 }
                 any = true;
             }
@@ -6064,8 +6089,8 @@ int commandUpdate(
             nexus::system::commandExists("skopeo")) {
             const auto remote = nexus::system::parseImageInspect(
                 nexus::system::runCommand(
-                    "skopeo inspect --no-tags 'docker://" + system.origin +
-                    "' 2>/dev/null", false).text);
+                    "skopeo inspect --no-tags " + shellQuote("docker://" + system.origin) +
+                    " 2>/dev/null", false).text);
             reached = remote.ok;
             nexus::system::compareWithRegistry(system, remote);
             // The weekly build makes a new image even when Nexus itself
@@ -9044,8 +9069,8 @@ int commandSetup(
     const auto flatpakInstalled = [](const std::string& application) {
         return nexus::system::commandExists("flatpak") &&
                nexus::system::runCommand(
-                   "flatpak info --system '" + application +
-                   "' > /dev/null 2>&1", false).ok;
+                   "flatpak info --system " + shellQuote(application) +
+                   " > /dev/null 2>&1", false).ok;
     };
 
     std::size_t satisfied = here.satisfied;
@@ -9264,8 +9289,8 @@ int commandSetup(
                 : "https://dl.flathub.org/repo/flathub.flatpakrepo";
 
         nexus::system::runCommand(
-            "flatpak remote-add --system --if-not-exists flathub '" +
-            remote + "'");
+            "flatpak remote-add --system --if-not-exists flathub " +
+            shellQuote(remote));
 
         // Not captured: the first Flatpak brings its runtime, a
         // download of a gigabyte or more, and minutes with nothing on
@@ -9273,8 +9298,8 @@ int commandSetup(
         std::cout << std::flush;
 
         const int status = std::system(nexus::system::inPlainLocale(
-            "flatpak install --system --noninteractive flathub '" +
-            application + "'").c_str());
+            "flatpak install --system --noninteractive flathub " +
+            shellQuote(application)).c_str());
 
         if (status == 0) {
             done += 1;

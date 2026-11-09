@@ -48,7 +48,7 @@ def partition_has(partuuid, relative):
     if not os.path.exists(device):
         return True  # cannot tell: keep it
     where = tempfile.mkdtemp(prefix="nexus-esp-")
-    if subprocess.run(["mount", "-o", "ro", device, where]).returncode != 0:
+    if subprocess.run(["mount", "-o", "ro,nodev,nosuid,noexec", device, where]).returncode != 0:
         os.rmdir(where)
         return True
     try:

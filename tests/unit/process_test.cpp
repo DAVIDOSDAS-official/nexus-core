@@ -1,5 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <sys/stat.h>
+
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+
 #include <cstdlib>
 
 #include <nexus/system/process.hpp>
@@ -130,4 +136,37 @@ TEST(ProcessTest, PackageNamesAreOnlyPackageNames) {
         EXPECT_TRUE(isPackageName(good)) << good;
     for (const char* bad : {"", "-y", "--setopt=x", "a b", "x;id", "x'y", "$(id)", "a\nb", "a/b"})
         EXPECT_FALSE(isPackageName(bad)) << bad;
+}
+
+// Third outside review (November 2026): stderr went to a guessable
+// /tmp/nexus-...-<pid>. Now a folder only this process can enter.
+TEST(ProcessTest, AScratchFolderIsPrivateAndGoesAway) {
+    std::string kept;
+    {
+        const nexus::system::ScratchDirectory scratch;
+        ASSERT_TRUE(scratch.ok());
+        kept = scratch.path();
+        struct stat info {};
+        ASSERT_EQ(::stat(kept.c_str(), &info), 0);
+        EXPECT_EQ(info.st_mode & 0777, 0700u);
+        EXPECT_EQ(scratch.file("stderr"), kept + "/stderr");
+        std::ofstream(scratch.file("stderr")) << "x";
+        // Two at once never share a name.
+        const nexus::system::ScratchDirectory other;
+        EXPECT_NE(other.path(), kept);
+    }
+    EXPECT_FALSE(std::filesystem::exists(kept));
+}
+
+TEST(ProcessTest, WithoutAFolderTheFileIsDevNullNotAGuess) {
+    const char* old = std::getenv("TMPDIR");
+    const std::string saved = old ? old : "";
+    ::setenv("TMPDIR", "/nonexistent-nexus-test", 1);
+    {
+        const nexus::system::ScratchDirectory scratch;
+        EXPECT_FALSE(scratch.ok());
+        EXPECT_EQ(scratch.file("stderr"), "/dev/null");
+    }
+    if (old) ::setenv("TMPDIR", saved.c_str(), 1); else ::unsetenv("TMPDIR");
+    EXPECT_TRUE(std::filesystem::exists("/dev/null"));
 }

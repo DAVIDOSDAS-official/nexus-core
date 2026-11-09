@@ -299,7 +299,7 @@ def ext4_used(name):
 def system_name(name):
     import os
     os.makedirs("/tmp/nexus-peek", exist_ok=True)
-    if subprocess.run(["mount", "-o", "ro", "/dev/" + name, "/tmp/nexus-peek"]).returncode != 0:
+    if subprocess.run(["mount", "-o", "ro,nodev,nosuid,noexec", "/dev/" + name, "/tmp/nexus-peek"]).returncode != 0:
         return "another system"
     try:
         for line in open("/tmp/nexus-peek/etc/os-release"):
@@ -610,7 +610,7 @@ def partition_has(partuuid, relative):
         return True  # cannot tell: keep it
     where = "/tmp/nexus-esp-look"
     os.makedirs(where, exist_ok=True)
-    if subprocess.run(["mount", "-o", "ro", device, where]).returncode != 0:
+    if subprocess.run(["mount", "-o", "ro,nodev,nosuid,noexec", device, where]).returncode != 0:
         return True
     try:
         path = where

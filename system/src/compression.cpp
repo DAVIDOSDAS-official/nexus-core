@@ -108,8 +108,8 @@ bool readPossiblyCompressed(
     // into "produced no output", which says nothing about why.
     // Process-specific: a fixed name in a sticky /tmp cannot be
     // rewritten by a different user.
-    const std::string errors =
-        "/tmp/nexus-decompress-" + std::to_string(::getpid());
+    const ScratchDirectory scratch;   // not a guessable /tmp name (0.1.78)
+    const std::string errors = scratch.file("stderr");
 
     // Not split into lines: this is one document, and the caller
     // wants it whole. Splitting it held every byte twice.

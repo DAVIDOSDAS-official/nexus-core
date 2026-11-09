@@ -1,5 +1,8 @@
 #include <nexus/system/process.hpp>
 
+#include <filesystem>
+#include <vector>
+#include <unistd.h>
 #include <cctype>
 #include <cerrno>
 #include <cstdio>
@@ -24,6 +27,24 @@ bool isPackageName(const std::string& name) {
         if (!fine) return false;
     }
     return true;
+}
+
+ScratchDirectory::ScratchDirectory() {
+    const char* base = std::getenv("TMPDIR");
+    std::string pattern = std::string(base && *base == '/' ? base : "/tmp") + "/nexus-XXXXXX";
+    std::vector<char> buffer(pattern.begin(), pattern.end());
+    buffer.push_back('\0');
+    if (::mkdtemp(buffer.data()) != nullptr) path_ = buffer.data();
+}
+
+ScratchDirectory::~ScratchDirectory() {
+    if (path_.empty()) return;
+    std::error_code ec;
+    std::filesystem::remove_all(path_, ec);
+}
+
+std::string ScratchDirectory::file(const std::string& name) const {
+    return path_.empty() ? "/dev/null" : path_ + "/" + name;
 }
 
 bool commandExists(const std::string& name) {

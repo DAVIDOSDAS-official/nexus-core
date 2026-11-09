@@ -69,4 +69,30 @@ std::string shellQuote(const std::string& text);
 // in from the command line, before it is used anywhere.
 bool isPackageName(const std::string& name);
 
+// A scratch folder only this process can enter: mkdtemp, mode 0700,
+// owned by whoever runs it -- root under sudo. A file inside it cannot
+// be planted beforehand by anyone else, as a symlink or otherwise.
+// Removed with everything in it when this goes out of scope.
+//
+// 0.1.78, after a third outside review: child stderr went to
+// /tmp/nexus-...-<pid>, a name anyone could guess and pre-create as a
+// symlink that a run under sudo would follow. (Fedora's
+// fs.protected_symlinks=1 already blocks that; this does not rely on it.)
+class ScratchDirectory {
+public:
+    ScratchDirectory();
+    ~ScratchDirectory();
+    ScratchDirectory(const ScratchDirectory&) = delete;
+    ScratchDirectory& operator=(const ScratchDirectory&) = delete;
+
+    bool ok() const { return !path_.empty(); }
+    // A path for a file in the folder, or /dev/null if there is no
+    // folder -- never a guessable name in /tmp.
+    std::string file(const std::string& name) const;
+    const std::string& path() const { return path_; }
+
+private:
+    std::string path_;
+};
+
 }

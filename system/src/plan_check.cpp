@@ -31,12 +31,12 @@ PlanCheck checkPlanWithApt(
     // to whoever created it first, and /tmp is sticky -- so running
     // once as a user and then again under sudo left root unable to
     // write to its own scratch file.
-    const std::string errors =
-        "/tmp/nexus-plan-check-" + std::to_string(::getpid());
+    const ScratchDirectory scratch;   // not a guessable /tmp name (0.1.78)
+    const std::string errors = scratch.file("stderr");
 
     const std::string command =
-        "apt-get install --dry-run --no-install-recommends '" +
-        requested + "' 2>" + errors;
+        "apt-get install --dry-run --no-install-recommends " +
+        shellQuote(requested) + " 2>" + errors;
 
     std::FILE* pipe = popen(inPlainLocale(command).c_str(), "r");
 
@@ -76,8 +76,6 @@ PlanCheck checkPlanWithApt(
             }
         }
 
-        std::error_code removal;
-        std::filesystem::remove(errors, removal);
 
         // A refusal with nothing said is not a refusal. apt always
         // explains itself, so an empty message means the check never
@@ -90,8 +88,6 @@ PlanCheck checkPlanWithApt(
         return check;
     }
 
-    std::error_code removal;
-    std::filesystem::remove(errors, removal);
 
     for (const std::string& name : expected) {
         if (check.theirs.count(name) == 0) {
@@ -177,14 +173,14 @@ PlanCheck checkPlanWithDnf(
         return check;
     }
 
-    const std::string errors =
-        "/tmp/nexus-plan-check-dnf-" + std::to_string(::getpid());
+    const ScratchDirectory scratch;   // not a guessable /tmp name (0.1.78)
+    const std::string errors = scratch.file("stderr");
 
     // --assumeno makes dnf resolve and print the transaction, then
     // decline it. Nothing is downloaded and nothing is changed.
     const std::string command =
-        "dnf install --assumeno --setopt=install_weak_deps=False '" +
-        requested + "' 2>" + errors;
+        "dnf install --assumeno --setopt=install_weak_deps=False " +
+        shellQuote(requested) + " 2>" + errors;
 
     std::FILE* pipe = popen(inPlainLocale(command).c_str(), "r");
 
@@ -217,8 +213,6 @@ PlanCheck checkPlanWithDnf(
             }
         }
 
-        std::error_code removal;
-        std::filesystem::remove(errors, removal);
 
         // As with apt: a refusal that says nothing is not a refusal,
         // it is a check that never ran.
@@ -229,8 +223,6 @@ PlanCheck checkPlanWithDnf(
         return check;
     }
 
-    std::error_code removal;
-    std::filesystem::remove(errors, removal);
 
     for (const std::string& name : expected) {
         if (check.theirs.count(name) == 0) {

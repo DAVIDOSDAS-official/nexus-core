@@ -217,8 +217,8 @@ PacmanSourceResult readPacmanDatabase(
     // "held nothing readable", which says nothing about whether the
     // file is missing, truncated, an error page, or compressed with
     // something else -- and those need different answers.
-    const std::string errors =
-        "/tmp/nexus-pacman-" + std::to_string(::getpid());
+    const ScratchDirectory scratch;   // not a guessable /tmp name (0.1.78)
+    const std::string errors = scratch.file("stderr");
 
     // -a rather than -z: Arch has shipped gzip databases for years,
     // but assuming the compression is how a reader ends up working on
@@ -247,14 +247,10 @@ PacmanSourceResult readPacmanDatabase(
             result.error += "tar produced nothing and said nothing";
         }
 
-        std::error_code removal;
-        std::filesystem::remove(errors, removal);
 
         return result;
     }
 
-    std::error_code removal;
-    std::filesystem::remove(errors, removal);
 
     return parsePacmanDatabase(text, source);
 }

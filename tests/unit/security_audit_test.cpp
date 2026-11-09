@@ -114,3 +114,20 @@ TEST(SecurityAuditTest, ZoneInfoIsReadFromInfoZone) {
     EXPECT_EQ(z.ports, "1025-65535/udp 1025-65535/tcp");
     EXPECT_EQ(parseZoneInfo("trusted (active)\n  target: ACCEPT\n  ports: \n").target, "ACCEPT");
 }
+
+// The Asus, 9 November: zone "trusted" was FAIL without saying for what.
+TEST(SecurityAuditTest, ATrustedZoneIsJudgedByWhatIsInIt) {
+    ZoneInfo z;
+    EXPECT_EQ(trustedReach(z), TrustedReach::Nothing);
+    z.interfaces = "docker0 podman1 virbr0";
+    EXPECT_EQ(trustedReach(z), TrustedReach::Containers);
+    z.interfaces = "docker0 proton0";
+    EXPECT_EQ(trustedReach(z), TrustedReach::Tunnel);
+    z.interfaces = "wlo1";
+    EXPECT_EQ(trustedReach(z), TrustedReach::Network);
+    z.interfaces = "";
+    z.sources = "192.168.0.0/24";
+    EXPECT_EQ(trustedReach(z), TrustedReach::Network);
+    EXPECT_EQ(parseZoneInfo("trusted (active)\n  target: ACCEPT\n  interfaces: pvpnksintrf0 proton0\n").interfaces,
+              "pvpnksintrf0 proton0");
+}

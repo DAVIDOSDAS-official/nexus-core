@@ -81,7 +81,16 @@ struct ZoneInfo {
     std::string target;     // default, ACCEPT, DROP, %%REJECT%%
     std::string services;
     std::string ports;
+    std::string interfaces;
+    std::string sources;
 };
 ZoneInfo parseZoneInfo(const std::string& output);
+
+// A zone that lets everything in matters by what is in it (the Asus,
+// 9 November: "trusted" was FAIL without saying for what). Interfaces
+// of the machine's own containers and VMs are one thing, a VPN tunnel
+// another, a real network or an address range something else again.
+enum class TrustedReach { Nothing, Containers, Tunnel, Network };
+TrustedReach trustedReach(const ZoneInfo& zone);
 
 }  // namespace nexus::system

@@ -1,4 +1,5 @@
 #include <nexus/system/security_audit.hpp>
+#include <initializer_list>
 
 #include <ctime>
 #include <iomanip>
@@ -140,6 +141,29 @@ bool policyRequiresKey(const std::string& policyJson, const std::string& scope,
            block.find(keyPath) != std::string::npos;
 }
 
+TrustedReach trustedReach(const ZoneInfo& zone) {
+    if (!zone.sources.empty()) return TrustedReach::Network;
+    auto starts = [](const std::string& name, std::initializer_list<const char*> prefixes) {
+        for (const char* p : prefixes)
+            if (name.rfind(p, 0) == 0) return true;
+        return false;
+    };
+    TrustedReach worst = TrustedReach::Nothing;
+    std::istringstream in(zone.interfaces);
+    std::string name;
+    while (in >> name) {
+        TrustedReach reach;
+        if (name == "lo" || starts(name, {"docker", "br-", "podman", "cni", "virbr", "veth", "lxc", "vnet"}))
+            reach = TrustedReach::Containers;
+        else if (starts(name, {"tun", "tap", "wg", "proton", "pvpn", "ipv6leak", "tailscale", "zt", "nordlynx", "mullvad"}))
+            reach = TrustedReach::Tunnel;
+        else
+            reach = TrustedReach::Network;
+        if (static_cast<int>(reach) > static_cast<int>(worst)) worst = reach;
+    }
+    return worst;
+}
+
 ZoneInfo parseZoneInfo(const std::string& output) {
     ZoneInfo info;
     std::istringstream in(output);
@@ -156,6 +180,8 @@ ZoneInfo parseZoneInfo(const std::string& output) {
         if (key == "target") info.target = value;
         else if (key == "services") info.services = value;
         else if (key == "ports") info.ports = value;
+        else if (key == "interfaces") info.interfaces = value;
+        else if (key == "sources") info.sources = value;
     }
     return info;
 }
