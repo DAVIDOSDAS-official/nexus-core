@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.74** (patches 1–100). **634 automated tests**, all passing.
+**Version 0.1.75** (patches 1–101). **641 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -380,6 +380,30 @@ removes Nexus's two files (split lock back to 1). History records all.
 New system/gaming.{hpp,cpp} + 5 tests. Opt-in, not default.
 Test: Acer (Tiger Lake: likely has the knob) and Asus (Gemini Lake:
 may not -- then the line says nothing to fix).
+
+**Acer 9 Nov: 0.1.74 gaming PASSED** -- split-lock --apply set 0, off
+put it back to 1. Bug seen: a split-lock-only run printed "[ ok ] NTSync
+not on yet" under "Now:"; fixed in 101 (the Now: lines show only what
+the run changed; NTSync not on is "note", not "ok").
+
+**Patch 101 (0.1.75): `nexus security`.** `nexus security` (= `nexus
+security audit`) reads only: firewall, network listeners (ss -tulnH,
+loopback and DHCP client ports left out), remote login, disk
+encryption, Secure Boot, SELinux, signed image ref, days since the
+booted build (warn >14, FAIL >30), Nexus's kernel hardening tier (n of
+14), accounts with no password (root only, /etc/shadow), and what
+starts by itself for the person (~/.config/autostart, user units; the
+sudo user's home under sudo). Exit 1 on any FAIL. Honest note: no
+virus scan. `sudo nexus security harden --apply` writes only the weak
+settings to /etc/sysctl.d/90-nexus-hardening.conf and runs sysctl -p;
+`harden off --apply` removes it. History records both. Tier: kptr/dmesg
+restrict, unprivileged BPF off, no redirects/source routes, syncookies,
+rp_filter (written loose 2 -- VPN-safe; strict 1 also counts as fine),
+fs.protected_*. Not ptrace/userns/module lockdown. New
+system/security_audit.{hpp,cpp} + 7 tests.
+Test: Asus and Acer: `nexus security`, `sudo nexus security`,
+`sudo nexus security harden --apply`, Proton VPN still connects,
+`sudo nexus security harden off --apply`.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

@@ -41,6 +41,9 @@
 #include <nexus/system/dev.hpp>
 #include <nexus/system/rollback.hpp>
 #include <nexus/system/gaming.hpp>
+#include <nexus/system/security_audit.hpp>
+
+#include <pwd.h>
 #include <nexus/system/source_build.hpp>
 #include <nexus/system/alias_file.hpp>
 #include <nexus/removal.hpp>
@@ -116,6 +119,7 @@ void printUsage() {
         << "    nexus vpn [check]        is a VPN carrying traffic; DNS and IPv6 leaks; kill switch\n"
         << "    nexus cyber              the cybersecurity toolbox: Kali's tools in a container\n"
         << "    nexus dev                programming languages on request; nexus dev help <topic>\n"
+        << "    nexus security           audit: firewall, updates, encryption, kernel settings...\n"
         << "    nexus rollback           go back to the previous system version (warns first)\n"
         << "    nexus rebase             switch edition, pin a build, or follow the newest again\n"
         << "    nexus vpn keys | vpn config --address A --peer-key K --endpoint H:P\n"
@@ -3903,10 +3907,17 @@ int commandGaming(
     if (!ok) { std::cout << "\nNot done: " << error << "\n"; return 1; }
 
     std::cout << "\nNow:\n";
-    if (st.ntsyncModule)
-        line(" ok ", "NTSync", std::string(fs::exists("/dev/ntsync") ? "on" : "not on yet") +
+    // Only what this run changed (the Acer, 9 November: a split-lock-only
+    // run printed "[ ok ] NTSync not on yet").
+    const bool didNtsync = std::find(plan.begin(), plan.end(), GamingFix::NtsyncNow) != plan.end() ||
+                           std::find(plan.begin(), plan.end(), GamingFix::NtsyncAtStart) != plan.end();
+    if (didNtsync) {
+        const bool on = fs::exists("/dev/ntsync");
+        line(on ? " ok " : "note", "NTSync", std::string(on ? "on" : "not on yet") +
              (fs::exists(kNtsyncConf) ? ", and loaded at every start." : "."));
-    if (st.splitLock) {
+    }
+    const bool didSplitLock = std::find(plan.begin(), plan.end(), GamingFix::SplitLockOff) != plan.end();
+    if (didSplitLock && st.splitLock) {
         std::ifstream in("/proc/sys/kernel/split_lock_mitigate");
         std::stringstream b; b << in.rdbuf();
         const auto v = nexus::system::parseSysctlInt(b.str());
@@ -4878,6 +4889,255 @@ int commandRebase(const std::vector<std::string>& raw, bool apply, const std::st
     finishTransaction(log, marker, record);
     if (ok) std::cout << "\nStaged. Restart to use it:\n    systemctl reboot\n";
     return ok ? 0 : 1;
+}
+
+// ---------------------------------------------------------------------
+// nexus security (0.1.75): the audit, and one tier of hardening.
+int commandSecurity(const std::vector<std::string>& words, bool apply, const std::string& invocation) {
+    namespace fs = std::filesystem;
+    using nexus::system::commandExists;
+    using nexus::system::runCommand;
+
+    const std::string action = words.empty() ? "audit" : words[0];
+
+    auto readSysctls = [] {
+        std::map<std::string, int> now;
+        for (const auto& s : nexus::system::hardeningTable()) {
+            std::string fixed = "/proc/sys/";
+            std::string k = s.key;
+            for (auto& c : k) if (c == '.') c = '/';
+            fixed += k;
+            std::ifstream in(fixed);
+            std::stringstream b; b << in.rdbuf();
+            if (const auto v = nexus::system::parseSysctlInt(b.str())) now[s.key] = *v;
+        }
+        return now;
+    };
+
+    if (action == "harden") {
+        const bool off = words.size() > 1 && words[1] == "off";
+        if (off) {
+            if (!fs::exists(nexus::system::kHardeningConf)) {
+                std::cout << "Nexus has not hardened anything here; nothing to undo.\n";
+                return 0;
+            }
+            std::cout << "Removes " << nexus::system::kHardeningConf
+                      << "; the kernel's own values come back at the next restart.\n";
+            if (!apply) { std::cout << "\nNothing has been changed. To do it:\n    sudo " << invocation << " --apply\n"; return 0; }
+            if (!nexus::system::haveRootPrivileges()) { std::cout << "\nThis needs root:\n    sudo " << invocation << " --apply\n"; return 1; }
+            nexus::system::TransactionRecord record;
+            record.when = nexus::system::currentTimestamp();
+            record.request = "security harden off";
+            record.kind = nexus::system::TransactionKind::Remove;
+            record.resolved = nexus::system::kHardeningConf;
+            const std::string log = nexus::system::defaultTransactionLog();
+            const std::string marker = nexus::system::beginTransaction(log, record);
+            std::error_code ec;
+            const bool ok = fs::remove(nexus::system::kHardeningConf, ec);
+            record.outcome = ok ? "removed" : "failed"; record.succeeded = ok; record.exitCode = ok ? 0 : 1;
+            nexus::system::finishTransaction(log, marker, record);
+            std::cout << (ok ? "\nRemoved. Restart to get the kernel's own values back.\n" : "\nCould not remove it.\n");
+            return ok ? 0 : 1;
+        }
+        const auto weak = nexus::system::weakSettings(readSysctls());
+        if (weak.empty()) {
+            std::cout << "Every setting in Nexus's default hardening tier is already on.\n";
+            return 0;
+        }
+        std::cout << "Nexus's default hardening tier: settings that make attacks harder and\n"
+                     "do not get in the way on a desktop. These are weaker here:\n\n";
+        std::size_t width = 0;
+        for (const auto& w : weak) width = std::max(width, w.key.size() + 3 + std::to_string(w.wanted).size());
+        for (const auto& w : weak)
+            std::cout << "  " << std::left << std::setw(static_cast<int>(width + 2))
+                      << (w.key + " = " + std::to_string(w.wanted)) << w.why << "\n";
+        std::cout << "\nWritten to " << nexus::system::kHardeningConf << ", applied at once and at every start.\n"
+                     "Undo any time: sudo nexus security harden off --apply\n"
+                     "Not in this tier (they break things for some people): ptrace limits,\n"
+                     "user-namespace limits, module lockdown.\n";
+        if (!apply) { std::cout << "\nNothing has been changed. To do it:\n    sudo " << invocation << " --apply\n"; return 0; }
+        if (!nexus::system::haveRootPrivileges()) { std::cout << "\nThis needs root:\n    sudo " << invocation << " --apply\n"; return 1; }
+        nexus::system::TransactionRecord record;
+        record.when = nexus::system::currentTimestamp();
+        record.request = "security harden";
+        record.kind = nexus::system::TransactionKind::Install;
+        record.resolved = nexus::system::kHardeningConf;
+        for (const auto& w : weak) record.packages.insert(w.key);
+        const std::string log = nexus::system::defaultTransactionLog();
+        const std::string marker = nexus::system::beginTransaction(log, record);
+        bool ok = true;
+        {
+            std::error_code ec;
+            fs::create_directories("/etc/sysctl.d", ec);
+            std::ofstream out(nexus::system::kHardeningConf, std::ios::trunc);
+            out << nexus::system::hardeningFile(weak);
+            ok = static_cast<bool>(out);
+        }
+        if (ok) ok = runCommand(std::string("sysctl -q -p ") + nexus::system::kHardeningConf + " 2>&1", true).ok;
+        record.outcome = ok ? "applied" : "failed"; record.succeeded = ok; record.exitCode = ok ? 0 : 1;
+        nexus::system::finishTransaction(log, marker, record);
+        const auto still = nexus::system::weakSettings(readSysctls());
+        std::cout << "\n" << (ok && still.empty() ? "Done: every setting in the tier is on, now and at every start.\n"
+                                                  : "Not all applied; see: nexus security\n");
+        return ok ? 0 : 1;
+    }
+
+    if (action != "audit") {
+        std::cerr << "Use: nexus security                     the audit (changes nothing)\n"
+                     "     nexus security harden --apply      Nexus's default hardening tier\n"
+                     "     nexus security harden off --apply  undo it\n";
+        return 2;
+    }
+
+    // ---- the audit
+    int fails = 0, warns = 0, oks = 0;
+    auto line = [&](const char* mark, const std::string& name, const std::string& detail,
+                    const std::string& fix = "") {
+        const std::string m = mark;
+        if (m == "FAIL") ++fails; else if (m == "warn") ++warns; else if (m == " ok ") ++oks;
+        std::cout << "  [" << mark << "]  " << std::left << std::setw(18) << name << detail << "\n";
+        if (!fix.empty()) std::cout << std::string(28, ' ') << "fix: " << fix << "\n";
+    };
+    std::cout << "Security audit -- reads only, sends nothing, changes nothing\n\n";
+
+    bool firewallOn = false;
+    if (commandExists("firewall-cmd")) {
+        firewallOn = firstLine(runCommand("firewall-cmd --state 2>&1", false).text) == "running";
+        if (firewallOn) {
+            std::string svc = firstLine(runCommand("firewall-cmd --list-services 2>/dev/null", false).text);
+            line(" ok ", "Firewall", "on" + (svc.empty() ? std::string(".") : "; lets in: " + svc));
+        } else {
+            line("FAIL", "Firewall", "off: anything listening is reachable from the network.",
+                 "sudo systemctl enable --now firewalld");
+        }
+    } else {
+        line(" -- ", "Firewall", "firewalld is not installed; not checked.");
+    }
+
+    if (commandExists("ss")) {
+        const auto listeners = nexus::system::parseListeners(runCommand("ss -tulnH 2>/dev/null", false).text);
+        if (listeners.empty()) line(" ok ", "Listening", "nothing listens to the network.");
+        else {
+            std::string l;
+            for (std::size_t i = 0; i < listeners.size() && i < 6; ++i) l += (i ? ", " : "") + listeners[i];
+            if (listeners.size() > 6) l += ", ...";
+            if (firewallOn) line(" ok ", "Listening", l + " (the firewall decides who reaches them)");
+            else line("warn", "Listening", l + " -- reachable, the firewall is off", "sudo ss -tulnp   (which program)");
+        }
+    }
+
+    if (auto ssh = checkRemoteLogin()) {
+        if (ssh->health == nexus::Health::Ok) line(" ok ", "Remote login", ssh->detail);
+        else line("warn", "Remote login", ssh->detail, ssh->suggestion);
+    }
+
+    {
+        const auto enc = nexus::hardware::EncryptionDetector("/").detect();
+        if (enc.root == nexus::hardware::Encrypted::Yes)
+            line(" ok ", "Disk", "encrypted: a stolen laptop's files cannot be read.");
+        else if (enc.root == nexus::hardware::Encrypted::No)
+            line("warn", "Disk", "not encrypted: whoever has the laptop can read every file.",
+                 "only at install: reinstall with disk encryption on");
+    }
+
+    {
+        const auto sb = nexus::hardware::SecureBootDetector("/").detect();
+        if (sb.state == nexus::hardware::SecureBootState::Enabled)
+            line(" ok ", "Secure Boot", "on: the firmware starts only signed boot code.");
+        else if (sb.state == nexus::hardware::SecureBootState::Disabled)
+            line("warn", "Secure Boot", "off: the firmware would start unsigned boot code too.",
+                 "firmware settings -> Secure Boot; see: nexus secure-boot");
+    }
+
+    if (commandExists("getenforce")) {
+        const std::string se = firstLine(runCommand("getenforce 2>/dev/null", false).text);
+        if (se == "Enforcing") line(" ok ", "SELinux", "enforcing: programs are kept to what they may touch.");
+        else if (se == "Permissive") line("warn", "SELinux", "permissive: only logs, blocks nothing.", "sudo setenforce 1");
+        else if (se == "Disabled") line("FAIL", "SELinux", "disabled.", "enable it in /etc/selinux/config and restart");
+    }
+
+    {
+        const auto deployments = readDeployments();
+        for (const auto& d : deployments) {
+            if (!d.booted) continue;
+            if (d.image.rfind("ostree-image-signed:", 0) == 0)
+                line(" ok ", "System image", "signature checked at every update.");
+            else if (!d.image.empty())
+                line("warn", "System image", "updates are not signature-checked: " + d.image,
+                     "nexus rebase kde   (the signed Nexus image)");
+            const auto days = nexus::system::daysSince(d.date, static_cast<long>(std::time(nullptr)));
+            if (days) {
+                if (*days <= 14) line(" ok ", "Updates", "system built " + std::to_string(*days) + " day(s) ago.");
+                else if (*days <= 30) line("warn", "Updates", "system built " + std::to_string(*days) + " days ago; security fixes come with updates.", "sudo nexus update --apply");
+                else line("FAIL", "Updates", "system built " + std::to_string(*days) + " days ago: a month of security fixes missing.", "sudo nexus update --apply");
+            }
+        }
+    }
+
+    {
+        const auto weak = nexus::system::weakSettings(readSysctls());
+        const auto total = nexus::system::hardeningTable().size();
+        if (weak.empty()) line(" ok ", "Kernel settings", "all " + std::to_string(total) + " of Nexus's hardening tier on.");
+        else {
+            std::string names;
+            for (std::size_t i = 0; i < weak.size() && i < 2; ++i) names += (i ? ", " : "") + weak[i].key;
+            if (weak.size() > 2) names += ", ...";
+            line("warn", "Kernel settings", std::to_string(weak.size()) + " of " + std::to_string(total) +
+                 " could be stricter (" + names + ").", "sudo nexus security harden --apply");
+        }
+    }
+
+    if (nexus::system::haveRootPrivileges()) {
+        std::ifstream sh("/etc/shadow");
+        std::stringstream b; b << sh.rdbuf();
+        const auto empty = nexus::system::emptyPasswordAccounts(b.str());
+        if (empty.empty()) line(" ok ", "Passwords", "no account without a password.");
+        else {
+            std::string n;
+            for (std::size_t i = 0; i < empty.size(); ++i) n += (i ? ", " : "") + empty[i];
+            line("FAIL", "Passwords", "no password on: " + n, "sudo passwd <account>   (or: sudo passwd -l <account>)");
+        }
+    } else {
+        line(" -- ", "Passwords", "not checked (needs sudo: sudo nexus security).");
+    }
+
+    {
+        // What starts by itself for this person: where unwanted things hide.
+        std::vector<std::string> starts;
+        // Under sudo, HOME may be root's: look at the person who ran sudo.
+        std::string home;
+        if (const char* su = std::getenv("SUDO_USER")) {
+            if (const passwd* pw = getpwnam(su)) home = pw->pw_dir;
+        } else if (const char* hh = std::getenv("HOME")) {
+            home = hh;
+        }
+        const char* h = home.empty() ? nullptr : home.c_str();
+        if (h) {
+            std::error_code ec;
+            for (const std::string dir : {std::string(h) + "/.config/autostart", std::string(h) + "/.config/systemd/user"}) {
+                if (!fs::is_directory(dir, ec)) continue;
+                for (const auto& e : fs::directory_iterator(dir, ec)) {
+                    const auto name = e.path().filename().string();
+                    const auto ext = e.path().extension().string();
+                    if (ext == ".desktop" || ext == ".service" || ext == ".timer") starts.push_back(name);
+                }
+            }
+        }
+        if (h) {
+            if (starts.empty()) line(" ok ", "Starts by itself", "nothing set up in your autostart or user services.");
+            else {
+                std::string n;
+                for (std::size_t i = 0; i < starts.size() && i < 6; ++i) n += (i ? ", " : "") + starts[i];
+                if (starts.size() > 6) n += ", ...";
+                line(" -- ", "Starts by itself", n + "  (check you know each one)");
+            }
+        }
+    }
+
+    std::cout << "\n" << oks << " ok, " << warns << " to look at, " << fails << " to fix.\n"
+                 "\nNo virus scan: on Linux the risk is rarely a virus file; it is what is\n"
+                 "open, what is out of date, and what starts by itself -- the lines above.\n";
+    return fails > 0 ? 1 : 0;
 }
 
 int commandServer(
@@ -9191,7 +9451,7 @@ int main(int argc, char** argv) {
             "app", "conflicts", "container", "cyber", "cybersecurity", "dev", "doctor",
             "dualboot", "gamecheck", "gaming", "gaps", "guide", "hardware", "help",
             "history", "image", "inspect", "install", "language", "largest",
-            "options", "plan", "profile", "rebase", "remove", "rollback", "scan", "secure-boot",
+            "options", "plan", "profile", "rebase", "remove", "rollback", "scan", "secure-boot", "security",
             "secureboot", "server", "services", "setup", "solve", "source", "specs",
             "update", "vpn", "what-provides", "why"};
         const std::string& first = arguments[0];
@@ -9487,6 +9747,11 @@ int main(int argc, char** argv) {
             apply, invocation);
     }
 
+    if (command == "security") {
+        return commandSecurity(
+            std::vector<std::string>(positional.begin() + 1, positional.end()),
+            apply, invocation);
+    }
     if (command == "rollback") {
         return commandRollback(apply, invocation);
     }

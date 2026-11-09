@@ -43,6 +43,7 @@ add_library(nexus_system
     src/dev.cpp
     src/rollback.cpp
     src/gaming.cpp
+    src/security_audit.cpp
 )
 
 target_include_directories(nexus_system

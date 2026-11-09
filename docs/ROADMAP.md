@@ -121,7 +121,7 @@ decided; each is a candidate, with the report's own verdict.
   driving first boot, a settings app and the CLI help (Bazzite Portal
   style); gaming baseline (split lock + doctor DONE in 0.1.74): `kernel.split_lock_mitigate=0` (Intel),
   NTSYNC, MangoHud, gamescope session, a `nexus gaming doctor`;
-  a default hardening tier + `nexus security audit` as the honest core
+  a default hardening tier + `nexus security audit` (DONE in 0.1.75) as the honest core
   of "Nexus antivirus" (not a ClamAV wrapper); `nexus specs` modelled on
   Mint 22.3's System Information (USB, GPU, PCI, BIOS pages).
 - **Later:** a declarative manifest with generations and `nexus diff`;
