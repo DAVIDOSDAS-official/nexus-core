@@ -118,6 +118,11 @@ public:
 // per package: a second Arch container would download Arch twice.
 std::string containerImageFor(const std::string& distribution);
 
+// An absolute path made only of letters, digits and / . _ + - @ :,
+// with no "/../". What a package's executable is called, and nothing
+// a shell could read as anything else.
+bool isPlainPath(const std::string& path);
+
 std::string containerNameFor(const std::string& distribution);
 
 }

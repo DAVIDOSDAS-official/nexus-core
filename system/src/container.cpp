@@ -1,5 +1,7 @@
 #include <nexus/system/container.hpp>
 
+#include <cctype>
+
 #include <cstdio>
 #include <cstdlib>
 #include <sstream>
@@ -179,8 +181,8 @@ ContainerResult Containers::ensure(
     }
 
     const ContainerResult created = execute(
-        "distrobox create --yes --name '" + name +
-        "' --image '" + image + "'");
+        "distrobox create --yes --name " + shellQuote(name) +
+        " --image " + shellQuote(image));
 
     if (!created.ok) {
         return created;
@@ -196,7 +198,7 @@ ContainerResult Containers::ensure(
     // and then works on retry, which is the most confusing behaviour
     // available.
     ContainerResult ready = execute(
-        "distrobox enter --name '" + name + "' -- true");
+        "distrobox enter --name " + shellQuote(name) + " -- true");
 
     if (!ready.ok) {
         ready.error =
@@ -211,6 +213,16 @@ ContainerResult Containers::ensure(
     return ready;
 }
 
+bool isPlainPath(const std::string& path) {
+    if (path.empty() || path.size() > 4096 || path[0] != '/') return false;
+    for (unsigned char c : path) {
+        const bool fine = std::isalnum(c) || c == '/' || c == '.' || c == '_' ||
+                          c == '+' || c == '-' || c == '@' || c == ':';
+        if (!fine) return false;
+    }
+    return path.find("/../") == std::string::npos;
+}
+
 ContainerResult Containers::run(
     const std::string& name,
     const std::string& command
@@ -222,7 +234,7 @@ ContainerResult Containers::run(
     }
 
     return execute(
-        "distrobox enter --name '" + name + "' -- " + command);
+        "distrobox enter --name " + shellQuote(name) + " -- " + command);
 }
 
 Containers::Binaries Containers::binariesOf(
@@ -237,11 +249,11 @@ Containers::Binaries Containers::binariesOf(
     std::string query;
 
     if (distribution == "arch") {
-        query = "pacman -Ql " + package;
+        query = "pacman -Ql " + shellQuote(package);
     } else if (distribution == "fedora") {
-        query = "rpm -ql " + package;
+        query = "rpm -ql " + shellQuote(package);
     } else {
-        query = "dpkg -L " + package;
+        query = "dpkg -L " + shellQuote(package);
     }
 
     // Read through podman: distrobox truncates non-interactive
@@ -278,7 +290,11 @@ Containers::Binaries Containers::binariesOf(
             path.rfind("/usr/sbin/", 0) == 0 ||
             path.rfind("/bin/", 0) == 0;
 
-        if (executable) {
+        // Only paths a package could honestly own: a name made of
+        // ordinary characters. The path ends up in a command on the
+        // host (distrobox-export), so a package that names a file
+        // "x';reboot;'" is a package whose file is skipped, not run.
+        if (executable && isPlainPath(path)) {
             binaries.paths.push_back(path);
         }
     }
@@ -298,17 +314,23 @@ ContainerResult Containers::query(
     }
 
     return execute(
-        "podman exec '" + name + "' sh -c \"" + command + "\"");
+        "podman exec " + shellQuote(name) + " sh -c " + shellQuote(command));
 }
 
 ContainerResult Containers::exportBinary(
     const std::string& name,
     const std::string& binaryPath
 ) {
+    if (!isPlainPath(binaryPath)) {
+        ContainerResult refused;
+        refused.error = "not exported: unusual characters in " + binaryPath;
+        return refused;
+    }
+
     return run(
         name,
-        "distrobox-export --bin '" + binaryPath +
-        "' --export-path \"$HOME/.local/bin\"");
+        "distrobox-export --bin " + shellQuote(binaryPath) +
+        " --export-path \"$HOME/.local/bin\"");
 }
 
 }

@@ -150,7 +150,7 @@ ctest --test-dir build
 
 Needs a C++20 compiler and CMake 3.20, Qt 6 for the Shop, and
 GoogleTest for the tests (`-DNEXUS_BUILD_TESTS=OFF` to skip).
-576 automated tests.
+About 650 automated tests (`ctest --test-dir build`).
 
 To build an installer ISO from a published image:
 

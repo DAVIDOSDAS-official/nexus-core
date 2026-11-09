@@ -158,9 +158,13 @@ lines = ["# Written by the Nexus %pre at install time; see /tmp/nexus-disk.log."
 # The person sees the installer's Installation Destination screen,
 # which shows what is there and offers to use free space, shrink a
 # partition, or delete: installing next to another system (dual boot)
-# starts there. Only a disk with no filesystem on it at all is taken
-# without asking. (0.1.42: before, the only internal disk was always
-# erased, and with it a Windows that was the only thing on it.)
+# starts there. Only a disk with no partitions and no filesystem on it
+# at all is taken without asking. (0.1.42: before, the only internal
+# disk was always erased, and with it a Windows that was the only thing
+# on it. 0.1.76, after an outside review: a partition with no
+# filesystem lsblk recognises -- raw, or a kind it does not know --
+# counted as nothing, so the disk looked empty; now any partition is
+# something.)
 def in_use(disk):
     found = subprocess.run(
         ["lsblk", "-n", "-P", "-o", "NAME,TYPE,FSTYPE,LABEL", "/dev/" + disk],
@@ -171,6 +175,8 @@ def in_use(disk):
         if f.get("FSTYPE"):
             used.append(f.get("NAME", "") + " " + f.get("FSTYPE", "") +
                         (" " + f["LABEL"] if f.get("LABEL") else ""))
+        elif f.get("TYPE") == "part":
+            used.append(f.get("NAME", "") + " partition (no filesystem Nexus recognises)")
     return used
 
 # Installing next to another system (0.1.43). Nexus gets its own EFI

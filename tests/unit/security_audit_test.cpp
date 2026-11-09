@@ -75,3 +75,31 @@ TEST(SecurityAuditTest, ReversePathFilterLooseIsWrittenStrictIsKept) {
     ASSERT_EQ(w.size(), 1u);
     EXPECT_EQ(w[0].wanted, 2);
 }
+
+TEST(SecurityAuditTest, ActiveZonesAreTheUnindentedLines) {
+    const auto z = parseActiveZones("FedoraWorkstation (default)\n  interfaces: wlo1\npublic\n  sources: 10.0.0.0/8\n");
+    ASSERT_EQ(z.size(), 2u);
+    EXPECT_EQ(z[0], "FedoraWorkstation");
+    EXPECT_EQ(z[1], "public");
+}
+
+TEST(SecurityAuditTest, AWideOpenPortRangeIsFound) {
+    EXPECT_EQ(wideOpenRange("1025-65535/udp 1025-65535/tcp"), "1025-65535/udp");
+    EXPECT_EQ(wideOpenRange("8080/tcp 27015-27030/udp"), "");
+    EXPECT_EQ(wideOpenRange(""), "");
+}
+
+TEST(SecurityAuditTest, ThePolicyMustNameTheKeyUnderTheScope) {
+    const std::string key = "/etc/pki/containers/nexus-core.pub";
+    const std::string good =
+        R"({"default":[{"type":"reject"}],"transports":{"docker":{)"
+        R"("ghcr.io/davidosdas-official": [{"type":"sigstoreSigned","keyPath":"/etc/pki/containers/nexus-core.pub"}],)"
+        R"("": [{"type":"insecureAcceptAnything"}]}}})";
+    EXPECT_TRUE(policyRequiresKey(good, "ghcr.io/davidosdas-official", key));
+    // The rule exists but for another scope: not Nexus's.
+    const std::string elsewhere =
+        R"({"transports":{"docker":{"ghcr.io/davidosdas-official": [{"type":"insecureAcceptAnything"}],)"
+        R"("quay.io/x": [{"type":"sigstoreSigned","keyPath":"/etc/pki/containers/nexus-core.pub"}]}}})";
+    EXPECT_FALSE(policyRequiresKey(elsewhere, "ghcr.io/davidosdas-official", key));
+    EXPECT_FALSE(policyRequiresKey("{}", "ghcr.io/davidosdas-official", key));
+}

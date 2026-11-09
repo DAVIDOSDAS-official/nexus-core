@@ -1,5 +1,6 @@
 #include <nexus/system/process.hpp>
 
+#include <cctype>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -7,9 +8,27 @@
 
 namespace nexus::system {
 
+std::string shellQuote(const std::string& text) {
+    std::string out = "'";
+    for (char c : text) {
+        out += c == '\'' ? std::string("'\\''") : std::string(1, c);
+    }
+    return out + "'";
+}
+
+bool isPackageName(const std::string& name) {
+    if (name.empty() || name.size() > 255 || name[0] == '-') return false;
+    for (unsigned char c : name) {
+        const bool fine = std::isalnum(c) || c == '.' || c == '_' || c == '+' ||
+                          c == '-' || c == ':' || c == '@' || c == '~';
+        if (!fine) return false;
+    }
+    return true;
+}
+
 bool commandExists(const std::string& name) {
     return std::system(
-        ("command -v '" + name + "' > /dev/null 2>&1").c_str()) == 0;
+        ("command -v " + shellQuote(name) + " > /dev/null 2>&1").c_str()) == 0;
 }
 
 std::string inPlainLocale(const std::string& command) {

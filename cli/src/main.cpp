@@ -44,6 +44,8 @@
 #include <nexus/system/security_audit.hpp>
 
 #include <pwd.h>
+
+using nexus::system::shellQuote;   // process.hpp (0.1.76)
 #include <nexus/system/source_build.hpp>
 #include <nexus/system/alias_file.hpp>
 #include <nexus/removal.hpp>
@@ -1039,7 +1041,7 @@ PackageFacts dnfFacts(const std::string& name) {
         return facts;
     }
     const auto info = nexus::system::runCommand(
-        "LC_ALL=C dnf -q info --available '" + name + "' 2>/dev/null",
+        "LC_ALL=C dnf -q info --available " + shellQuote(name) + " 2>/dev/null",
         false);
     std::istringstream in(info.text);
     std::string line;
@@ -2749,12 +2751,12 @@ std::vector<nexus::system::Language> fedoraLanguages() {
 
 bool packageInstalled(const std::string& name) {
     return nexus::system::runCommand(
-        "rpm -q '" + name + "' >/dev/null 2>&1", false).exitCode == 0;
+        "rpm -q " + shellQuote(name) + " >/dev/null 2>&1", false).exitCode == 0;
 }
 
 bool packageOffered(const std::string& name) {
     const auto ran = nexus::system::runCommand(
-        "dnf -q repoquery --qf '%{name}\\n' '" + name + "' 2>/dev/null",
+        "dnf -q repoquery --qf '%{name}\\n' " + shellQuote(name) + " 2>/dev/null",
         false);
     return ran.text.find(name) != std::string::npos;
 }
@@ -2853,7 +2855,7 @@ const nexus::system::Language* languageOrSuggest(
 // so this is there; Nexus's short form when it is not.
 std::string localeInWords(const std::string& locale) {
     const auto ran = nexus::system::runCommand(
-        "LC_ALL='" + locale + "' locale title 2>/dev/null", false);
+        "LC_ALL=" + shellQuote(locale) + " locale title 2>/dev/null", false);
     std::string title = ran.text;
     while (!title.empty() && (title.back() == '\n' || title.back() == ' ')) {
         title.pop_back();
@@ -3223,7 +3225,7 @@ int commandApp(
     }
 
     const bool present = nexus::system::runCommand(
-        "flatpak info --system '" + id + "' >/dev/null 2>&1", false)
+        "flatpak info --system " + shellQuote(id) + " >/dev/null 2>&1", false)
         .exitCode == 0;
 
     if (install && present) {
@@ -3249,8 +3251,8 @@ int commandApp(
     }
 
     const std::string command = install
-        ? "flatpak install --system --noninteractive flathub '" + id + "'"
-        : "flatpak uninstall --system --noninteractive '" + id + "'";
+        ? "flatpak install --system --noninteractive flathub " + shellQuote(id)
+        : "flatpak uninstall --system --noninteractive " + shellQuote(id);
 
     if (!apply) {
         std::cout << "\nWhat it would run:\n    " << command
@@ -3306,13 +3308,6 @@ int commandApp(
 const char* const kGrubCustom = "/boot/grub2/custom.cfg";
 const char* const kGrubEnv = "/boot/grub2/grubenv";
 
-std::string shellQuote(const std::string& text) {
-    std::string out = "'";
-    for (char c : text) {
-        out += c == '\'' ? std::string("'\\''") : std::string(1, c);
-    }
-    return out + "'";
-}
 
 // Look inside a partition, read-only, and give it back. Options that
 // never write, even to replay a journal: a system that was hibernated
@@ -4774,14 +4769,28 @@ int commandRollback(bool apply, const std::string& invocation) {
         return 1;
     }
 
+    // Every file is saved, and checked, before anything is rolled back:
+    // a disk that is full or a file that will not copy stops it here.
+    // (An outside review, November 2026: the copies' errors were not
+    // read, so a failed save still went on to roll back.)
     std::string savedTo;
     if (!changes.empty()) {
         savedTo = "/var/lib/nexus/etc-saved/" + currentTimestamp();
-        std::error_code ec;
+        std::vector<std::string> notSaved;
         for (const auto& c : changes) {
             const fs::path dest = fs::path(savedTo) / c.path.substr(1);
+            std::error_code ec;
             fs::create_directories(dest.parent_path(), ec);
-            fs::copy_file(c.path, dest, fs::copy_options::overwrite_existing, ec);
+            if (!ec) fs::copy_file(c.path, dest, fs::copy_options::overwrite_existing, ec);
+            std::error_code e1, e2;
+            const bool same = !ec && fs::file_size(c.path, e1) == fs::file_size(dest, e2) && !e1 && !e2;
+            if (!same) notSaved.push_back(c.path + (ec ? " (" + ec.message() + ")" : ""));
+        }
+        if (!notSaved.empty()) {
+            std::cout << "\nNot rolled back: these could not be saved first --\n";
+            for (const auto& n : notSaved) std::cout << "    " << n << "\n";
+            std::cout << "Nothing has been changed. Free some space (df -h /var) and try again.\n";
+            return 1;
         }
     }
 
@@ -5004,8 +5013,30 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
     if (commandExists("firewall-cmd")) {
         firewallOn = firstLine(runCommand("firewall-cmd --state 2>&1", false).text) == "running";
         if (firewallOn) {
-            std::string svc = firstLine(runCommand("firewall-cmd --list-services 2>/dev/null", false).text);
-            line(" ok ", "Firewall", "on" + (svc.empty() ? std::string(".") : "; lets in: " + svc));
+            // What it actually lets in, in every zone that is in use --
+            // not only that it runs (0.1.76).
+            const auto zones = nexus::system::parseActiveZones(
+                runCommand("firewall-cmd --get-active-zones 2>/dev/null", false).text);
+            bool any = false;
+            for (const auto& zone : zones) {
+                const std::string z = shellQuote(zone);
+                const std::string target = firstLine(runCommand("firewall-cmd --permanent --zone=" + z + " --get-target 2>/dev/null", false).text);
+                const std::string svc = firstLine(runCommand("firewall-cmd --zone=" + z + " --list-services 2>/dev/null", false).text);
+                const std::string ports = firstLine(runCommand("firewall-cmd --zone=" + z + " --list-ports 2>/dev/null", false).text);
+                const std::string wide = nexus::system::wideOpenRange(ports);
+                std::string lets = svc + (ports.empty() ? "" : (svc.empty() ? "" : ", ") + ports);
+                if (target == "ACCEPT") {
+                    line("FAIL", "Firewall", "zone " + zone + " lets everything in (target ACCEPT).",
+                         "sudo firewall-cmd --permanent --zone=" + zone + " --set-target=default && sudo firewall-cmd --reload");
+                } else if (!wide.empty()) {
+                    line("warn", "Firewall", "zone " + zone + " opens " + wide + ": any program listening there is reachable.",
+                         "sudo firewall-cmd --permanent --zone=" + zone + " --remove-port=" + wide + " && sudo firewall-cmd --reload");
+                } else {
+                    line(" ok ", "Firewall", "on, zone " + zone + (lets.empty() ? ": lets nothing in." : "; lets in: " + lets));
+                }
+                any = true;
+            }
+            if (!any) line(" ok ", "Firewall", "on; no network connected right now.");
         } else {
             line("FAIL", "Firewall", "off: anything listening is reachable from the network.",
                  "sudo systemctl enable --now firewalld");
@@ -5033,7 +5064,16 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
 
     {
         const auto enc = nexus::hardware::EncryptionDetector("/").detect();
-        if (enc.root == nexus::hardware::Encrypted::Yes)
+        // /home and swap on their own disks are checked too (0.1.76):
+        // an encrypted system with a plain /home protects nothing personal.
+        if (enc.root == nexus::hardware::Encrypted::Yes && enc.homeIsSeparate &&
+            enc.home == nexus::hardware::Encrypted::No)
+            line("warn", "Disk", "the system is encrypted but /home, on its own partition, is not.",
+                 "only at install: reinstall with disk encryption on");
+        else if (enc.swapLeaksMemory())
+            line("warn", "Disk", "encrypted, but swap on disk is not: memory can reach it unencrypted.",
+                 "use zram only, or encrypt the swap partition");
+        else if (enc.root == nexus::hardware::Encrypted::Yes)
             line(" ok ", "Disk", "encrypted: a stolen laptop's files cannot be read.");
         else if (enc.root == nexus::hardware::Encrypted::No)
             line("warn", "Disk", "not encrypted: whoever has the laptop can read every file.",
@@ -5060,8 +5100,23 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
         const auto deployments = readDeployments();
         for (const auto& d : deployments) {
             if (!d.booted) continue;
-            if (d.image.rfind("ostree-image-signed:", 0) == 0)
-                line(" ok ", "System image", "signature checked at every update.");
+            if (d.image.rfind("ostree-image-signed:", 0) == 0) {
+                // The prefix asks for a check; the policy says against
+                // which key (0.1.76). Without the rule, signed: checks
+                // nothing of Nexus's own.
+                std::ifstream pol("/etc/containers/policy.json");
+                std::stringstream pb; pb << pol.rdbuf();
+                const char* key = "/etc/pki/containers/nexus-core.pub";
+                const bool isNexus = d.image.find("ghcr.io/davidosdas-official/") != std::string::npos;
+                if (!isNexus)
+                    line(" ok ", "System image", "signature checked at every update (not a Nexus image).");
+                else if (nexus::system::policyRequiresKey(pb.str(), "ghcr.io/davidosdas-official", key) &&
+                         fs::exists(key))
+                    line(" ok ", "System image", "every update must be signed with the Nexus key.");
+                else
+                    line("FAIL", "System image", "signed: is set, but the policy does not require the Nexus key.",
+                         "sudo python3 /usr/libexec/nexus/merge-policy");
+            }
             else if (!d.image.empty())
                 line("warn", "System image", "updates are not signature-checked: " + d.image,
                      "nexus rebase kde   (the signed Nexus image)");
@@ -5138,6 +5193,54 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
                  "\nNo virus scan: on Linux the risk is rarely a virus file; it is what is\n"
                  "open, what is out of date, and what starts by itself -- the lines above.\n";
     return fails > 0 ? 1 : 0;
+}
+
+// Copy a website folder into the site directory, as root (0.1.76).
+//
+// A symlink is followed by the copy, so a link to /etc/shadow in the
+// folder became a readable file on a public web server -- found by an
+// outside review. Links are allowed only where they stay inside the
+// folder. The copy goes to site.new first and replaces the site only
+// when it is complete: a copy that fails leaves the running site as it
+// was.
+bool copyWebsite(const std::filesystem::path& folder, const std::string& site, std::string& error) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path root = fs::canonical(folder, ec);
+    if (ec) { error = "cannot read " + folder.string() + ": " + ec.message(); return false; }
+    const std::string prefix = root.string() + "/";
+    for (auto it = fs::recursive_directory_iterator(root, ec);
+         !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        std::error_code e2;
+        if (!it->is_symlink(e2)) {
+            if (!it->is_regular_file(e2) && !it->is_directory(e2)) {
+                error = "not a file or folder: " + it->path().string();
+                return false;
+            }
+            continue;
+        }
+        const fs::path target = fs::weakly_canonical(it->path(), e2);
+        if (e2 || target.string().rfind(prefix, 0) != 0 || !fs::exists(target, e2)) {
+            error = "a link that leads outside the folder: " + it->path().string() +
+                    " -> " + fs::read_symlink(it->path(), e2).string();
+            return false;
+        }
+    }
+    if (ec) { error = "cannot read " + folder.string() + ": " + ec.message(); return false; }
+
+    const std::string staged = site + ".new";
+    fs::remove_all(staged, ec);
+    fs::create_directories(staged, ec);
+    if (!ec) fs::copy(root, staged, fs::copy_options::recursive, ec);
+    if (ec) {
+        error = "could not copy the folder: " + ec.message();
+        fs::remove_all(staged, ec);
+        return false;
+    }
+    fs::remove_all(site, ec);
+    fs::rename(staged, site, ec);
+    if (ec) { error = "could not put the new copy in place: " + ec.message(); return false; }
+    return true;
 }
 
 int commandServer(
@@ -5379,7 +5482,7 @@ int commandServer(
             std::error_code ec;
             fs::create_directories("/var/lib/nexus/backups", ec);
             const auto tar = nexus::system::runCommand(
-                "tar -czf '" + archive + "' -C /var/lib/nexus/servers '" + name + "' 2>&1",
+                "tar -czf " + shellQuote(archive) + " -C /var/lib/nexus/servers " + shellQuote(name) + " 2>&1",
                 true);
             ok = tar.ok;
             if (!ok) error = firstLine(tar.text);
@@ -5536,11 +5639,9 @@ int commandServer(
                                        site + " from " + folder.string(), "website");
             const std::string log = nexus::system::defaultTransactionLog();
             const std::string marker = nexus::system::beginTransaction(log, record);
-            std::error_code ec;
-            fs::remove_all(site, ec);
-            fs::create_directories(site, ec);
-            fs::copy(folder, site, fs::copy_options::recursive, ec);
-            bool ok = !ec;
+            std::string copyError;
+            bool ok = copyWebsite(folder, site, copyError);
+            if (!ok) std::cout << "\nNot updated: " << copyError << "\n";
             if (ok) {
                 ok = nexus::system::runCommand(
                     "systemctl restart " + nexus::system::serverUnit(options.name) + " 2>&1",
@@ -5596,15 +5697,9 @@ int commandServer(
         const std::string log = nexus::system::defaultTransactionLog();
         const std::string marker = nexus::system::beginTransaction(log, record);
 
-        std::error_code ec;
-        fs::remove_all(site, ec);
-        fs::create_directories(site, ec);
-        fs::copy(folder, site, fs::copy_options::recursive, ec);
         std::string error;
-        bool ok = !ec;
-        if (!ok) {
-            error = "could not copy the folder: " + ec.message();
-        } else {
+        bool ok = copyWebsite(folder, site, error);
+        if (ok) {
             ok = startServer(options.name, "docker.io/library/caddy:2",
                              nexus::system::websiteQuadlet(options), ports, error);
         }
@@ -7656,6 +7751,16 @@ int commandVpn(
         return 1;
     }
 
+    const auto invalid = settings.invalid();
+
+    if (!invalid.empty()) {
+        std::cerr << "Not written -- these cannot be right:\n\n";
+        for (const std::string& item : invalid) {
+            std::cerr << "    " << item << "\n";
+        }
+        return 2;
+    }
+
     const auto pair = nexus::system::generateKeyPair();
 
     if (!pair.ok()) {
@@ -8382,6 +8487,13 @@ int commandContainerInstall(
     bool apply,
     bool assumeYes
 ) {
+    // The name goes into the container's package manager on a command
+    // line: only something that can be a package name gets that far.
+    if (!nexus::system::isPackageName(requested)) {
+        std::cerr << "Not a package name: " << requested << "\n";
+        return 2;
+    }
+
     if (!nexus::system::Containers::available()) {
         std::cerr
             << "distrobox is not installed.\n"
@@ -8481,10 +8593,10 @@ int commandContainerInstall(
     // same way apt does on the host.
     const std::string install =
         distribution == "arch"
-            ? "sudo pacman -Sy --noconfirm " + requested
+            ? "sudo pacman -Sy --noconfirm " + shellQuote(requested)
             : distribution == "fedora"
-                ? "sudo dnf install -y " + requested
-                : "sudo apt-get install -y " + requested;
+                ? "sudo dnf install -y " + shellQuote(requested)
+                : "sudo apt-get install -y " + shellQuote(requested);
 
     const auto installed =
         nexus::system::Containers::run(container, install);
@@ -10492,6 +10604,10 @@ int main(int argc, char** argv) {
         if (command == "source") {
             if (argument.empty()) {
                 std::cerr << "source requires a package name.\n";
+                return 2;
+            }
+            if (!nexus::system::isPackageName(argument)) {
+                std::cerr << "Not a package name: " << argument << "\n";
                 return 2;
             }
 

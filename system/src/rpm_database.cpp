@@ -299,7 +299,7 @@ RpmDatabaseResult RpmDatabase::load() const {
     std::string command = "rpm";
 
     if (!root_.empty()) {
-        command += " --root '" + root_ + "'";
+        command += " --root " + shellQuote(root_);
     }
 
     // rpm's own complaints go to a file rather than /dev/null, so that

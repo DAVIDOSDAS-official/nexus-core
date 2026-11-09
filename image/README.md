@@ -108,9 +108,9 @@ there is disk space before a fifteen-minute build rather than after,
 handing a rootless image to root's storage, and saying plainly that a
 failed build leaves output that must not be written to a disk.
 
-**The kernel is unsigned**, so booting the result needs Secure Boot
-turned off. `nexus secureboot` explains why and what the alternative
-is.
+**Secure Boot stays on.** The kernel, shim and GRUB are Fedora's own,
+signed by Fedora; Nexus adds no kernel of its own. Tested on the Asus
+with Secure Boot on (October 2026). `nexus secure-boot` shows the state.
 
 ## One pipeline, several machines
 
@@ -280,11 +280,10 @@ unavailable -- which looks like a resolver problem and is not one.
 
 ## Things that will bite
 
-**Secure Boot.** A custom image ships an unsigned kernel. Machines with
-Secure Boot enabled will refuse to boot it, and beginners do not know
-how to turn it off. This kills more custom distributions than any
-technical failing. `nexus hardware` reports the state, which is a start,
-not a solution.
+**Secure Boot.** A custom kernel would need its own signing; Nexus
+avoids that by shipping Fedora's signed kernel, shim and GRUB, so
+Secure Boot stays on. Anything that adds an out-of-tree kernel module
+(NVIDIA) has to keep this true -- check before adding one.
 
 **NVIDIA.** The driver must be baked into the image, because DKMS
 rebuilding kernel modules against a read-only `/usr` is precisely what
@@ -303,7 +302,8 @@ an image-based system keeps the previous one too. Budget double.
 
 - No first-boot profile picker. The plan is a small greeter that runs
   `nexus profile check` and shows what the machine can do.
-- No signing, so no Secure Boot.
+- (Done since: images are cosign-signed and Secure Boot works with
+  Fedora's signed kernel.)
 - No `nexus` involvement in the build. The image is assembled by `dnf`;
   Nexus only observes it. Closing that gap needs an RPM source, which is
   Track A's next big piece.

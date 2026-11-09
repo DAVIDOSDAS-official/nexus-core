@@ -124,3 +124,17 @@ TEST(ContainerTest, DirectoriesAreNotCommands) {
     EXPECT_EQ(directory.back(), '/');
     EXPECT_NE(file.back(), '/');
 }
+
+// A package's file name ends up in distrobox-export on the host: one
+// that a shell could read as more than a path is skipped (0.1.76).
+TEST(ContainerTest, OnlyPlainPathsAreExported) {
+    using nexus::system::isPlainPath;
+    EXPECT_TRUE(isPlainPath("/usr/bin/nmap"));
+    EXPECT_TRUE(isPlainPath("/usr/bin/g++"));
+    EXPECT_TRUE(isPlainPath("/usr/sbin/aircrack-ng"));
+    EXPECT_FALSE(isPlainPath("/usr/bin/x';reboot;'"));
+    EXPECT_FALSE(isPlainPath("/usr/bin/$(id)"));
+    EXPECT_FALSE(isPlainPath("/usr/bin/a b"));
+    EXPECT_FALSE(isPlainPath("/usr/bin/../../etc/shadow"));
+    EXPECT_FALSE(isPlainPath("usr/bin/nmap"));
+}

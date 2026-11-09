@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.75** (patches 1–101). **641 automated tests**, all passing.
+**Version 0.1.76** (patches 1–102). **650 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -404,6 +404,43 @@ system/security_audit.{hpp,cpp} + 7 tests.
 Test: Asus and Acer: `nexus security`, `sudo nexus security`,
 `sudo nexus security harden --apply`, Proton VPN still connects,
 `sudo nexus security harden off --apply`.
+
+**Patch 102 (0.1.76): fixes from an outside review (9 Nov).** A source
+review of the 0.1.75 snapshot (David ran it with another AI; findings
+checked against the code here, all confirmed) found:
+- **Shell quoting.** About 20 commands hand-wrapped values in '...'; a '
+  in a value ended the quoting. `shellQuote` and `isPackageName` now in
+  system/process.hpp, used at every such site (dnf, rpm, apt, flatpak,
+  pacman, tar, podman, distrobox, locale, services' rpm -qf). `nexus
+  container` and `nexus source` refuse a name that is not a package
+  name (and one starting with -). Container exports: a package's file
+  is exported only if `isPlainPath` (letters, digits, / . _ + - @ :);
+  `podman exec ... sh -c` quotes its command.
+- **WireGuard.** `TunnelSettings::invalid()` checks each field's shape
+  (IP[/prefix] lists, host:port or [v6]:port, 44-char key, wg-quick's
+  interface-name rule) and any control character; `nexus vpn config`
+  refuses; renderTunnel writes nothing if a value has a line break
+  (PostUp would run as root).
+- **Installer.** A disk with any partition, even one with no filesystem
+  lsblk knows, is "in use": never auto-erased (Installation
+  Destination screen or install beside it in free space).
+- **Rollback.** Each /etc file is saved and size-checked first; any
+  failure stops before `rpm-ostree rollback`, listing the files.
+- **Website hosting (as root).** A symlink leading outside the folder,
+  or a device/pipe, refuses the copy (a link to /etc/shadow would have
+  been published); the copy goes to site.new and replaces the site only
+  when complete.
+- **The audit itself.** Firewall: every active zone's target (ACCEPT =
+  FAIL) and ports (a 10000+ port range = warn); Disk: separate /home and
+  disk swap; System image: policy.json must require the Nexus key
+  (policyRequiresKey), not only the signed: prefix.
+- **Docs.** image/README.md and docs/overview.md no longer say the
+  kernel is unsigned or Secure Boot must be off; README test count.
++9 tests. **Not done yet (next):** argv execution instead of /bin/sh
+for runCommand (quoting closes the holes; argv removes the shell);
+`nexus cyber` with its own home folder (distrobox is not a sandbox --
+say so in `nexus cyber`); pin GitHub Actions to SHAs and the
+bootc-image-builder / base / Caddy / Minecraft images to digests.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

@@ -102,8 +102,8 @@ ApplyResult runDnf(const std::string& arguments) {
 
 ApplyResult applyWithDnf(const std::string& requested) {
     return runDnf(
-        "install -y --setopt=install_weak_deps=False '" +
-        requested + "'");
+        "install -y --setopt=install_weak_deps=False " +
+        shellQuote(requested));
 }
 
 ApplyResult removeWithDnf(
@@ -118,7 +118,7 @@ ApplyResult removeWithDnf(
     std::string arguments = "remove -y";
 
     for (const std::string& name : packages) {
-        arguments += " '" + name + "'";
+        arguments += " " + shellQuote(name);
     }
 
     return runDnf(arguments);
@@ -136,7 +136,7 @@ ApplyResult removeWithApt(
     std::string arguments = "remove -y";
 
     for (const std::string& name : packages) {
-        arguments += " '" + name + "'";
+        arguments += " " + shellQuote(name);
     }
 
     return runApt(arguments);
@@ -159,7 +159,7 @@ ApplyResult applyWithApt(const std::string& requested) {
     // the plan in front of them. Asking twice trains people to say
     // yes without reading.
     return runApt(
-        "install -y --no-install-recommends '" + requested + "'");
+        "install -y --no-install-recommends " + shellQuote(requested));
 }
 
 }

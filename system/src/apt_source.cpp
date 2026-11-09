@@ -1,4 +1,5 @@
 #include <nexus/system/apt_source.hpp>
+#include <nexus/system/process.hpp>
 
 #include <algorithm>
 #include <cstdio>
@@ -71,7 +72,7 @@ bool readIndex(
     }
 
     const std::string command =
-        tool + " -dc '" + path + "' 2>/dev/null";
+        tool + " -dc " + shellQuote(path) + " 2>/dev/null";
 
     std::FILE* pipe = popen(command.c_str(), "r");
 

@@ -271,7 +271,7 @@ void attachOwners(ServicesResult& result, bool useRpm) {
 
     for (const Service& service : result.services) {
         for (const std::string& path : candidatePaths(service.name)) {
-            paths += " '" + path + "'";
+            paths += " " + shellQuote(path);
         }
     }
 

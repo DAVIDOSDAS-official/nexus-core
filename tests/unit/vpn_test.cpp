@@ -135,3 +135,45 @@ TEST(VpnTest, AnUnwritablePathFailsRatherThanPretending) {
     EXPECT_FALSE(result.ok);
     EXPECT_FALSE(result.error.empty());
 }
+
+// An outside review (November 2026): a line break in any value wrote a
+// directive of its own into the config, and wg-quick runs PostUp as
+// root when the tunnel comes up.
+TEST(VpnTest, ALineBreakInAnyValueIsRefused) {
+    TunnelSettings settings;
+    settings.address = "10.0.0.2/24\nPostUp = touch /tmp/owned";
+    settings.peerPublicKey = std::string(43, 'A') + "=";
+    settings.endpoint = "vpn.example.com:51820";
+
+    ASSERT_FALSE(settings.invalid().empty());
+    EXPECT_NE(settings.invalid()[0].find("line break"), std::string::npos);
+    // And renderTunnel writes nothing at all rather than the extra line.
+    EXPECT_TRUE(renderTunnel(settings, "p=").empty());
+
+    settings.address = "10.0.0.2/24";
+    settings.dns = "10.0.0.1\r\nPostUp=id";
+    EXPECT_FALSE(settings.invalid().empty());
+}
+
+TEST(VpnTest, RealValuesPass) {
+    TunnelSettings settings;
+    settings.address = "10.0.0.2/24, fd00::2/64";
+    settings.peerPublicKey = "xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=";
+    settings.endpoint = "[2001:db8::1]:51820";
+    settings.allowedIps = "0.0.0.0/0, ::/0";
+    settings.dns = "10.0.0.1, home.lan";
+    EXPECT_TRUE(settings.invalid().empty());
+    settings.endpoint = "vpn.example.com:51820";
+    EXPECT_TRUE(settings.invalid().empty());
+}
+
+TEST(VpnTest, EachFieldIsCheckedForItsShape) {
+    TunnelSettings settings;
+    settings.address = "10.0.0.300/24";
+    settings.peerPublicKey = "short=";
+    settings.endpoint = "vpn.example.com";        // no port
+    settings.allowedIps = "0.0.0.0/33";
+    settings.dns = "10.0.0.1;id";
+    settings.interfaceName = "../../etc/x";
+    EXPECT_EQ(settings.invalid().size(), 6u);
+}

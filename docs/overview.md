@@ -202,9 +202,9 @@ tool. Almost none were found by a failing test.
 - **It does not mix distributions in one filesystem.** Nothing can.
 - **It cannot make a binary system source-based.** That is decided by
   the base, not by a tool on top of it.
-- **There is no installer yet**, no signed kernel, and no update
-  channel. It boots as an image and runs; it is not yet something a
-  stranger installs.
+- **It is a preview.** There is an installer (encrypted by default),
+  signed images with a daily update check, and Fedora's signed kernel
+  for Secure Boot -- but no outside security audit has signed it off.
 
 ---
 
@@ -221,8 +221,9 @@ profile produced both.
 `minimal` and `minimalism` build from the same Containerfile with one
 argument changed, at 2.88 GB and 3.91 GB.
 
-**Not yet a distribution anyone can install.** No partitioning, no
-Secure Boot signing, nothing published. That is the next body of work.
+*(Historical: written before the installer. Preview 3 was published
+18 October 2026 with an installer, signed images and Secure Boot; see
+HANDOFF.md for the current state.)*
 
 ---
 

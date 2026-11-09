@@ -54,4 +54,23 @@ std::vector<std::string> emptyPasswordAccounts(const std::string& shadow);
 // unreadable.
 std::optional<long> daysSince(const std::string& isoDate, long nowEpoch);
 
+// 0.1.76, after an outside review said where the audit claimed more
+// than it checked.
+
+// `firewall-cmd --get-active-zones`: a zone name at the start of a
+// line, its interfaces and sources indented below it.
+std::vector<std::string> parseActiveZones(const std::string& output);
+
+// A port list that opens everything above 1024 (Fedora Workstation's
+// zone does: 1025-65535/tcp and udp). Returns the range found, or "".
+std::string wideOpenRange(const std::string& ports);
+
+// Whether /etc/containers/policy.json makes Nexus's images need a
+// signature made with the given key: a sigstoreSigned rule naming the
+// key, under the Nexus scope. A text check, not a JSON parser -- it
+// looks for the scope, then the rule and the key before the next
+// scope begins.
+bool policyRequiresKey(const std::string& policyJson, const std::string& scope,
+                       const std::string& keyPath);
+
 }  // namespace nexus::system

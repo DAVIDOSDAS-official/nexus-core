@@ -224,7 +224,7 @@ PacmanSourceResult readPacmanDatabase(
     // but assuming the compression is how a reader ends up working on
     // one repository and failing on the next.
     const std::string command =
-        "tar -xaOf '" + path + "' 2>" + errors;
+        "tar -xaOf " + shellQuote(path) + " 2>" + errors;
 
     const ProcessResult ran = runCommand(command, false);
 

@@ -97,7 +97,7 @@ SourceBuildInfo readSourceBuild(const std::string& package) {
     }
 
     const ProcessResult shown =
-        runCommand("apt-cache showsrc '" + package + "'", false);
+        runCommand("apt-cache showsrc " + shellQuote(package), false);
 
     if (!shown.ok || shown.text.empty()) {
         info.error =

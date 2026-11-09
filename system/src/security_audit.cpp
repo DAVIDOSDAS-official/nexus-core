@@ -99,4 +99,45 @@ std::optional<long> daysSince(const std::string& iso, long nowEpoch) {
     return (nowEpoch - then) / 86400;
 }
 
+std::vector<std::string> parseActiveZones(const std::string& output) {
+    std::vector<std::string> zones;
+    std::istringstream in(output);
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == ' ' || line[0] == '\t') continue;
+        const auto end = line.find_first_of(" \t");
+        zones.push_back(line.substr(0, end));
+    }
+    return zones;
+}
+
+std::string wideOpenRange(const std::string& ports) {
+    std::istringstream in(ports);
+    std::string port;
+    while (in >> port) {
+        const auto dash = port.find('-');
+        const auto slash = port.find('/');
+        if (dash == std::string::npos || slash == std::string::npos || dash > slash) continue;
+        try {
+            const int from = std::stoi(port.substr(0, dash));
+            const int to = std::stoi(port.substr(dash + 1, slash - dash - 1));
+            if (to - from >= 10000) return port;
+        } catch (...) {
+        }
+    }
+    return "";
+}
+
+bool policyRequiresKey(const std::string& policyJson, const std::string& scope,
+                       const std::string& keyPath) {
+    const auto at = policyJson.find("\"" + scope + "\"");
+    if (at == std::string::npos) return false;
+    // Up to the next scope entry (a key ending in ": [") or the end.
+    auto next = policyJson.find("\": [", at + scope.size() + 2);
+    next = next == std::string::npos ? policyJson.size() : policyJson.rfind('"', next - 1);
+    const std::string block = policyJson.substr(at, next == std::string::npos ? std::string::npos : next - at);
+    return block.find("sigstoreSigned") != std::string::npos &&
+           block.find(keyPath) != std::string::npos;
+}
+
 }  // namespace nexus::system

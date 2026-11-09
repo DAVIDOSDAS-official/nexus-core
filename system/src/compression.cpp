@@ -114,7 +114,7 @@ bool readPossiblyCompressed(
     // Not split into lines: this is one document, and the caller
     // wants it whole. Splitting it held every byte twice.
     ProcessResult ran = runCommand(
-        command + " '" + path + "' 2>" + errors, false, false);
+        command + " " + shellQuote(path) + " 2>" + errors, false, false);
 
     if (!ran.ran) {
         reason = "could not run " + tool;

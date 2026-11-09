@@ -56,4 +56,17 @@ std::string inPlainLocale(const std::string& command);
 // Whether a command exists at all.
 bool commandExists(const std::string& name);
 
+// One argument for /bin/sh, whatever it contains: wrapped in single
+// quotes, each ' written as '\''. Every value that is not a fixed
+// part of a command goes through this -- a package name, a path a
+// package owns, a locale. (0.1.76, after an outside review: names
+// were hand-wrapped in '...', and a ' in one ended the quoting.)
+std::string shellQuote(const std::string& text);
+
+// A package name as dnf, apt, pacman and flatpak write them: letters,
+// digits and . _ + - : @ ~, not starting with - (which a tool would
+// read as an option), 1 to 255 characters. Checked where a name comes
+// in from the command line, before it is used anywhere.
+bool isPackageName(const std::string& name);
+
 }

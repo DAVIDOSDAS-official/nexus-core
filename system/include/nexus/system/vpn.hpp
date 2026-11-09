@@ -45,6 +45,17 @@ struct TunnelSettings {
     int keepalive = 0;
 
     std::vector<std::string> missing() const;
+
+    // What is given but cannot be right, one line each (0.1.76).
+    //
+    // wg-quick runs PreUp/PostUp lines from the config as root, so a
+    // value with a line break in it is a command, not an address --
+    // an outside review found that every field went into the file as
+    // typed. Each field is checked for its own shape: addresses and
+    // routes are IPs with an optional /prefix, DNS is IPs or search
+    // domains, the endpoint is host:port, the key is WireGuard's
+    // 44-character base64, the interface name is wg-quick's own rule.
+    std::vector<std::string> invalid() const;
 };
 
 // Generate a key pair with wg.

@@ -111,3 +111,23 @@ TEST(ProcessTest, CommandsRunInThePlainLocale) {
     ASSERT_EQ(result.lines.size(), 1u);
     EXPECT_EQ(result.lines[0], "C.UTF-8/");
 }
+
+// An outside review (November 2026): names were hand-wrapped in '...',
+// so a ' in one ended the quoting and the rest ran as a command.
+TEST(ProcessTest, AQuotedValueIsOneArgumentWhateverItHolds) {
+    using nexus::system::shellQuote;
+    const std::string hostile = "x'; touch /tmp/nexus-owned-$$; echo '";
+    const auto result = runCommand("printf '%s' " + shellQuote(hostile), false);
+    EXPECT_EQ(result.text, hostile);
+    EXPECT_EQ(runCommand("printf '%s' " + shellQuote("$(id) `id` \"q\" \\"), false).text,
+              "$(id) `id` \"q\" \\");
+}
+
+TEST(ProcessTest, PackageNamesAreOnlyPackageNames) {
+    using nexus::system::isPackageName;
+    for (const char* good : {"nmap", "java-21-openjdk", "gcc-c++", "python3.12", "lib32-mesa",
+                             "org.mozilla.firefox", "libfoo:i386", "pkg@1", "1.0~rc1"})
+        EXPECT_TRUE(isPackageName(good)) << good;
+    for (const char* bad : {"", "-y", "--setopt=x", "a b", "x;id", "x'y", "$(id)", "a\nb", "a/b"})
+        EXPECT_FALSE(isPackageName(bad)) << bad;
+}
