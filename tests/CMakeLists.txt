@@ -57,6 +57,7 @@ add_executable(component_test
     unit/cyber_test.cpp
     unit/dev_test.cpp
     unit/rollback_test.cpp
+    unit/gaming_test.cpp
 )
 
 target_link_libraries(component_test

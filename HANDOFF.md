@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.73** (patches 1–99). **629 automated tests**, all passing.
+**Version 0.1.74** (patches 1–100). **634 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -363,6 +363,23 @@ default, so after a rollback it IS the older version.
 New system/rollback.{hpp,cpp} + 4 tests. Tested with stand-ins only.
 Test on the Asus: `nexus rollback` (read the /etc list), `sudo nexus
 rollback --apply`, restart, `rpm-ostree status`; `nexus rebase`.
+
+**Asus 9 Nov: 0.1.73 PASSED** -- `sudo nexus rollback --apply` went back
+(8 Nov), plan view read both builds, a planted /etc/nexus-rollback-test
+was listed "(new)"; `nexus rebase` status right; typo hint tollback.
+
+**Patch 100 (0.1.74): gaming baseline.** `nexus gaming` (also `doctor`,
+old `tune`) reports NTSync, split lock, GameMode (honest: responsiveness
+under load, not FPS), MangoHud, Gamescope, power profile, memory maps,
+and how to measure (mangohud / gamescope -r 60 -F fsr launch options).
+New: Intel split-lock penalty -- where /proc/sys/kernel/
+split_lock_mitigate exists and is 1, --apply writes
+/etc/sysctl.d/90-nexus-split-lock.conf (=0) and sets it now. `nexus
+gaming ntsync|split-lock --apply` for one; `nexus gaming off --apply`
+removes Nexus's two files (split lock back to 1). History records all.
+New system/gaming.{hpp,cpp} + 5 tests. Opt-in, not default.
+Test: Acer (Tiger Lake: likely has the knob) and Asus (Gemini Lake:
+may not -- then the line says nothing to fix).
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

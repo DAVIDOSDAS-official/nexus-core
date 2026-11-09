@@ -42,6 +42,7 @@ add_library(nexus_system
     src/cyber.cpp
     src/dev.cpp
     src/rollback.cpp
+    src/gaming.cpp
 )
 
 target_include_directories(nexus_system

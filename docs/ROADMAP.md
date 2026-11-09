@@ -119,7 +119,7 @@ decided; each is a candidate, with the report's own verdict.
   Nexus's own boot check (not greenboot), see HANDOFF; `nexus rollback` / `nexus rebase` (DONE in 0.1.73)
   that warn when /etc changes would be lost; one component description
   driving first boot, a settings app and the CLI help (Bazzite Portal
-  style); gaming baseline: `kernel.split_lock_mitigate=0` (Intel),
+  style); gaming baseline (split lock + doctor DONE in 0.1.74): `kernel.split_lock_mitigate=0` (Intel),
   NTSYNC, MangoHud, gamescope session, a `nexus gaming doctor`;
   a default hardening tier + `nexus security audit` as the honest core
   of "Nexus antivirus" (not a ClamAV wrapper); `nexus specs` modelled on
