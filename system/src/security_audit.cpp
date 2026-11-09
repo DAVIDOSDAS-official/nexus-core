@@ -140,4 +140,24 @@ bool policyRequiresKey(const std::string& policyJson, const std::string& scope,
            block.find(keyPath) != std::string::npos;
 }
 
+ZoneInfo parseZoneInfo(const std::string& output) {
+    ZoneInfo info;
+    std::istringstream in(output);
+    std::string line;
+    while (std::getline(in, line)) {
+        const auto b = line.find_first_not_of(" \t");
+        if (b == std::string::npos) continue;
+        const auto colon = line.find(':', b);
+        if (colon == std::string::npos) continue;
+        const std::string key = line.substr(b, colon - b);
+        std::string value = line.substr(colon + 1);
+        const auto v = value.find_first_not_of(" \t");
+        value = v == std::string::npos ? "" : value.substr(v);
+        if (key == "target") info.target = value;
+        else if (key == "services") info.services = value;
+        else if (key == "ports") info.ports = value;
+    }
+    return info;
+}
+
 }  // namespace nexus::system

@@ -44,6 +44,7 @@
 #include <nexus/system/security_audit.hpp>
 
 #include <pwd.h>
+#include <cstring>
 
 using nexus::system::shellQuote;   // process.hpp (0.1.76)
 #include <nexus/system/source_build.hpp>
@@ -4167,7 +4168,9 @@ int commandCyber(
     }
 
     if (action.empty() || action == "status") {
-        std::cout << "Cybersecurity toolbox -- Kali's tools in a container, kept out of the system.\n\n";
+        std::cout << "Cybersecurity toolbox -- Kali's tools in a container, kept out of the system.\n"
+                     "Not a sandbox: it sees your home folder and runs as you. For malware\n"
+                     "samples or tools you do not trust, use a virtual machine.\n\n";
         if (!haveDistrobox()) {
             std::cout << "  Distrobox: not installed (sudo nexus setup cybersecurity --apply)\n";
         } else {
@@ -4695,6 +4698,21 @@ std::vector<EtcChange> etcChangesSince(const std::string& deployDir,
 
 }  // namespace
 
+// Whether two files hold exactly the same bytes.
+bool sameContents(const std::string& a, const std::string& b) {
+    std::ifstream fa(a, std::ios::binary), fb(b, std::ios::binary);
+    if (!fa || !fb) return false;
+    std::vector<char> ba(65536), bb(65536);
+    while (true) {
+        fa.read(ba.data(), static_cast<std::streamsize>(ba.size()));
+        fb.read(bb.data(), static_cast<std::streamsize>(bb.size()));
+        const auto na = fa.gcount(), nb = fb.gcount();
+        if (fa.bad() || fb.bad() || na != nb ||
+            std::memcmp(ba.data(), bb.data(), static_cast<std::size_t>(na)) != 0) return false;
+        if (na < static_cast<std::streamsize>(ba.size())) return true;   // both ended here
+    }
+}
+
 int commandRollback(bool apply, const std::string& invocation) {
     using namespace nexus::system;
     namespace fs = std::filesystem;
@@ -4782,8 +4800,9 @@ int commandRollback(bool apply, const std::string& invocation) {
             std::error_code ec;
             fs::create_directories(dest.parent_path(), ec);
             if (!ec) fs::copy_file(c.path, dest, fs::copy_options::overwrite_existing, ec);
-            std::error_code e1, e2;
-            const bool same = !ec && fs::file_size(c.path, e1) == fs::file_size(dest, e2) && !e1 && !e2;
+            // Read back and compared byte for byte (0.1.77, second
+            // outside review: equal sizes do not mean equal files).
+            const bool same = !ec && sameContents(c.path, dest.string());
             if (!same) notSaved.push_back(c.path + (ec ? " (" + ec.message() + ")" : ""));
         }
         if (!notSaved.empty()) {
@@ -5010,27 +5029,40 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
     std::cout << "Security audit -- reads only, sends nothing, changes nothing\n\n";
 
     bool firewallOn = false;
+    bool firewallKnown = false;
     if (commandExists("firewall-cmd")) {
+        firewallKnown = true;
         firewallOn = firstLine(runCommand("firewall-cmd --state 2>&1", false).text) == "running";
         if (firewallOn) {
-            // What it actually lets in, in every zone that is in use --
-            // not only that it runs (0.1.76).
+            // Every zone in use, as it runs now and as saved: the worse
+            // of the two is what counts, and a difference is named
+            // (0.1.77, second outside review).
             const auto zones = nexus::system::parseActiveZones(
                 runCommand("firewall-cmd --get-active-zones 2>/dev/null", false).text);
             bool any = false;
             for (const auto& zone : zones) {
                 const std::string z = shellQuote(zone);
-                const std::string target = firstLine(runCommand("firewall-cmd --permanent --zone=" + z + " --get-target 2>/dev/null", false).text);
-                const std::string svc = firstLine(runCommand("firewall-cmd --zone=" + z + " --list-services 2>/dev/null", false).text);
-                const std::string ports = firstLine(runCommand("firewall-cmd --zone=" + z + " --list-ports 2>/dev/null", false).text);
-                const std::string wide = nexus::system::wideOpenRange(ports);
-                std::string lets = svc + (ports.empty() ? "" : (svc.empty() ? "" : ", ") + ports);
-                if (target == "ACCEPT") {
-                    line("FAIL", "Firewall", "zone " + zone + " lets everything in (target ACCEPT).",
+                const auto now = nexus::system::parseZoneInfo(
+                    runCommand("firewall-cmd --info-zone=" + z + " 2>/dev/null", false).text);
+                const auto saved = nexus::system::parseZoneInfo(
+                    runCommand("firewall-cmd --permanent --info-zone=" + z + " 2>/dev/null", false).text);
+                std::string wide = nexus::system::wideOpenRange(now.ports);
+                if (wide.empty()) wide = nexus::system::wideOpenRange(saved.ports);
+                const bool acceptAll = now.target == "ACCEPT" || saved.target == "ACCEPT";
+                const bool differs = now.target != saved.target || now.services != saved.services ||
+                                     now.ports != saved.ports;
+                std::string lets = now.services + (now.ports.empty() ? "" : (now.services.empty() ? "" : ", ") + now.ports);
+                if (acceptAll) {
+                    line("FAIL", "Firewall", "zone " + zone + " lets everything in (target ACCEPT" +
+                         (now.target == "ACCEPT" ? "" : ", once restarted") + ").",
                          "sudo firewall-cmd --permanent --zone=" + zone + " --set-target=default && sudo firewall-cmd --reload");
                 } else if (!wide.empty()) {
                     line("warn", "Firewall", "zone " + zone + " opens " + wide + ": any program listening there is reachable.",
                          "sudo firewall-cmd --permanent --zone=" + zone + " --remove-port=" + wide + " && sudo firewall-cmd --reload");
+                } else if (differs) {
+                    line("warn", "Firewall", "zone " + zone + " runs with other rules than it has saved"
+                         " (now: " + (lets.empty() ? std::string("nothing") : lets) + ").",
+                         "sudo firewall-cmd --reload   (back to the saved rules)");
                 } else {
                     line(" ok ", "Firewall", "on, zone " + zone + (lets.empty() ? ": lets nothing in." : "; lets in: " + lets));
                 }
@@ -5041,8 +5073,21 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
             line("FAIL", "Firewall", "off: anything listening is reachable from the network.",
                  "sudo systemctl enable --now firewalld");
         }
+    } else if (commandExists("ufw")) {
+        // Pop!_OS, Ubuntu: ufw, installed and off unless turned on.
+        // Its status needs root (the Acer, 9 November: without this the
+        // audit said "not checked" and then "the firewall is off").
+        if (nexus::system::haveRootPrivileges()) {
+            const std::string st = firstLine(runCommand("ufw status 2>&1", false).text);
+            firewallKnown = true;
+            firewallOn = st == "Status: active";
+            if (firewallOn) line(" ok ", "Firewall", "ufw is on.");
+            else line("warn", "Firewall", "ufw is installed but off.", "sudo ufw enable");
+        } else {
+            line(" -- ", "Firewall", "ufw: not checked (needs sudo: sudo nexus security).");
+        }
     } else {
-        line(" -- ", "Firewall", "firewalld is not installed; not checked.");
+        line(" -- ", "Firewall", "no firewalld or ufw; not checked.");
     }
 
     if (commandExists("ss")) {
@@ -5053,7 +5098,8 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
             for (std::size_t i = 0; i < listeners.size() && i < 6; ++i) l += (i ? ", " : "") + listeners[i];
             if (listeners.size() > 6) l += ", ...";
             if (firewallOn) line(" ok ", "Listening", l + " (the firewall decides who reaches them)");
-            else line("warn", "Listening", l + " -- reachable, the firewall is off", "sudo ss -tulnp   (which program)");
+            else if (firewallKnown) line("warn", "Listening", l + " -- reachable, the firewall is off", "sudo ss -tulnp   (which program)");
+            else line(" -- ", "Listening", l + " (firewall not checked)", "sudo ss -tulnp   (which program)");
         }
     }
 
@@ -5237,9 +5283,29 @@ bool copyWebsite(const std::filesystem::path& folder, const std::string& site, s
         fs::remove_all(staged, ec);
         return false;
     }
-    fs::remove_all(site, ec);
+    // The old site stays until the new one is in place (0.1.77, second
+    // outside review: it was removed first, so a failed rename left no
+    // site at all).
+    const std::string old = site + ".old";
+    fs::remove_all(old, ec);
+    const bool hadSite = fs::exists(site);
+    if (hadSite) {
+        fs::rename(site, old, ec);
+        if (ec) {
+            error = "could not move the running site aside: " + ec.message();
+            fs::remove_all(staged, ec);
+            return false;
+        }
+    }
     fs::rename(staged, site, ec);
-    if (ec) { error = "could not put the new copy in place: " + ec.message(); return false; }
+    if (ec) {
+        error = "could not put the new copy in place: " + ec.message();
+        std::error_code back;
+        if (hadSite) fs::rename(old, site, back);
+        fs::remove_all(staged, back);
+        return false;
+    }
+    fs::remove_all(old, ec);
     return true;
 }
 

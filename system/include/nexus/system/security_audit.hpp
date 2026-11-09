@@ -73,4 +73,15 @@ std::string wideOpenRange(const std::string& ports);
 bool policyRequiresKey(const std::string& policyJson, const std::string& scope,
                        const std::string& keyPath);
 
+// `firewall-cmd [--permanent] --info-zone=Z` (0.1.77): the zone as it
+// runs now, or as saved. The second outside review: the target was
+// read from the saved config and the services and ports from the
+// running one, and the two can differ.
+struct ZoneInfo {
+    std::string target;     // default, ACCEPT, DROP, %%REJECT%%
+    std::string services;
+    std::string ports;
+};
+ZoneInfo parseZoneInfo(const std::string& output);
+
 }  // namespace nexus::system

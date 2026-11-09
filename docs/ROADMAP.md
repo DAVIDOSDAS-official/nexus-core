@@ -113,8 +113,9 @@ Tested 29 Oct: `nexus server add website` works on the Asus itself. The phone wa
 
 ### From the outside review (9 Nov 2026), still open after 0.1.76
 - runCommand with an argument vector (posix_spawn), not /bin/sh.
-- `nexus cyber`: its own home folder; say plainly it is not a sandbox
-  (a VM is, for untrusted tools).
+- `nexus cyber`: its own home folder (says it is not a sandbox since
+  0.1.77). Needs distrobox-export to get the host's ~/.local/bin, not
+  the box's $HOME.
 - Pin Actions to commit SHAs; pin bootc-image-builder, the Fedora base,
   Caddy and Minecraft images to digests; the builder runs privileged.
 - The qcow2 build's nexus:nexus account: never publish a qcow2.

@@ -103,3 +103,14 @@ TEST(SecurityAuditTest, ThePolicyMustNameTheKeyUnderTheScope) {
     EXPECT_FALSE(policyRequiresKey(elsewhere, "ghcr.io/davidosdas-official", key));
     EXPECT_FALSE(policyRequiresKey("{}", "ghcr.io/davidosdas-official", key));
 }
+
+TEST(SecurityAuditTest, ZoneInfoIsReadFromInfoZone) {
+    const auto z = parseZoneInfo(
+        "FedoraWorkstation (default, active)\n  target: default\n  icmp-block-inversion: no\n"
+        "  interfaces: wlo1\n  services: dhcpv6-client mdns samba-client\n"
+        "  ports: 1025-65535/udp 1025-65535/tcp\n  protocols: \n");
+    EXPECT_EQ(z.target, "default");
+    EXPECT_EQ(z.services, "dhcpv6-client mdns samba-client");
+    EXPECT_EQ(z.ports, "1025-65535/udp 1025-65535/tcp");
+    EXPECT_EQ(parseZoneInfo("trusted (active)\n  target: ACCEPT\n  ports: \n").target, "ACCEPT");
+}

@@ -165,11 +165,28 @@ lines = ["# Written by the Nexus %pre at install time; see /tmp/nexus-disk.log."
 # filesystem lsblk recognises -- raw, or a kind it does not know --
 # counted as nothing, so the disk looked empty; now any partition is
 # something.)
+#
+# Fails closed (0.1.77, second outside review): if lsblk fails or does
+# not even list the disk itself, this raises, and the decision below
+# leaves the disk to the installer's own screen instead of reading
+# "nothing found" as "empty". The kernel's own list of partitions
+# (/sys/block/<disk>/<disk>N) is read as well, so one tool going wrong
+# is not enough to make a disk look empty.
 def in_use(disk):
-    found = subprocess.run(
+    import os
+    run = subprocess.run(
         ["lsblk", "-n", "-P", "-o", "NAME,TYPE,FSTYPE,LABEL", "/dev/" + disk],
-        capture_output=True, text=True).stdout
+        capture_output=True, text=True)
+    found = run.stdout
+    if run.returncode != 0 or 'TYPE="disk"' not in found:
+        raise RuntimeError("lsblk could not read /dev/" + disk + ": " +
+                           (run.stderr.strip() or "exit " + str(run.returncode)))
     used = []
+    base = "/sys/block/" + disk
+    for entry in sorted(os.listdir(base)):
+        if entry.startswith(disk) and os.path.exists(base + "/" + entry + "/partition"):
+            if not any(line.startswith('NAME="' + entry + '"') for line in found.splitlines()):
+                used.append(entry + " partition (the kernel sees it; lsblk did not)")
     for row in found.splitlines():
         f = dict(t.split("=", 1) for t in shlex.split(row) if "=" in t)
         if f.get("FSTYPE"):
@@ -428,10 +445,19 @@ def offer_shrink(disk, gap):
 
 beside = ""
 
-if len(disks) == 1 and in_use(disks[0]):
+holds = []
+if len(disks) == 1:
+    try:
+        holds = in_use(disks[0])
+    except Exception as problem:
+        print("Could not read", disks[0] + ":", problem)
+        print("Nothing is erased: the installer asks.")
+        disks = disks + ["(in use)"]
+
+if len(disks) == 1 and holds:
     disk = disks[0]
     print(disk, "already holds:")
-    for item in in_use(disk):
+    for item in holds:
         print("   ", item)
     print("Nothing on it is erased or changed.")
     gap = largest_gap(disk)

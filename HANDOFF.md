@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.76** (patches 1–102). **650 automated tests**, all passing.
+**Version 0.1.77** (patches 1–103). **651 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -441,6 +441,31 @@ for runCommand (quoting closes the holes; argv removes the shell);
 `nexus cyber` with its own home folder (distrobox is not a sandbox --
 say so in `nexus cyber`); pin GitHub Actions to SHAs and the
 bootc-image-builder / base / Caddy / Minecraft images to digests.
+
+**Acer 9 Nov: 0.1.75 security PASSED** (Pop!_OS: disk encrypted, all 14
+kernel settings on, Secure Boot off warned). Bug: without firewalld it
+said "not checked", then "the firewall is off" on the Listening line.
+
+**Second outside review (9 Nov) of 0.1.76:** all six earlier findings
+fixed or improved; four new points, all fixed in **patch 103 (0.1.77)**:
+- **Installer fails closed.** in_use() raises if lsblk fails or does
+  not list the disk itself; the kernel's /sys/block/<disk>/<part> list
+  is read too. A disk that cannot be read goes to the installer's own
+  screen, never to clearpart.
+- **Firewall:** each active zone read with --info-zone, runtime AND
+  --permanent; ACCEPT in either = FAIL, wide port range = warn, runtime
+  differing from saved = warn (fix: firewall-cmd --reload). Without
+  firewalld: ufw status under sudo (Pop/Ubuntu); Listening says
+  "firewall not checked" instead of "off" when it could not be read.
+- **Website swap:** site -> site.old, site.new -> site, put back if
+  that fails; site.old removed only after.
+- **Rollback backups** compared byte for byte (sameContents), not size.
+- `nexus cyber` says it is not a sandbox (sees home, runs as you; VM for
+  untrusted tools). Own home folder still open: distrobox-export inside
+  a box with its own $HOME would export to the wrong ~/.local/bin --
+  needs the host path passed in; do it with a real test.
++1 test (parseZoneInfo). Still open: argv execution (posix_spawn),
+cyber home, pinned digests/SHAs.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
