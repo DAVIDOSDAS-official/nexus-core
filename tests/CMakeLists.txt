@@ -59,6 +59,7 @@ add_executable(component_test
     unit/rollback_test.cpp
     unit/gaming_test.cpp
     unit/security_audit_test.cpp
+    unit/pins_test.cpp
 )
 
 target_link_libraries(component_test

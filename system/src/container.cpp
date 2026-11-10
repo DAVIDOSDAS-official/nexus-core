@@ -1,4 +1,5 @@
 #include <nexus/system/container.hpp>
+#include <nexus/system/pins.hpp>
 
 #include <cctype>
 
@@ -182,7 +183,7 @@ ContainerResult Containers::ensure(
 
     const ContainerResult created = execute(
         "distrobox create --yes --name " + shellQuote(name) +
-        " --image " + shellQuote(image));
+        " --image " + shellQuote(pinnedImage(image)));
 
     if (!created.ok) {
         return created;

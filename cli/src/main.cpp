@@ -42,11 +42,13 @@
 #include <nexus/system/rollback.hpp>
 #include <nexus/system/gaming.hpp>
 #include <nexus/system/security_audit.hpp>
+#include <nexus/system/pins.hpp>
 
 #include <pwd.h>
 #include <cstring>
 
 using nexus::system::shellQuote;   // process.hpp (0.1.76)
+using nexus::system::pinnedImage;  // pins.hpp (0.1.81)
 #include <nexus/system/source_build.hpp>
 #include <nexus/system/alias_file.hpp>
 #include <nexus/removal.hpp>
@@ -4090,7 +4092,7 @@ bool startServer(const std::string& name, const std::string& image,
                  std::string& error) {
     std::cout << "\nDownloading " << image << " (first time only; it can take a few minutes):\n"
               << std::flush;
-    if (std::system(("podman pull " + image).c_str()) != 0) {
+    if (std::system(("podman pull " + shellQuote(image)).c_str()) != 0) {
         error = "the download did not finish (podman pull " + image + ")";
         return false;
     }
@@ -4248,7 +4250,7 @@ int commandCyber(
         if (!st.exists) {
             std::cout << "\nCreating the container (downloads Kali's base image once).\n" << std::flush;
             ok = std::system(("distrobox create" + rootFlag + " --yes --name " + box +
-                              " --image " + kKaliImage).c_str()) == 0;
+                              " --image " + shellQuote(pinnedImage(kKaliImage))).c_str()) == 0;
         }
         if (ok) {
             std::cout << "\nInstalling " << tier->metapackage
@@ -4567,7 +4569,7 @@ int commandDev(
         bool ok = true;
         if (!exists) {
             std::cout << "\nCreating the dev box (downloads Fedora's toolbox image once).\n" << std::flush;
-            ok = std::system(("distrobox create --yes --name " + box + " --image " + image).c_str()) == 0;
+            ok = std::system(("distrobox create --yes --name " + box + " --image " + shellQuote(pinnedImage(image))).c_str()) == 0;
         }
         if (ok) {
             std::string pk;
@@ -5707,7 +5709,7 @@ int commandServer(
         std::error_code ec;
         fs::create_directories(nexus::system::serverDataDir(options.name) + "/data", ec);
         std::string error;
-        const bool ok = startServer(options.name, "docker.io/itzg/minecraft-server:latest",
+        const bool ok = startServer(options.name, pinnedImage("docker.io/itzg/minecraft-server:latest"),
                                     nexus::system::minecraftQuadlet(options), ports, error);
         record.outcome = ok ? "started" : "failed";
         record.succeeded = ok;
@@ -5828,7 +5830,7 @@ int commandServer(
         std::string error;
         bool ok = copyWebsite(folder, site, error);
         if (ok) {
-            ok = startServer(options.name, "docker.io/library/caddy:2",
+            ok = startServer(options.name, pinnedImage("docker.io/library/caddy:2"),
                              nexus::system::websiteQuadlet(options), ports, error);
         }
         record.outcome = ok ? "started" : "failed";

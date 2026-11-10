@@ -1,4 +1,5 @@
 #include <nexus/system/server.hpp>
+#include <nexus/system/pins.hpp>
 
 #include <algorithm>
 
@@ -56,7 +57,7 @@ std::string minecraftQuadlet(const MinecraftOptions& options) {
            "Description=Nexus server: " + options.name + " (Minecraft)\n"
            "\n[Container]\n"
            "ContainerName=nexus-" + options.name + "\n"
-           "Image=docker.io/itzg/minecraft-server:latest\n"
+           "Image=" + pinnedImage("docker.io/itzg/minecraft-server:latest") + "\n"
            "Label=nexus.server=" + options.name + "\n"
            "Label=nexus.kind=minecraft\n"
            "Environment=EULA=TRUE\n"
@@ -77,7 +78,7 @@ std::string websiteQuadlet(const WebsiteOptions& options) {
         "Description=Nexus server: " + options.name + " (website)\n"
         "\n[Container]\n"
         "ContainerName=nexus-" + options.name + "\n"
-        "Image=docker.io/library/caddy:2\n"
+        "Image=" + pinnedImage("docker.io/library/caddy:2") + "\n"
         "Label=nexus.server=" + options.name + "\n"
         "Label=nexus.kind=website\n"
         "Volume=" + site + ":/srv:ro,Z\n";

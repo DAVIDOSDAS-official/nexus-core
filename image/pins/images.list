@@ -1,0 +1,15 @@
+# Every container image Nexus pulls on a person's machine, by tag.
+# .github/workflows/weekly-image.yml resolves each to the digest it
+# points at on the day the image is built (image/pin-images.py) and the
+# signed image carries the result in /usr/share/nexus/pins/pinned-images:
+# every machine on that image pulls exactly those bytes, and the next
+# weekly image moves them on. @FEDORA@ is the Fedora version the image
+# is built from.
+docker.io/kalilinux/kali-rolling:latest
+docker.io/itzg/minecraft-server:latest
+docker.io/library/caddy:2
+registry.fedoraproject.org/fedora-toolbox:@FEDORA@
+registry.fedoraproject.org/fedora-toolbox:latest
+docker.io/library/archlinux:latest
+docker.io/library/debian:stable
+docker.io/library/ubuntu:latest

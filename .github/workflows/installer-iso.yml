@@ -1,0 +1,105 @@
+# Build the installer ISO on GitHub, not on a laptop (0.1.81).
+#
+# Why: an outside review pointed out that the ISOs on archive.org were
+# built on the maintainer's own machine, so "this ISO is the source on
+# GitHub" rested on his word -- a checksum from the same person proves
+# a download is intact, not that it is honest. Built here, the ISO gets
+# a GitHub build attestation: a signed record, kept by GitHub, that this
+# exact file came out of this workflow at this commit. Anyone can check
+# a copy from anywhere (archive.org included) with:
+#
+#     gh attestation verify nexus-core-kde-0.1.81.iso \
+#         --repo DAVIDOSDAS-official/nexus-core
+#
+# The ISO (about 3 GB, over the 2 GB a release file may be) is kept as
+# this run's download for 90 days; that file is the one to put on
+# archive.org. The attestation stays after the download expires.
+#
+# By hand only (Actions -> Installer ISO -> Run workflow): an ISO is a
+# release, not a weekly chore. It installs the published, signed image
+# for the edition, the same as image/build-installer.sh on the Acer.
+
+name: Installer ISO
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Edition
+        type: choice
+        options: [kde, minimal]
+        default: kde
+
+permissions:
+  contents: read
+  packages: read
+  id-token: write       # the attestation's signature
+  attestations: write   # storing it with the repository
+
+jobs:
+  iso:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PROFILE: ${{ inputs.profile }}
+      IMAGE: ghcr.io/davidosdas-official/nexus-core:${{ inputs.profile }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # The image, the builder's storage and the ISO need about 20 GB;
+      # the runner starts with about 14 free.
+      - name: Make room
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android \
+              /opt/ghc /opt/hostedtoolcache /usr/local/share/boost \
+              /usr/local/.ghcup /usr/share/swift
+          sudo docker image prune --all --force > /dev/null || true
+          df -h /
+
+      - name: Tools
+        timeout-minutes: 15
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          sudo apt-get ${APT} update
+          sudo apt-get ${APT} install -y xorriso cpio isomd5sum mtools
+
+      - name: Build the ISO
+        run: |
+          ./image/build-installer.sh
+          test -f output/bootiso/install.iso
+
+      # A name that says what it is, and the checksum of that file.
+      - name: Name it
+        id: name
+        run: |
+          VERSION="$(sed -n 's/^ *VERSION \([0-9][0-9.]*\)$/\1/p' CMakeLists.txt | head -n 1)"
+          NAME="nexus-core-${PROFILE}-${VERSION}.iso"
+          mkdir -p release
+          mv output/bootiso/install.iso "release/${NAME}"
+          cp output/nexus-build.txt release/
+          (cd release && sha256sum "${NAME}" > "${NAME}.sha256")
+          echo "name=${NAME}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "### ${NAME}"
+            echo
+            echo '```'
+            cat "release/${NAME}.sha256"
+            cat release/nexus-build.txt
+            echo '```'
+            echo
+            echo "Check any copy: \`gh attestation verify ${NAME} --repo ${GITHUB_REPOSITORY}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Attest
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: release/${{ steps.name.outputs.name }}
+
+      - name: Keep the ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.name.outputs.name }}
+          path: release/
+          retention-days: 90
+          compression-level: 0

@@ -137,8 +137,12 @@ Not: a resident scanner; "reset the mutable layer" (/var holds /home).
 - `nexus cyber`: its own home folder (says it is not a sandbox since
   0.1.77). Needs distrobox-export to get the host's ~/.local/bin, not
   the box's $HOME.
-- Pin Actions to commit SHAs; pin bootc-image-builder, the Fedora base,
-  Caddy and Minecraft images to digests; the builder runs privileged.
+- Pin Actions to commit SHAs; pin bootc-image-builder and the Fedora
+  base to digests; the builder runs privileged. (Caddy, Minecraft, Kali
+  and the dev boxes: by digest since 0.1.81. The ISO is built on GitHub
+  with an attestation since 0.1.81.)
+- Split cli/src/main.cpp (~10,900 lines) into one file per command
+  group (cyber, dev, server, dualboot, security...): reviewers notice.
 - The qcow2 build's nexus:nexus account: never publish a qcow2.
 
 ### To consider: lessons from other distributions (research, 8 Nov 2026)

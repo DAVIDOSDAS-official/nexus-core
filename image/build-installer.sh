@@ -224,7 +224,12 @@ fi
 
 chmod 0644 "${RENDERED}"
 
-sudo podman run --rm -it --privileged \
+# A terminal only when there is one: CI has none, and -t without one
+# stops podman before it starts (installer-iso.yml, 0.1.81).
+TERMINAL=(-i)
+[ -t 0 ] && [ -t 1 ] && TERMINAL=(-it)
+
+sudo podman run --rm "${TERMINAL[@]}" --privileged \
     --security-opt label=type:unconfined_t \
     -v "${OUTPUT}":/output \
     -v "${RENDERED}":/config.toml:ro \

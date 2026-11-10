@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.80** (patches 1–106). **656 automated tests**, all passing.
+**Version 0.1.81** (patches 1–107). **658 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -535,6 +535,39 @@ default port (server.hpp), not "not from Nexus" as said for 104.
 - trustedReach: comment that IPv6 sources are not network-matched yet
   (judged real network: a false warning at worst).
 - ROADMAP: the nexus security direction (rules + next four checks).
+
+**10 Nov:** weekly run #82 failed on both editions at `podman pull
+quay.io/fedora/fedora-bootc:44` (502 / "can't talk to a V1 registry"):
+quay.io, not Nexus; re-run. A "trust" audit for a video (Claude, fresh
+chat, zip of 0.1.80 = GitHub 6bfd40c, 656/656 tests): nothing hidden or
+malicious; for an ordinary person it named: preview by one person, back
+up before installing (installer already says so), ISO built on the
+laptop so it cannot be proven to match the source, containers by tag.
+
+**Patch 107 (0.1.81):**
+- **ISO on GitHub:** .github/workflows/installer-iso.yml (by hand,
+  edition choice): builds with image/build-installer.sh from the signed
+  ghcr image, names it nexus-core-<edition>-<version>.iso, sha256 +
+  nexus-build.txt in the run summary, actions/attest-build-provenance,
+  ISO kept as the run's download 90 days (~3 GB, over the 2 GB release
+  asset limit). Upload THAT file to archive.org; anyone checks it with
+  `gh attestation verify <iso> --repo DAVIDOSDAS-official/nexus-core`.
+  build-installer.sh: podman run -it only with a terminal (CI has none).
+  NOT RUN YET -- first run is the test.
+- **Containers by digest:** image/pins/images.list (Kali, Minecraft,
+  Caddy, fedora-toolbox:<FEDORA> and :latest, archlinux, debian,
+  ubuntu); weekly-image.yml "Pin container images" runs
+  image/pin-images.py (HEAD requests: not counted by Docker Hub's pull
+  limit; an image it cannot resolve stays by tag and is named, never
+  fails the run) -> image/pins/pinned-images (gitignored) ->
+  Containerfile copies image/pins/ to /usr/share/nexus/pins/ and prints
+  "Pins: N ... by digest" or "Pins: none (local build)". pins.{hpp,cpp}:
+  pinnedImage(ref) = ref@digest when listed; used in server quadlets,
+  server podman pull (now quoted), Kali and dev box create,
+  Containers::create. +2 tests. Network part of pin-images.py untested
+  here (no registry access): run it on the Acer first.
+- Build step: base image pull retried 3x, 60 s apart.
+- README: verifying an ISO with gh attestation; containers by digest.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

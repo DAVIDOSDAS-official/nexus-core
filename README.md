@@ -50,6 +50,18 @@ and the website. Check the file before writing it to a USB stick:
 sha256sum nexus-core-preview3.iso
 ```
 
+A checksum proves the download is intact, not who built it. From the
+next preview on, ISOs are built on GitHub by `.github/workflows/installer-iso.yml`,
+and GitHub keeps a signed record that the file came from this
+repository's workflow at a given commit. Check any copy, wherever you
+got it, with the GitHub CLI:
+
+```
+gh attestation verify nexus-core-kde-<version>.iso --repo DAVIDOSDAS-official/nexus-core
+```
+
+Preview 3 was built on the maintainer's laptop and has no such record.
+
 Needs a 64-bit PC with UEFI. Secure Boot can stay on.
 
 **About the disk:** an empty disk is used whole. Next to another
@@ -132,8 +144,14 @@ Nothing has been changed. To restart:
   (`.github/workflows/weekly-image.yml`), and installed machines are
   set to refuse unsigned ones.
 - **The installer ISO** is made with Fedora's `bootc-image-builder`:
-  `./image/build-installer.sh`. Every build writes down what went into
-  it (image digest, Nexus version, builder digest, ISO checksum).
+  `./image/build-installer.sh`, run on GitHub by
+  `.github/workflows/installer-iso.yml` with a build attestation (see
+  Download). Every build writes down what went into it (image digest,
+  Nexus version, builder digest, ISO checksum).
+- **Containers by digest.** The Kali toolbox, the Minecraft and website
+  servers and the dev boxes are pulled at the digest the weekly build
+  recorded in the signed image (`image/pins/`), not whatever their tag
+  points at that day.
 - **The kernel is Fedora's**, with Fedora's signature, which is why it
   boots with Secure Boot on.
 

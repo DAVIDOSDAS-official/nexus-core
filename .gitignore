@@ -27,3 +27,6 @@ cosign.key
 
 # Local build output, never committed.
 build.log
+
+# Written by image/pin-images.py in the weekly build, never committed.
+image/pins/pinned-images

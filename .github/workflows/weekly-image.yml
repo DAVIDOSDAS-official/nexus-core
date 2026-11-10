@@ -143,10 +143,27 @@ jobs:
           sudo docker image prune --all --force > /dev/null || true
           df -h /
 
+      # Every container image Nexus pulls on machines, resolved to the
+      # digest its tag points at today and carried in the signed image
+      # (0.1.81, after an outside review: they were pulled by tag).
+      # Never fails the run: an image it cannot resolve stays by tag
+      # and is named here.
+      - name: Pin container images
+        run: |
+          FEDORA="$(sed -n 's/^ARG FEDORA_VERSION=//p' image/Containerfile)"
+          python3 image/pin-images.py "${FEDORA}"
+
       - name: Build
         run: |
           FEDORA="$(sed -n 's/^ARG FEDORA_VERSION=//p' image/Containerfile)"
-          podman pull "quay.io/fedora/fedora-bootc:${FEDORA}"
+          # quay.io answers 502 now and then (10 November: both
+          # editions failed on one bad answer). Three tries, a minute
+          # apart, before the run is called failed.
+          for try in 1 2 3; do
+            podman pull "quay.io/fedora/fedora-bootc:${FEDORA}" && break
+            [ "${try}" = 3 ] && { echo "quay.io did not answer after 3 tries."; exit 1; }
+            echo "quay.io failed (try ${try}); again in 60 s."; sleep 60
+          done
           # The Nexus version, for `nexus update` on machines (the
           # image's own version label is Fedora's).
           VERSION="$(sed -n 's/^ *VERSION \([0-9][0-9.]*\)$/\1/p' CMakeLists.txt | head -n 1)"
@@ -159,7 +176,7 @@ jobs:
               -t "localhost/nexus-os:${PROFILE}" \
               -f image/Containerfile . 2>&1 | tee build.log
           test "${PIPESTATUS[0]}" -eq 0
-          grep -E "Redistribution|Signing:|Splash|Identity" build.log
+          grep -E "Redistribution|Signing:|Splash|Identity|Pins:" build.log
 
       # Before anything is published: every add-on first boot offers
       # has to be installable from the repositories machines use.
