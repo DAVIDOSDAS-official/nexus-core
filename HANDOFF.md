@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.79** (patches 1–105). **656 automated tests**, all passing.
+**Version 0.1.80** (patches 1–106). **656 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -514,6 +514,27 @@ options, security module checked; no new injection).
 - "system built today / 1 day ago".
 +2 tests. Accepted risk: image/config.toml's nexus/nexus wheel account
 is for a local test VM only; CI uploads no qcow2. Never publish one.
+
+**Fifth outside review (0.1.79): no new vulnerabilities.** Asked whether
+a scope's requirement array is AND or OR: containers-policy.json(5) says
+all must be satisfied, so sigstoreSigned + insecureAcceptAnything is
+still enforced -- the suggested "insecureAcceptAnything = not enforced"
+guard would be a false red; not added. The same page: a policy.json in
+the puller's home is read instead of /etc's.
+Correction: 8080/tcp on the Asus IS Nexus's -- the website server's
+default port (server.hpp), not "not from Nexus" as said for 104.
+
+**Patch 106 (0.1.80):**
+- Installer %post writes /etc/hostname = nexus-<6 random hex> (was
+  "nexus" on every machine: collisions, one name for all). The audit
+  shows a " -- " Name line with a rename command on older installs.
+- Server add (minecraft, website): says the firewall now lets the port
+  in, who can reach it, and how to close it.
+- Audit: /root/.config/containers/policy.json present (as root) = warn,
+  it may be read instead of /etc's.
+- trustedReach: comment that IPv6 sources are not network-matched yet
+  (judged real network: a false warning at worst).
+- ROADMAP: the nexus security direction (rules + next four checks).
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

@@ -3945,6 +3945,14 @@ std::string trimmed(const std::string& text) {
     return text.substr(start, end - start + 1);
 }
 
+// Said after every server start (0.1.80, fifth outside review): the
+// firewall now lets this port in, and who that means.
+std::string reachableNote(const std::string& name, int port) {
+    return "\nThe firewall now lets port " + std::to_string(port) + " in: every device on this\n"
+           "network can reach it, and the internet too if your router forwards\n"
+           "that port. Closed again with: sudo nexus server remove " + name + " --apply\n";
+}
+
 // The machine's address on the home network, for "connect to ...".
 std::string lanAddress() {
     const auto result = nexus::system::runCommand("hostname -I 2>/dev/null", false);
@@ -5185,8 +5193,20 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
                 if (!isNexus)
                     line(" ok ", "System image", "signature checked at every update (not a Nexus image).");
                 else if (nexus::system::policyRequiresKey(pb.str(), "ghcr.io/davidosdas-official", key) &&
-                         fs::exists(key))
-                    line(" ok ", "System image", "every update must be signed with the Nexus key.");
+                         fs::exists(key)) {
+                    // containers-policy.json(5): a policy.json in the
+                    // home of whoever pulls is read instead of /etc's
+                    // (0.1.80). Updates are pulled as root, so root's.
+                    std::error_code pe;
+                    const bool rootHas = nexus::system::haveRootPrivileges() &&
+                                         fs::exists("/root/.config/containers/policy.json", pe);
+                    if (rootHas)
+                        line("warn", "System image", "/root/.config/containers/policy.json exists and may be read instead of"
+                             " /etc's, which requires the Nexus key.",
+                             "sudo cat /root/.config/containers/policy.json   (remove it unless you put it there on purpose)");
+                    else
+                        line(" ok ", "System image", "every update must be signed with the Nexus key.");
+                }
                 else
                     line("FAIL", "System image", "signed: is set, but the policy does not require the Nexus key.",
                          "sudo python3 /usr/libexec/nexus/merge-policy");
@@ -5215,6 +5235,18 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
             line("warn", "Kernel settings", std::to_string(weak.size()) + " of " + std::to_string(total) +
                  " could be stricter (" + names + ").", "sudo nexus security harden --apply");
         }
+    }
+
+    {
+        // The same name as every other Nexus machine (installs before
+        // 0.1.80): two collide on one network, and the name is the same
+        // for all of them. Information, not a fault.
+        std::ifstream hn("/proc/sys/kernel/hostname");
+        std::string host;
+        std::getline(hn, host);
+        if (host == "nexus")
+            line(" -- ", "Name", "\"nexus\", as on every Nexus machine installed before 0.1.80.",
+                 "sudo hostnamectl set-hostname nexus-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \\n')");
     }
 
     if (nexus::system::haveRootPrivileges()) {
@@ -5689,7 +5721,8 @@ int commandServer(
         std::cout << "\nDone. The first start makes the world, about one or two minutes:\n"
                      "    nexus server logs minecraft     ends with \"Done\" when ready\n"
                      "\nIn Minecraft: Multiplayer -> Direct Connection -> "
-                  << lanAddress() << ":" << options.port << "\n";
+                  << lanAddress() << ":" << options.port << "\n"
+                  << reachableNote(options.name, options.port);
         return 0;
     }
 
@@ -5811,7 +5844,7 @@ int commandServer(
                   << (options.domain.empty()
                           ? "http://" + lanAddress() + ":" + std::to_string(options.port)
                           : "https://" + options.domain)
-                  << "\n";
+                  << "\n" << reachableNote(options.name, options.port);
         return 0;
     }
 

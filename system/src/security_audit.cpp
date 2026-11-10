@@ -224,6 +224,8 @@ TrustedReach trustedReach(const ZoneInfo& zone, const std::vector<LocalNetwork>&
             raise(TrustedReach::Tunnel);
         else raise(TrustedReach::Network);
     }
+    // IPv6 sources are not matched to a network yet: one is judged a
+    // real network -- a false warning at worst, never a false ok.
     std::istringstream sources(zone.sources);
     std::string source;
     while (sources >> source) {

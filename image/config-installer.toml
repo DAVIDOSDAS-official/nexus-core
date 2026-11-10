@@ -72,7 +72,8 @@ enable = [
 [customizations.installer.kickstart]
 #
 # The hostname is set here because otherwise every machine installed
-# from this ISO calls itself "fedora" -- on its own prompt, on the
+# from this ISO calls itself "fedora" (a %post below makes it
+# nexus-<6 random hex>, so no two machines share it) -- on its own prompt, on the
 # network, and in every log anybody sends asking for help. It is the
 # same class of mistake as the branding in os-release, in the one
 # place a person actually reads it.
@@ -767,5 +768,18 @@ if xlayout and (keymap or early) and wanted and present and wanted != keymap:
           "ok" if done.returncode == 0 else "failed", ")")
 else:
     print("left as it is")
+%end
+
+%post --interpreter=/usr/bin/python3 --log=/var/log/nexus-install-hostname.log
+# A name of its own (0.1.80, fifth outside review): "nexus" on every
+# machine is the same name for all of them -- two on one network
+# collide, and the name says the same thing about every one. Still
+# nexus-something, so a log sent for help says what it is; the six
+# random hex characters are not derived from anything on the machine.
+import secrets
+name = "nexus-" + secrets.token_hex(3)
+with open("/etc/hostname", "w") as f:
+    f.write(name + chr(10))
+print("hostname:", name)
 %end
 """

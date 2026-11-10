@@ -111,6 +111,27 @@ Tested 29 Oct: `nexus server add website` works on the Asus itself. The phone wa
 - NEXUS-PACK ("Privacy, protection and control")
 - Paid features later (about half a year out); everything free until then
 
+### `nexus security`: direction (9 Nov 2026, from a design review)
+Hard rules: no resident daemon, kernel module or listening socket; reads
+and exits; changes nothing without --apply; never parses a file's
+contents as root (anything that would: unprivileged, sandboxed, limited);
+no signature database or update feed of its own; no report left on disk
+(except a root-only 0600 baseline, if baselines come); nothing leaves the
+machine. Never a false ok: what cannot be read says "not checked".
+Next, by value:
+1. Flatpak permission audit: filesystem=host/home, device=all,
+   session-bus talk, overrides -- the real desktop threat.
+2. Persistence inventory: system and user units, autostart, cron/at,
+   shell rc files, /etc/ld.so.preload, udev rules, kernel modules;
+   later a baseline and "what changed since".
+3. `nexus security verify`: ostree fsck + the booted commit's
+   signature. Covers /usr only -- /etc and /var (with /var/home) are
+   not in it, and that is where persistence lives; say so. Slow
+   (minutes): on request, not in the audit.
+4. Cheap rootkit sanity: /etc/ld.so.preload present, setuid files
+   writable by others, modules not from the kernel package.
+Not: a resident scanner; "reset the mutable layer" (/var holds /home).
+
 ### From the outside review (9 Nov 2026), still open after 0.1.76
 - runCommand with an argument vector (posix_spawn), not /bin/sh.
 - `nexus cyber`: its own home folder (says it is not a sandbox since
