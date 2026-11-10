@@ -45,6 +45,7 @@ add_library(nexus_system
     src/gaming.cpp
     src/security_audit.cpp
     src/pins.cpp
+    src/site_copy.cpp
 )
 
 target_include_directories(nexus_system

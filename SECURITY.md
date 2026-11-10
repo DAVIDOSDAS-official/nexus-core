@@ -46,3 +46,33 @@ Installed machines are set to refuse images from
 `ghcr.io/davidosdas-official` that do not carry that signature
 (`image/signing/`). The kernel and boot loader are Fedora's, with
 Fedora's signatures, so Secure Boot stays on.
+
+## If the signing key is stolen
+
+Installed machines accept a Nexus update only if it is signed with the
+key in `/etc/pki/containers/nexus-core.pub`. Whoever has the private key
+can sign an update every machine would accept, so a stolen key is the
+worst case. Signatures are not written to a public log yet
+(`--tlog-upload=false` in `image/publish.sh`), so a misused key would
+not show up anywhere by itself.
+
+What happens, in order:
+
+1. **Stop the weekly workflow** (Actions → Weekly image → Disable) and
+   delete the `COSIGN_PRIVATE_KEY` and `COSIGN_PASSWORD` secrets.
+2. **Say so here and on the website**, with the time window in which
+   the key may have been misused, and tell people **not to update**
+   until a fixed image is out (`nexus update` without `--apply` only
+   looks).
+3. **Make a new key pair** (`cosign generate-key-pair`), put the new
+   public key in `image/signing/cosign.pub`, and build one image that
+   carries the new public key **and still verifies with the old one**:
+   machines can only take an update their current key accepts, so the
+   last old-key image is the one that hands over the new key.
+4. Every image after that is signed with the new key only.
+5. A machine that may have installed an update signed during the bad
+   window should be reinstalled; `rpm-ostree status` shows the digest
+   of every deployment, to compare with the list published in step 2.
+
+Planned, to make step 2 checkable by anyone: signatures in the public
+Rekor log, and machines that require them there.

@@ -663,7 +663,7 @@ RUN set -eu; \
         { dnf install -y --setopt=install_weak_deps=False firewalld && dnf clean all; }; \
     [ "$(firewall-offline-cmd --get-default-zone)" = public ] || \
         firewall-offline-cmd --set-default-zone=public; \
-    for service in dhcpv6-client mdns samba-client kdeconnect; do \
+    for service in dhcpv6-client mdns samba-client; do \
         firewall-offline-cmd --zone=public --query-service="${service}" > /dev/null || \
             firewall-offline-cmd --zone=public --add-service="${service}"; \
     done; \
@@ -855,6 +855,18 @@ FROM desktop-packages AS desktop
 
 ARG NEXUS_VERSION
 ARG NEXUS_PROFILE
+
+# KDE Connect's ports only where KDE Connect is (0.1.82, outside review:
+# they were opened on every machine, installed or not). Machines whose
+# zone file was changed locally keep what they have; `nexus security`
+# names the leftover.
+RUN if rpm -q kdeconnectd > /dev/null 2>&1; then \
+        firewall-offline-cmd --zone=public --query-service=kdeconnect > /dev/null || \
+            firewall-offline-cmd --zone=public --add-service=kdeconnect; \
+        echo "Firewall: kdeconnect (KDE Connect is installed)"; \
+    else \
+        echo "Firewall: no kdeconnect (KDE Connect is not installed)"; \
+    fi
 
 # What `nexus update` shows as the new version comes from the
 # nexus.version label, added by the build command (--label) from

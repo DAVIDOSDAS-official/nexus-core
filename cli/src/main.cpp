@@ -43,8 +43,10 @@
 #include <nexus/system/gaming.hpp>
 #include <nexus/system/security_audit.hpp>
 #include <nexus/system/pins.hpp>
+#include <nexus/system/site_copy.hpp>
 
 #include <pwd.h>
+#include <grp.h>
 #include <cstring>
 
 using nexus::system::shellQuote;   // process.hpp (0.1.76)
@@ -4179,8 +4181,10 @@ int commandCyber(
 
     if (action.empty() || action == "status") {
         std::cout << "Cybersecurity toolbox -- Kali's tools in a container, kept out of the system.\n"
-                     "Not a sandbox: it sees your home folder and runs as you. For malware\n"
-                     "samples or tools you do not trust, use a virtual machine.\n\n";
+                  << (rootBox ? "Not a sandbox: a --root box runs as root on this machine and sees your\n"
+                                "home folder. Use it only for the tools that need it.\n"
+                              : "Not a sandbox: it sees your home folder and runs as you.\n")
+                  << "For malware samples or tools you do not trust, use a virtual machine.\n\n";
         if (!haveDistrobox()) {
             std::cout << "  Distrobox: not installed (sudo nexus setup cybersecurity --apply)\n";
         } else {
@@ -5103,6 +5107,14 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
                         line("warn", "Firewall", "zone " + zone + " still lets ssh in, with remote login off:"
                              " turning sshd on would open it at once.",
                              "sudo firewall-cmd --permanent --zone=" + zone + " --remove-service=ssh && sudo firewall-cmd --reload");
+                    // KDE Connect's ports with no KDE Connect (0.1.82).
+                    std::istringstream kv(now.services + " " + saved.services);
+                    bool kde = false;
+                    while (kv >> one) if (one == "kdeconnect") kde = true;
+                    if (kde && !runCommand("rpm -q kdeconnectd > /dev/null 2>&1", false).ok)
+                        line("warn", "Firewall", "zone " + zone + " lets KDE Connect's ports in, and KDE Connect is"
+                             " not installed.",
+                             "sudo firewall-cmd --permanent --zone=" + zone + " --remove-service=kdeconnect && sudo firewall-cmd --reload");
                 }
                 any = true;
             }
@@ -5227,6 +5239,21 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
     }
 
     {
+        // Containers by digest (0.1.81): what this image carries.
+        std::ifstream pf(nexus::system::kPinsFile);
+        if (pf) {
+            std::stringstream pt; pt << pf.rdbuf();
+            const auto pins = nexus::system::parsePins(pt.str());
+            if (pins.empty())
+                line("warn", "Containers", "this image pins no container images: Kali, servers and boxes come by tag.",
+                     "sudo nexus update --apply   (a newer image may carry them)");
+            else
+                line(" ok ", "Containers", std::to_string(pins.size()) +
+                     " images pinned by digest in this image (Kali, servers, boxes).");
+        }
+    }
+
+    {
         const auto weak = nexus::system::weakSettings(readSysctls());
         const auto total = nexus::system::hardeningTable().size();
         if (weak.empty()) line(" ok ", "Kernel settings", "all " + std::to_string(total) + " of Nexus's hardening tier on.");
@@ -5304,6 +5331,21 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
     return fails > 0 ? 1 : 0;
 }
 
+// A source build's components/<name>, found from where this nexus is
+// (build/cli/nexus -> components/), never from the current folder
+// (0.1.82, outside review: under sudo, a components/ in whatever folder
+// you stood in was read as Nexus's own profiles).
+std::string sourceTreeDir(const std::string& name) {
+    std::error_code ec;
+    const auto self = std::filesystem::read_symlink("/proc/self/exe", ec);
+    if (ec) return "/nonexistent/nexus-components/" + name;
+    for (auto dir = self.parent_path(); !dir.empty() && dir != dir.root_path(); dir = dir.parent_path()) {
+        const auto candidate = dir / "components" / name;
+        if (std::filesystem::is_directory(candidate, ec)) return candidate.string();
+    }
+    return "/nonexistent/nexus-components/" + name;
+}
+
 // Copy a website folder into the site directory, as root (0.1.76).
 //
 // A symlink is followed by the copy, so a link to /etc/shadow in the
@@ -5315,36 +5357,44 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
 bool copyWebsite(const std::filesystem::path& folder, const std::string& site, std::string& error) {
     namespace fs = std::filesystem;
     std::error_code ec;
-    const fs::path root = fs::canonical(folder, ec);
-    if (ec) { error = "cannot read " + folder.string() + ": " + ec.message(); return false; }
-    const std::string prefix = root.string() + "/";
-    for (auto it = fs::recursive_directory_iterator(root, ec);
-         !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
-        std::error_code e2;
-        if (!it->is_symlink(e2)) {
-            if (!it->is_regular_file(e2) && !it->is_directory(e2)) {
-                error = "not a file or folder: " + it->path().string();
-                return false;
+
+    // Whose read rights count: the person who ran sudo (0.1.82).
+    nexus::system::Reader reader;
+    if (const char* su = std::getenv("SUDO_UID")) {
+        reader.uid = static_cast<uid_t>(std::strtoul(su, nullptr, 10));
+        if (const passwd* pw = getpwuid(reader.uid)) {
+            int n = 64;
+            std::vector<gid_t> groups(static_cast<std::size_t>(n));
+            if (getgrouplist(pw->pw_name, pw->pw_gid, groups.data(), &n) < 0) {
+                groups.resize(static_cast<std::size_t>(n));
+                getgrouplist(pw->pw_name, pw->pw_gid, groups.data(), &n);
             }
-            continue;
-        }
-        const fs::path target = fs::weakly_canonical(it->path(), e2);
-        if (e2 || target.string().rfind(prefix, 0) != 0 || !fs::exists(target, e2)) {
-            error = "a link that leads outside the folder: " + it->path().string() +
-                    " -> " + fs::read_symlink(it->path(), e2).string();
-            return false;
+            groups.resize(static_cast<std::size_t>(std::max(n, 0)));
+            reader.groups = groups;
         }
     }
-    if (ec) { error = "cannot read " + folder.string() + ": " + ec.message(); return false; }
 
     const std::string staged = site + ".new";
     fs::remove_all(staged, ec);
     fs::create_directories(staged, ec);
-    if (!ec) fs::copy(root, staged, fs::copy_options::recursive, ec);
-    if (ec) {
-        error = "could not copy the folder: " + ec.message();
+    // One pass, nothing followed, hidden files left out, and only what
+    // the person could read themselves (system/src/site_copy.cpp).
+    const auto copied = nexus::system::copySiteTree(folder.string(), staged, reader);
+    if (!copied.ok) {
+        error = copied.error;
         fs::remove_all(staged, ec);
         return false;
+    }
+    std::cout << "Copied " << copied.files << " file(s).\n";
+    if (!copied.hidden.empty()) {
+        std::cout << "Left out " << copied.hidden.size() << " hidden file(s) and folder(s), never published:";
+        for (std::size_t k = 0; k < copied.hidden.size() && k < 5; ++k) std::cout << " " << copied.hidden[k];
+        std::cout << (copied.hidden.size() > 5 ? " ...\n" : "\n");
+    }
+    if (!copied.unreadable.empty()) {
+        std::cout << "Left out " << copied.unreadable.size() << " you cannot read yourself:";
+        for (std::size_t k = 0; k < copied.unreadable.size() && k < 5; ++k) std::cout << " " << copied.unreadable[k];
+        std::cout << (copied.unreadable.size() > 5 ? " ...\n" : "\n");
     }
     // The old site stays until the new one is in place (0.1.77, second
     // outside review: it was removed first, so a failed rename left no
@@ -9638,7 +9688,7 @@ int main(int argc, char** argv) {
                    "/usr/share/nexus/profiles")) {
         profileDir = "/usr/share/nexus/profiles";
     } else {
-        profileDir = "components/profiles";
+        profileDir = sourceTreeDir("profiles");
     }
     std::string listsDir = "/var/lib/apt/lists";
     std::string sysfsRoot = "/";
@@ -9654,7 +9704,7 @@ int main(int argc, char** argv) {
                    "/usr/share/nexus/aliases")) {
         aliasDir = "/usr/share/nexus/aliases";
     } else {
-        aliasDir = "components/aliases";
+        aliasDir = sourceTreeDir("aliases");
     }
     bool forceRpm = false;
     bool forceDpkg = false;

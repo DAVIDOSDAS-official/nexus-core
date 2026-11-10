@@ -45,7 +45,7 @@ jobs:
       IMAGE: ghcr.io/davidosdas-official/nexus-core:${{ inputs.profile }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # The image, the builder's storage and the ISO need about 20 GB;
       # the runner starts with about 14 free.
@@ -64,10 +64,37 @@ jobs:
           sudo apt-get ${APT} update
           sudo apt-get ${APT} install -y xorriso cpio isomd5sum mtools
 
+      # cosign 2.x, as image/publish.sh signs with.
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+        with:
+          cosign-release: "v2.4.1"
+
+      # The image is checked before anything is built from it (0.1.82,
+      # outside review: the attestation proved this workflow built the
+      # ISO, not that the ISO holds Nexus's signed image). The digest
+      # the tag points at is read once, its signature checked against
+      # the key in the repository, and exactly that digest is pulled
+      # and built from. Installed machines still follow the tag for
+      # updates -- the bytes in the ISO are the verified ones.
+      - name: Verify the signed image
+        run: |
+          REPO="${IMAGE%:*}"
+          DIGEST="$(skopeo inspect --retry-times 3 --format '{{.Digest}}' "docker://${IMAGE}")"
+          case "${DIGEST}" in sha256:*) ;; *) echo "No digest for ${IMAGE}"; exit 1;; esac
+          cosign verify --key image/signing/cosign.pub --insecure-ignore-tlog=true \
+              "${REPO}@${DIGEST}" > /dev/null
+          echo "Signature checked: ${REPO}@${DIGEST}"
+          podman pull "${REPO}@${DIGEST}"
+          podman tag "${REPO}@${DIGEST}" "${IMAGE}"
+          echo "DIGEST=${DIGEST}" >> "${GITHUB_ENV}"
+
       - name: Build the ISO
         run: |
-          ./image/build-installer.sh
+          # PULL=no: build from the verified copy, not a fresh pull of the tag.
+          PULL=no ./image/build-installer.sh
           test -f output/bootiso/install.iso
+          grep -q "image digest:   ${DIGEST}" output/nexus-build.txt \
+              || echo "::warning::nexus-build.txt names another digest than the verified ${DIGEST}"
 
       # A name that says what it is, and the checksum of that file.
       - name: Name it
@@ -88,16 +115,18 @@ jobs:
             cat release/nexus-build.txt
             echo '```'
             echo
+            echo "Image inside: ${IMAGE} at ${DIGEST}, signature checked with image/signing/cosign.pub."
+            echo
             echo "Check any copy: \`gh attestation verify ${NAME} --repo ${GITHUB_REPOSITORY}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Attest
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-path: release/${{ steps.name.outputs.name }}
 
       - name: Keep the ISO
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ steps.name.outputs.name }}
           path: release/

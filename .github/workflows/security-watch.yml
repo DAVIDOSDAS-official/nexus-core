@@ -1,0 +1,64 @@
+# Firefox fixes without waiting for Monday (0.1.82).
+#
+# An outside review: Firefox is part of the Nexus image, so a browser
+# fix for something exploited in the wild reached machines only with
+# the next weekly image -- up to 7 days, plus the person updating.
+# Every day this compares the Firefox in the published KDE image (its
+# nexus.firefox label, written by weekly-image.yml) with the newest in
+# Fedora's repositories, and when Fedora has a newer one it starts the
+# image build now. Machines still update when their person says so;
+# this only makes the fixed image exist sooner.
+
+name: Security watch
+
+on:
+  schedule:
+    # Every day, 05:00 and 17:00 UTC.
+    - cron: "0 5,17 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write   # to start weekly-image.yml
+
+jobs:
+  firefox:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      IMAGE: ghcr.io/davidosdas-official/${{ vars.IMAGE_NAME || 'nexus-core-testing' }}:kde
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Compare and build if needed
+        run: |
+          FEDORA="$(sed -n 's/^ARG FEDORA_VERSION=//p' image/Containerfile)"
+          IN_IMAGE="$(skopeo inspect --retry-times 3 --format '{{index .Labels "nexus.firefox"}}' \
+              "docker://${IMAGE}" 2>/dev/null || true)"
+          NEWEST="$(podman run --rm "registry.fedoraproject.org/fedora:${FEDORA}" \
+              dnf -q repoquery --latest-limit 1 --arch x86_64 \
+              --qf '%{version}-%{release}' firefox 2>/dev/null | tail -n 1)"
+          echo "Firefox in ${IMAGE}: ${IN_IMAGE:-unknown}"
+          echo "Firefox in Fedora ${FEDORA}: ${NEWEST:-unknown}"
+          if [ -z "${IN_IMAGE}" ] || [ "${IN_IMAGE}" = "<no value>" ] || [ -z "${NEWEST}" ]; then
+            echo "Cannot compare yet (an image built before 0.1.82 has no label); nothing started."
+            exit 0
+          fi
+          if [ "${IN_IMAGE}" = "${NEWEST}" ]; then
+            echo "Up to date."
+            exit 0
+          fi
+          # Newer by rpm's own ordering, not only different.
+          if [ "$(printf '%s\n%s\n' "${IN_IMAGE}" "${NEWEST}" | sort -V | tail -n 1)" != "${NEWEST}" ]; then
+            echo "The image has a newer Firefox than the repositories list; nothing started."
+            exit 0
+          fi
+          # Not while a build is already running or queued.
+          if [ -n "$(gh run list --workflow weekly-image.yml --json status \
+                  --jq '.[] | select(.status != "completed") | .status' | head -n 1)" ]; then
+            echo "A build is already running; it will pick the new Firefox up."
+            exit 0
+          fi
+          echo "Fedora has a newer Firefox: starting the image build."
+          gh workflow run weekly-image.yml --ref "${GITHUB_REF_NAME}"

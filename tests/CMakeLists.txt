@@ -60,6 +60,7 @@ add_executable(component_test
     unit/gaming_test.cpp
     unit/security_audit_test.cpp
     unit/pins_test.cpp
+    unit/site_copy_test.cpp
 )
 
 target_link_libraries(component_test

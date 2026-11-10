@@ -65,7 +65,7 @@ jobs:
       PROFILE: ${{ matrix.profile }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # One login file for podman and cosign alike, in the job's own
       # temporary directory (the runner context is not available at
@@ -75,7 +75,7 @@ jobs:
 
       # cosign 2.x, as image/publish.sh requires: cosign 3 writes
       # signatures the machines cannot read yet.
-      - uses: sigstore/cosign-installer@v3
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
         with:
           cosign-release: "v2.4.1"
 
@@ -92,19 +92,9 @@ jobs:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
           COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
         run: |
-          umask 077
           KEYFILE="${RUNNER_TEMP}/cosign.key"
-          # Pasting through a browser can add carriage returns and
-          # indentation, and PEM allows neither; both are removed.
-          printf '%s\n' "${COSIGN_PRIVATE_KEY}" | tr -d '\r' \
-              | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | sed '/^$/d' \
-              > "${KEYFILE}"
-          if ! grep -q 'BEGIN ENCRYPTED SIGSTORE PRIVATE KEY' "${KEYFILE}" ||
-             ! grep -q 'END ENCRYPTED SIGSTORE PRIVATE KEY' "${KEYFILE}"; then
-            echo "COSIGN_PRIVATE_KEY is not a whole cosign key: it must run"
-            echo "from the BEGIN line to the END line, exactly as in cosign.key."
-            exit 1
-          fi
+          bash image/signing/write-key.sh "${KEYFILE}"
+          trap 'rm -f "${KEYFILE}"' EXIT
           if ! cosign public-key --key "${KEYFILE}" > "${RUNNER_TEMP}/derived.pub"; then
             echo "The key could not be opened: COSIGN_PASSWORD is wrong,"
             echo "or COSIGN_PRIVATE_KEY was changed while pasting."
@@ -116,6 +106,8 @@ jobs:
             echo "Machines would refuse what it signs."
             exit 1
           fi
+          # Checked, and gone again (0.1.82): written back only in the
+          # publish step, not left on disk through tests and build.
           echo "Signing key and password match image/signing/cosign.pub."
 
       # apt with short timeouts and retries, and the step capped at 20
@@ -177,6 +169,16 @@ jobs:
               -f image/Containerfile . 2>&1 | tee build.log
           test "${PIPESTATUS[0]}" -eq 0
           grep -E "Redistribution|Signing:|Splash|Identity|Pins:" build.log
+          # The Firefox version as a label, for security-watch.yml to
+          # compare with Fedora's newest (0.1.82). A label-only build:
+          # no new layer.
+          FIREFOX="$(podman run --rm "localhost/nexus-os:${PROFILE}" \
+              rpm -q --qf '%{VERSION}-%{RELEASE}' firefox 2>/dev/null || true)"
+          if [ -n "${FIREFOX}" ]; then
+            echo "FROM localhost/nexus-os:${PROFILE}" | podman build \
+                --label nexus.firefox="${FIREFOX}" -t "localhost/nexus-os:${PROFILE}" -f - "$(mktemp -d)"
+            echo "Firefox: ${FIREFOX}"
+          fi
 
       # Before anything is published: every add-on first boot offers
       # has to be installable from the repositories machines use.
@@ -191,8 +193,12 @@ jobs:
       - name: Publish and sign
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
         run: |
-          COSIGN_KEY="${RUNNER_TEMP}/cosign.key" NAME="${IMAGE_NAME}" \
+          KEYFILE="${RUNNER_TEMP}/cosign.key"
+          bash image/signing/write-key.sh "${KEYFILE}"
+          trap 'rm -f "${KEYFILE}"' EXIT
+          COSIGN_KEY="${KEYFILE}" NAME="${IMAGE_NAME}" \
               PROFILE="${PROFILE}" ./image/publish.sh
 
       - name: Forget the key

@@ -9,6 +9,7 @@
 #include <nexus/system/json.hpp>
 
 #include <QClipboard>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
@@ -630,11 +631,28 @@ void Shop::runJob(const QString& title, const QString& program,
     job_->start(program, arguments);
 }
 
+// Programs by full path, never through PATH (0.1.82, outside review):
+// Fedora's ~/.bashrc puts ~/.local/bin first, `nexus dev` exports
+// commands there, and pkexec finds its program through the caller's
+// PATH -- so a "nexus" planted in ~/.local/bin would be the one run as
+// root after the password. A source build (no /usr/bin/nexus) uses the
+// nexus built next to the Shop, still by full path.
+namespace {
+QString nexusProgram() {
+    if (QFileInfo::exists(QStringLiteral("/usr/bin/nexus"))) {
+        return QStringLiteral("/usr/bin/nexus");
+    }
+    const QString built = QDir(QCoreApplication::applicationDirPath())
+                              .absoluteFilePath(QStringLiteral("../../cli/nexus"));
+    return QFileInfo::exists(built) ? QDir::cleanPath(built) : QStringLiteral("/usr/bin/nexus");
+}
+}  // namespace
+
 void Shop::install(const QString& appId) {
     if (!nexus::system::isFlatpakId(appId.toStdString())) {
         return;
     }
-    runJob(QStringLiteral("Installing ") + appId, QStringLiteral("nexus"),
+    runJob(QStringLiteral("Installing ") + appId, nexusProgram(),
            {"app", "install", appId, "--apply"});
 }
 
@@ -642,15 +660,15 @@ void Shop::remove(const QString& appId) {
     if (!nexus::system::isFlatpakId(appId.toStdString())) {
         return;
     }
-    runJob(QStringLiteral("Removing ") + appId, QStringLiteral("nexus"),
+    runJob(QStringLiteral("Removing ") + appId, nexusProgram(),
            {"app", "remove", appId, "--apply"});
 }
 
 void Shop::updateEverything() {
     // The system half needs root; pkexec asks for the password in a
     // window, the same as sudo asks in a terminal.
-    runJob(QStringLiteral("Updating"), QStringLiteral("pkexec"),
-           {"nexus", "update", "--apply", "--yes"});
+    runJob(QStringLiteral("Updating"), QStringLiteral("/usr/bin/pkexec"),
+           {nexusProgram(), "update", "--apply", "--yes"});
 }
 
 void Shop::clearJob() {
@@ -665,7 +683,7 @@ void Shop::clearJob() {
 
 void Shop::launch(const QString& appId) const {
     if (nexus::system::isFlatpakId(appId.toStdString())) {
-        QProcess::startDetached(QStringLiteral("flatpak"),
+        QProcess::startDetached(QStringLiteral("/usr/bin/flatpak"),
                                 {"run", appId});
     }
 }

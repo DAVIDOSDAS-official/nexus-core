@@ -158,6 +158,56 @@ Nothing has been changed. To restart:
 The `nexus` tool itself is C++20 and Qt 6 (the Shop). It decides and
 explains; Fedora's own tools (rpm-ostree, flatpak, bootc) do the work.
 
+
+## What Nexus contacts
+
+Nothing about you is sent anywhere by Nexus: no telemetry, no
+accounts, no crash reports. These are the places a Nexus machine
+reaches, and when:
+
+| Where | When | What it learns |
+|---|---|---|
+| ghcr.io (GitHub) | the daily update check, and every update | your IP address and that a Nexus machine asked |
+| Fedora mirrors | system updates and `nexus` package lookups | your IP address, which packages |
+| dl.flathub.org | apps from the Shop or `nexus app` | your IP address, which apps |
+| mirrors.rpmfusion.org | only if you add media codecs or Steam | your IP address, which packages |
+| geoip.fedoraproject.org | only if you turn on automatic time zone | your IP address (it answers with a time zone) |
+| Steam store, ProtonDB, GitHub (AreWeAntiCheatYet) | only when you run `nexus gamecheck <game>` | the game name you typed |
+| Docker Hub, registry.fedoraproject.org | only when you create a toolbox or server (`nexus cyber`, `nexus dev`, `nexus server`) | your IP address, which image |
+| Fedora's anonymous weekly count | if Fedora's `rpm-ostree-countme.timer` is on: `systemctl is-enabled rpm-ostree-countme.timer` | one anonymous "a Fedora-based machine exists this week" |
+
+## How this is made
+
+One person makes Nexus, with a great deal of help from AI (Claude,
+mostly): much of the code and text was written with it, and the
+working notes in HANDOFF.md are kept for that. What keeps that honest
+is checking, not trust:
+
+- about 660 automated tests run on every build and every weekly image;
+- outside reviews of the whole source -- each finding and its fix is
+  in HANDOFF.md, named as such; one ran the tests under AddressSanitizer
+  and UndefinedBehaviorSanitizer and fuzzed every parser that reads
+  data from the internet (8.5 million runs, no memory errors);
+- nothing changes on the machine without `--apply`, and every change
+  is in `nexus history`.
+
+Read the code, or hand it to any reviewer you trust: it is all here.
+
+## Leaving Nexus
+
+Nexus is Fedora underneath, and your files are in `/var/home`, which
+switching systems does not touch. To move a KDE machine to Fedora's own
+KDE edition (Fedora Kinoite) and keep getting Fedora's updates:
+
+```
+sudo rpm-ostree rebase ostree-unverified-registry:quay.io/fedora/fedora-kinoite:44
+systemctl reboot
+```
+
+The Nexus system stays in the boot menu until the next update, so you
+can go back. If this project stops, the machine keeps working as it
+is; it just gets no new Nexus images -- that is the time to switch.
+
 ## Building
 
 ```

@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.81** (patches 1–107). **658 automated tests**, all passing.
+**Version 0.1.82** (patches 1–108). **664 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -568,6 +568,41 @@ laptop so it cannot be proven to match the source, containers by tag.
   here (no registry access): run it on the Acer first.
 - Build step: base image pull retried 3x, 60 s apart.
 - README: verifying an ISO with gh attestation; containers by digest.
+
+**10 Nov: 0.1.81 pushed.** Second "trust" audit (fresh chat, zip of
+0.1.81): 658/658 under ASan/UBSan/LSan, parsers fuzzed 8.5 M runs, no
+memory bugs; ShellCheck clean. Findings H1-H3, M1-M5, L1-L7, docs.
+
+**Patch 108 (0.1.82), from it:**
+- **M1** Shop starts /usr/bin/nexus, /usr/bin/pkexec, /usr/bin/flatpak
+  (pkexec searched the caller's PATH: a nexus in ~/.local/bin would have
+  run as root). Source build: the nexus next to the Shop. Compiled.
+- **H1** installer-iso.yml: skopeo reads the tag's digest, cosign
+  verifies that digest with image/signing/cosign.pub, pulls exactly it,
+  tags it, builds with PULL=no; digest in the run summary.
+- **H2** the signing key is written (image/signing/write-key.sh) only
+  in the check step (and deleted there) and in the publish step; not on
+  disk through tests/build. tools/pin-actions.py (David runs it: needs
+  github.com) pins every `uses:` to a commit SHA; .github/dependabot.yml.
+- **M2** website copy: system/site_copy.{hpp,cpp} -- one pass, openat +
+  O_NOFOLLOW, links copied as links (only if they stay inside), hidden
+  files left out (.well-known kept), and under sudo only what SUDO_UID
+  could read (getgrouplist). +5 tests incl. the attacks.
+- **H3** .github/workflows/security-watch.yml twice a day: Firefox in
+  the published KDE image (label nexus.firefox, added by the weekly
+  Build step) vs Fedora's newest; newer -> starts weekly-image.yml.
+- **L1** ProtonDB total clamped (+1 test). **L2** audit line
+  "Containers: N pinned". **L3** profiles/aliases fallback found from
+  /proc/self/exe, never the current folder. **L5** cyber --root says it
+  runs as root. **L6** kdeconnect only if kdeconnectd is installed (and
+  the audit names a leftover).
+- **M4** SECURITY.md: what happens if the signing key is stolen.
+- Docs: README "What Nexus contacts", "How this is made" (AI said
+  plainly), "Leaving Nexus" (rebase to Kinoite -- TEST IN A VM).
+- Open: M3 (rootful podman ports vs firewalld -- test on the Asus),
+  M5 (opt-in auto-staging -- David decides), L4 (builder image by
+  digest), L7 (dnf hint wraps sudo), tlog/Rekor, identity in public
+  files (David decides), main.cpp split.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

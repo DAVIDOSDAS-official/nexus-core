@@ -159,3 +159,11 @@ TEST(GamecheckTest, ReadsSandboxContextValues) {
     EXPECT_FALSE(sandboxAllows(perms, "shared", "nothing"));
     EXPECT_FALSE(sandboxAllows("[Context]\nshared=ipc;\n", "shared", "network"));
 }
+
+// An outside review's fuzzer (0.1.82): a "total" past long's range was
+// converted anyway -- undefined behaviour. Clamped now.
+TEST(GamecheckTest, AnAbsurdReportCountIsClamped) {
+    EXPECT_EQ(parseProtonSummary(R"({"tier":"gold","total":1e300})").reports, 1000000000000000L);
+    EXPECT_EQ(parseProtonSummary(R"({"tier":"gold","total":-5})").reports, 0);
+    EXPECT_EQ(parseProtonSummary(R"({"tier":"gold","total":"many"})").reports, 0);
+}

@@ -1,0 +1,10 @@
+# Proposes updates to the GitHub Actions the workflows use, which are
+# pinned to commit SHAs (tools/pin-actions.py, 0.1.82). Each update is a
+# pull request to read before merging -- the point of pinning is that
+# nothing changes on its own.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

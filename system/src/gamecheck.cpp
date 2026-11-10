@@ -77,7 +77,12 @@ ProtonSummary parseProtonSummary(const std::string& json) {
     summary.tier = parsed.value["tier"].asString();
     summary.trending = parsed.value["trendingTier"].asString();
     summary.confidence = parsed.value["confidence"].asString();
-    summary.reports = static_cast<long>(parsed.value["total"].number);
+    // Clamped before converting: a number past long's range is
+    // undefined behaviour (found by an outside review's fuzzer, 0.1.82).
+    {
+        const double total = parsed.value["total"].number;
+        summary.reports = !(total > 0) ? 0 : total >= 1e15 ? 1000000000000000L : static_cast<long>(total);
+    }
     summary.found = !summary.tier.empty();
     return summary;
 }
