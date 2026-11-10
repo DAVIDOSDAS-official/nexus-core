@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.82** (patches 1–108). **664 automated tests**, all passing.
+**Version 0.1.83** (patches 1–109). **668 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -603,6 +603,38 @@ memory bugs; ShellCheck clean. Findings H1-H3, M1-M5, L1-L7, docs.
   M5 (opt-in auto-staging -- David decides), L4 (builder image by
   digest), L7 (dnf hint wraps sudo), tlog/Rekor, identity in public
   files (David decides), main.cpp split.
+
+**10 Nov, Asus 0.1.82:** audit 11 ok: zones public (wlo1, pvpnksintrf1)
+and trusted (10.88.0.0/16 = podman, now judged right); 8 containers
+pinned; kdeconnect leftover named (kdeconnectd not installed);
+8080/tcp = conmon (a Nexus website server). rpm-ostree-countme.timer:
+enabled (Fedora default). **David's decisions:** M5 auto-staging NO;
+his name stays in public files (DAVIDOSDAS says it anyway) -- do not
+scrub HANDOFF.md or rewrite history.
+
+**Third trust audit (0.1.82):** all 4 pinned Action SHAs genuine;
+664/664 under sanitizers; old fuzz crashes fixed. **New, my bug:**
+copySiteTree checked link targets as text, so `up -> .` plus
+`tls.key -> up/up/../../data/caddy/...` left /srv inside the Caddy
+container and could serve Caddy's TLS key.
+
+**Patch 109 (0.1.83):**
+- The reviewer's fix, applied as given (checked: its 2 new link tests
+  fail on 0.1.82, pass with it): links are created only after the whole
+  copy, each checked in the finished root-owned copy step by step --
+  refused if any step is a link, leaves the folder, or is not there
+  (e.g. a hidden .env). Plus its CI change: installer-iso.yml stops
+  (not warns) if nexus-build.txt names another digest.
+- Server files left out of websites (isServerSideFile: .php .py .sql
+  .db .bak .key .pem ... and ~ backups -- wp-config.php would have
+  served the DB password as text), listed when copying. +1 test.
+- Reader rights also from PKEXEC_UID (the Shop), not only SUDO_UID.
+- README: countme stated as on by default with how to turn it off;
+  Leaving Nexus uses $(rpm -E %fedora) and covers Minimal (no Fedora
+  LXQt atomic: Kinoite, Silverblue or Sway Atomic).
+- Still open: M3 (David tests: remove 8080 from the firewall, connect
+  from the phone), the Caddy link curl test (moot after the fix, but
+  confirms the finding), M4 tlog, L4 builder by digest, main.cpp split.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

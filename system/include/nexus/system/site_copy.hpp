@@ -13,7 +13,7 @@
 // relative to its folder's own descriptor with O_NOFOLLOW, a link is
 // copied as a link (and only when it stays inside), and a hidden file
 // or folder is left out (.well-known/ excepted -- it is for the web).
-// Under sudo, only what the person who ran sudo could read is copied:
+// Under sudo or pkexec, only what the person who ran it could read is copied:
 // root reading the folder must not publish what they could not.
 
 #include <string>
@@ -28,7 +28,14 @@ struct SiteCopyResult {
     std::size_t files = 0;
     std::vector<std::string> hidden;   // left out: hidden files and folders
     std::vector<std::string> unreadable;  // left out: not readable by `reader`
+    std::vector<std::string> serverSide;  // left out: server code and data
 };
+
+// A file a static web server would hand out as plain text, though it
+// was never meant to be read: PHP and other server code (wp-config.php
+// holds the database password), databases and dumps, editor backups
+// (0.1.83, outside review). Static sites need none of them.
+bool isServerSideFile(const std::string& name);
 
 // The person whose read rights count; uid -1 = no check (not under sudo).
 struct Reader {

@@ -5360,7 +5360,10 @@ bool copyWebsite(const std::filesystem::path& folder, const std::string& site, s
 
     // Whose read rights count: the person who ran sudo (0.1.82).
     nexus::system::Reader reader;
-    if (const char* su = std::getenv("SUDO_UID")) {
+    // sudo sets SUDO_UID, pkexec (the Shop) PKEXEC_UID (0.1.83).
+    const char* su = std::getenv("SUDO_UID");
+    if (su == nullptr) su = std::getenv("PKEXEC_UID");
+    if (su != nullptr) {
         reader.uid = static_cast<uid_t>(std::strtoul(su, nullptr, 10));
         if (const passwd* pw = getpwuid(reader.uid)) {
             int n = 64;
@@ -5390,6 +5393,12 @@ bool copyWebsite(const std::filesystem::path& folder, const std::string& site, s
         std::cout << "Left out " << copied.hidden.size() << " hidden file(s) and folder(s), never published:";
         for (std::size_t k = 0; k < copied.hidden.size() && k < 5; ++k) std::cout << " " << copied.hidden[k];
         std::cout << (copied.hidden.size() > 5 ? " ...\n" : "\n");
+    }
+    if (!copied.serverSide.empty()) {
+        std::cout << "Left out " << copied.serverSide.size()
+                  << " server file(s) a web server would show as text (code, databases, backups):";
+        for (std::size_t k = 0; k < copied.serverSide.size() && k < 5; ++k) std::cout << " " << copied.serverSide[k];
+        std::cout << (copied.serverSide.size() > 5 ? " ...\n" : "\n");
     }
     if (!copied.unreadable.empty()) {
         std::cout << "Left out " << copied.unreadable.size() << " you cannot read yourself:";

@@ -93,8 +93,12 @@ jobs:
           # PULL=no: build from the verified copy, not a fresh pull of the tag.
           PULL=no ./image/build-installer.sh
           test -f output/bootiso/install.iso
-          grep -q "image digest:   ${DIGEST}" output/nexus-build.txt \
-              || echo "::warning::nexus-build.txt names another digest than the verified ${DIGEST}"
+          # Stop, not warn (0.1.83, outside review): an ISO that holds
+          # anything but the verified digest must never get an attestation.
+          if ! grep -q "image digest:   ${DIGEST}" output/nexus-build.txt; then
+            echo "::error::nexus-build.txt names another digest than the verified ${DIGEST}"
+            exit 1
+          fi
 
       # A name that says what it is, and the checksum of that file.
       - name: Name it

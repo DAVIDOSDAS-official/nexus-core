@@ -1,6 +1,7 @@
 #include <nexus/system/site_copy.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cerrno>
 #include <cstring>
 #include <dirent.h>
@@ -26,27 +27,54 @@ std::string join(const std::string& a, const std::string& b) {
     return a.empty() ? b : a + "/" + b;
 }
 
-// "sub/dir" + "../x" -> whether it stays inside the root, lexically.
-bool staysInside(const std::string& linkDir, const std::string& target) {
+struct PendingLink {
+    std::string dir;     // the link's folder, relative to the root
+    std::string name;
+    std::string target;
+};
+
+// Whether `target`, read from the folder `dir`, reaches something in the
+// finished copy (`root`, root-owned, nothing else writes to it) through
+// real folders only. Checked in the copy, not in the source, so nothing
+// can be swapped underneath; a component that is itself a link is
+// refused, because only then does the path mean what it says (0.1.83,
+// outside review: "up -> ." made "up/up/../../data/..." leave /srv).
+bool reachesInside(int root, const std::string& dir, const std::string& target) {
     if (target.empty() || target[0] == '/') return false;
     std::vector<std::string> parts;
-    auto push = [&](const std::string& path) -> bool {
+    auto split = [](const std::string& path) {
+        std::vector<std::string> out;
         std::size_t i = 0;
         while (i <= path.size()) {
             const std::size_t j = path.find('/', i);
-            const std::string part = path.substr(i, j == std::string::npos ? std::string::npos : j - i);
-            if (part == "..") {
-                if (parts.empty()) return false;
-                parts.pop_back();
-            } else if (!part.empty() && part != ".") {
-                parts.push_back(part);
-            }
+            out.push_back(path.substr(i, j == std::string::npos ? std::string::npos : j - i));
             if (j == std::string::npos) break;
             i = j + 1;
         }
-        return true;
+        return out;
     };
-    return push(linkDir) && push(target);
+    for (const auto& part : split(dir)) if (!part.empty() && part != ".") parts.push_back(part);
+    const auto steps = split(target);
+    for (std::size_t k = 0; k < steps.size(); ++k) {
+        const std::string& part = steps[k];
+        if (part.empty() || part == ".") continue;
+        if (part == "..") {
+            if (parts.empty()) return false;
+            parts.pop_back();
+            continue;
+        }
+        parts.push_back(part);
+        std::string here;
+        for (const auto& p : parts) here = here.empty() ? p : here + "/" + p;
+        struct stat st {};
+        if (::fstatat(root, here.c_str(), &st, AT_SYMLINK_NOFOLLOW) != 0) return false;  // not copied
+        if (S_ISLNK(st.st_mode)) return false;                                         // a link in the path
+        bool last = true;
+        for (std::size_t m = k + 1; m < steps.size(); ++m)
+            if (!steps[m].empty() && steps[m] != ".") { last = false; break; }
+        if (!last && !S_ISDIR(st.st_mode)) return false;
+    }
+    return true;
 }
 
 bool copyFile(int from, int to, std::string& error) {
@@ -72,7 +100,7 @@ bool copyFile(int from, int to, std::string& error) {
 }
 
 bool copyDir(int src, int dst, const std::string& rel, const Reader& reader,
-             SiteCopyResult& result, int depth) {
+             SiteCopyResult& result, int depth, std::vector<PendingLink>& links) {
     if (depth > kMaxDepth) {
         result.error = "folders nested deeper than " + std::to_string(kMaxDepth) + ": " + rel;
         return false;
@@ -115,19 +143,16 @@ bool copyDir(int src, int dst, const std::string& rel, const Reader& reader,
                 return false;
             }
             target[n] = '\0';
-            if (!staysInside(rel, target)) {
-                result.error = "a link that leads outside the folder: " + path + " -> " + target;
-                return false;
-            }
-            if (::symlinkat(target, dst, name.c_str()) != 0) {
-                result.error = "could not copy the link " + path + ": " + std::strerror(errno);
-                return false;
-            }
+            links.push_back({rel, name, target});   // made at the end, once checked in the copy
             continue;
         }
         if (!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode)) {
             result.error = "not a file or folder: " + path;
             return false;
+        }
+        if (S_ISREG(st.st_mode) && isServerSideFile(name)) {
+            result.serverSide.push_back(path);
+            continue;
         }
         if (!readerMay(reader, st.st_uid, st.st_gid, st.st_mode, S_ISDIR(st.st_mode))) {
             result.unreadable.push_back(path);
@@ -144,7 +169,7 @@ bool copyDir(int src, int dst, const std::string& rel, const Reader& reader,
                 return false;
             }
             Fd out(::openat(dst, name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
-            if (out.fd < 0 || !copyDir(child.fd, out.fd, path, reader, result, depth + 1)) {
+            if (out.fd < 0 || !copyDir(child.fd, out.fd, path, reader, result, depth + 1, links)) {
                 if (result.error.empty()) result.error = "could not open the copy of " + path;
                 return false;
             }
@@ -171,6 +196,24 @@ bool copyDir(int src, int dst, const std::string& rel, const Reader& reader,
 }
 
 }  // namespace
+
+bool isServerSideFile(const std::string& name) {
+    std::string lower;
+    for (char c : name) lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (!lower.empty() && lower.back() == '~') return true;   // editor backup
+    static const char* kEndings[] = {
+        ".php", ".phtml", ".php3", ".php4", ".php5", ".phps", ".inc",
+        ".py", ".pyc", ".rb", ".pl", ".cgi", ".asp", ".aspx", ".jsp",
+        ".sql", ".sqlite", ".sqlite3", ".db", ".mdb",
+        ".bak", ".old", ".orig", ".swp", ".key", ".pem", ".env",
+    };
+    for (const char* e : kEndings) {
+        const std::string end = e;
+        if (lower.size() > end.size() && lower.compare(lower.size() - end.size(), end.size(), end) == 0)
+            return true;
+    }
+    return false;
+}
 
 bool readerMay(const Reader& reader, uid_t owner, gid_t group, mode_t mode, bool directory) {
     if (reader.uid == static_cast<uid_t>(-1)) return true;
@@ -199,7 +242,23 @@ SiteCopyResult copySiteTree(const std::string& source, const std::string& destin
         result.error = "cannot open " + destination + ": " + std::strerror(errno);
         return result;
     }
-    result.ok = copyDir(src.fd, dst.fd, "", reader, result, 0);
+    std::vector<PendingLink> links;
+    if (!copyDir(src.fd, dst.fd, "", reader, result, 0, links)) return result;
+    for (const auto& link : links) {
+        const std::string path = join(link.dir, link.name);
+        if (!reachesInside(dst.fd, link.dir, link.target)) {
+            result.error = "a link that leads outside the folder, through another link, or to something"
+                           " not published: " + path + " -> " + link.target;
+            return result;
+        }
+        Fd folder(link.dir.empty() ? ::dup(dst.fd)
+                                   : ::openat(dst.fd, link.dir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
+        if (folder.fd < 0 || ::symlinkat(link.target.c_str(), folder.fd, link.name.c_str()) != 0) {
+            result.error = "could not copy the link " + path + ": " + std::strerror(errno);
+            return result;
+        }
+    }
+    result.ok = true;
     return result;
 }
 

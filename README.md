@@ -174,7 +174,7 @@ reaches, and when:
 | geoip.fedoraproject.org | only if you turn on automatic time zone | your IP address (it answers with a time zone) |
 | Steam store, ProtonDB, GitHub (AreWeAntiCheatYet) | only when you run `nexus gamecheck <game>` | the game name you typed |
 | Docker Hub, registry.fedoraproject.org | only when you create a toolbox or server (`nexus cyber`, `nexus dev`, `nexus server`) | your IP address, which image |
-| Fedora's anonymous weekly count | if Fedora's `rpm-ostree-countme.timer` is on: `systemctl is-enabled rpm-ostree-countme.timer` | one anonymous "a Fedora-based machine exists this week" |
+| Fedora's mirror list, once a week | on by default, as on every Fedora (`rpm-ostree-countme.timer`) | one anonymous count: the Fedora version and that the machine is up this week -- no ID. Off: `sudo systemctl disable --now rpm-ostree-countme.timer` |
 
 ## How this is made
 
@@ -196,13 +196,20 @@ Read the code, or hand it to any reviewer you trust: it is all here.
 ## Leaving Nexus
 
 Nexus is Fedora underneath, and your files are in `/var/home`, which
-switching systems does not touch. To move a KDE machine to Fedora's own
-KDE edition (Fedora Kinoite) and keep getting Fedora's updates:
+switching systems does not touch. To move to one of Fedora's own
+editions and keep getting Fedora's updates -- `rpm -E %fedora` fills in
+the Fedora version this machine is on:
 
 ```
-sudo rpm-ostree rebase ostree-unverified-registry:quay.io/fedora/fedora-kinoite:44
+# KDE edition -> Fedora Kinoite (KDE)
+sudo rpm-ostree rebase ostree-unverified-registry:quay.io/fedora/fedora-kinoite:$(rpm -E %fedora)
 systemctl reboot
 ```
+
+Minimal (LXQt) has no Fedora counterpart: Fedora makes no LXQt edition
+of this kind. Pick the closest -- Kinoite (KDE, above), Silverblue
+(`fedora-silverblue`, GNOME) or Sway Atomic (`fedora-sway-atomic`) --
+with the same command.
 
 The Nexus system stays in the boot menu until the next update, so you
 can go back. If this project stops, the machine keeps working as it

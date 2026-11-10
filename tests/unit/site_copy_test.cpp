@@ -90,6 +90,45 @@ TEST(SiteCopyTest, ALinkInsideIsCopiedAsALinkNotFollowed) {
     EXPECT_EQ(fs::read_symlink(d.dst / "docs" / "home.html"), "../index.html");
 }
 
+// The 0.1.83 review: "up -> ." then "key -> up/up/../../data/key" is
+// inside the folder by its text, but in the container /srv/up/up is
+// /srv, so it reached Caddy's /data (its TLS key) from the website.
+TEST(SiteCopyTest, ALinkThroughALinkIsRefused) {
+    Dirs d;
+    write(d.src / "index.html", "hi");
+    fs::create_symlink(".", d.src / "up");
+    fs::create_symlink("up/up/../../data/caddy/key", d.src / "tls.key");
+    auto r = copySiteTree(d.src.string(), d.dst.string());
+    EXPECT_FALSE(r.ok);
+    EXPECT_FALSE(fs::exists(fs::symlink_status(d.dst / "tls.key")));
+
+    // The same with the link to a link the other way round.
+    Dirs e;
+    write(e.src / "a.html", "a");
+    fs::create_symlink("a.html", e.src / "b.html");
+    fs::create_symlink("b.html", e.src / "c.html");
+    r = copySiteTree(e.src.string(), e.dst.string());
+    EXPECT_FALSE(r.ok);
+}
+
+// A link to a hidden file would publish a link to nothing, or worse.
+TEST(SiteCopyTest, ALinkToAHiddenFileIsRefused) {
+    Dirs d;
+    write(d.src / ".env", "SECRET=1");
+    fs::create_symlink(".env", d.src / "config.txt");
+    const auto r = copySiteTree(d.src.string(), d.dst.string());
+    EXPECT_FALSE(r.ok);
+}
+
+TEST(SiteCopyTest, ALinkToAFolderInsideIsCopied) {
+    Dirs d;
+    write(d.src / "img" / "a.png", "png");
+    fs::create_symlink("img", d.src / "images");
+    const auto r = copySiteTree(d.src.string(), d.dst.string());
+    ASSERT_TRUE(r.ok) << r.error;
+    EXPECT_EQ(read(d.dst / "images" / "a.png"), "png");
+}
+
 TEST(SiteCopyTest, OnlyWhatThePersonCouldReadIsCopied) {
     Dirs d;
     write(d.src / "index.html", "hi");
@@ -119,4 +158,27 @@ TEST(SiteCopyTest, ReadRightsByOwnerGroupAndOthers) {
     EXPECT_TRUE(readerMay(me, 0, 0, 0644, false));
     EXPECT_FALSE(readerMay(me, 0, 0, 0744 & ~01, true)); // folder others cannot enter
     EXPECT_TRUE(readerMay(Reader{}, 0, 0, 0, false));    // no reader: no check
+}
+
+// The 0.1.83 review: a PHP project folder would have its database
+// password (wp-config.php) served as text.
+TEST(SiteCopyTest, ServerCodeAndDataAreLeftOut) {
+    Dirs d;
+    write(d.src / "index.html", "hi");
+    write(d.src / "wp-config.php", "define('DB_PASSWORD', 'x');");
+    write(d.src / "backup.sql", "INSERT ...");
+    write(d.src / "app.py", "SECRET='x'");
+    write(d.src / "about.html~", "old");
+    write(d.src / "style.css", "body{}");
+    const auto r = copySiteTree(d.src.string(), d.dst.string());
+    ASSERT_TRUE(r.ok) << r.error;
+    EXPECT_TRUE(fs::exists(d.dst / "index.html"));
+    EXPECT_TRUE(fs::exists(d.dst / "style.css"));
+    EXPECT_FALSE(fs::exists(d.dst / "wp-config.php"));
+    EXPECT_FALSE(fs::exists(d.dst / "backup.sql"));
+    EXPECT_FALSE(fs::exists(d.dst / "app.py"));
+    EXPECT_EQ(r.serverSide.size(), 4u);
+    EXPECT_TRUE(nexus::system::isServerSideFile("CONFIG.PHP"));
+    EXPECT_FALSE(nexus::system::isServerSideFile("photo.jpg"));
+    EXPECT_FALSE(nexus::system::isServerSideFile(".php"));   // hidden, handled as hidden
 }
