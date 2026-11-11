@@ -7,13 +7,23 @@ What that protects against: anybody who can push to the registry but
 cannot run this repository's workflow -- a leaked package token, a
 compromised registry, a mirror -- cannot get an image installed.
 
-What it does not protect against yet: the private key is a GitHub
-Actions secret, because the weekly workflow signs. So whoever takes
-over the maintainer's GitHub account can also run a workflow that signs
-(an outside review, 0.1.84, rated this the most serious open problem).
-What is in place: actions pinned to commits, and the
-key on disk only in the step that signs. What happens if the key is
-ever stolen is in SECURITY.md.
+Where the key is (0.1.86, outside review H1): a secret of the GitHub
+environment "release", which only one job can read -- the `sign` job in
+`.github/workflows/weekly-image.yml`, and GitHub starts that job only
+after the maintainer approves it. The tests and the image build run in
+jobs of their own, without the key: they push the image to a staging
+tag no machine follows (`<edition>-unsigned`), and `image/promote.sh`
+signs exactly that digest and only then moves the tags machines follow.
+So code that runs during the tests or the build (apt, the project's own
+code, the Containerfile) cannot read the key or sign anything with it.
+
+What it still does not protect against: someone who takes over the
+maintainer's GitHub account (password and second factor) can approve
+the job themselves, and a build that was itself tampered with gets
+signed if it is approved. Signing on the maintainer's own machine with
+a hardware key would close the first; looking at what a run built
+before approving it is the check on the second. What happens if the
+key is ever stolen is in SECURITY.md.
 
 ## The pieces
 

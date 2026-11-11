@@ -11,6 +11,7 @@
 #     ./image/publish.sh
 #     PROFILE=minimal ./image/publish.sh
 #     REGISTRY=ghcr.io/somewhere-else ./image/publish.sh
+#     STAGE=1 DIGEST_OUT=digest ./image/publish.sh    push only (CI)
 #
 # The tag is the profile, so one repository holds every variant and a
 # machine pulls the one it was installed with.
@@ -129,6 +130,45 @@ fi
 
 echo "Logged in to ${LOGIN_HOST} as ${WHO}."
 echo
+
+# STAGE=1: push only, to a tag no machine follows, and sign nothing
+# (0.1.86, outside review H1). The weekly workflow builds and stages
+# in a job that has no signing key; image/promote.sh signs the digest
+# written to DIGEST_OUT and moves the real tags, in a separate job the
+# maintainer approves. By hand, without STAGE, this script still does
+# everything in one go, as before.
+if [ "${STAGE:-0}" = 1 ]; then
+    STAGED="${REGISTRY}/${NAME}:${PROFILE}-unsigned"
+    podman tag "${LOCAL}" "${STAGED}"
+    DIGESTFILE="$(mktemp)"
+    pushed=0
+    # Retried: a 502 from the registry is not a reason to throw away a
+    # two-hour build.
+    for attempt in 1 2 3; do
+        if podman push --digestfile "${DIGESTFILE}" "${STAGED}"; then
+            pushed=1
+            break
+        fi
+        echo "Push failed (try ${attempt}); again in 60 seconds." >&2
+        sleep 60
+    done
+    DIGEST="$(cat "${DIGESTFILE}")"
+    rm -f "${DIGESTFILE}"
+    if [ "${pushed}" -ne 1 ] || ! printf '%s' "${DIGEST}" | grep -Eqx 'sha256:[0-9a-f]{64}'; then
+        echo "Push to ${STAGED} failed; nothing is staged." >&2
+        exit 1
+    fi
+    if [ -n "${DIGEST_OUT:-}" ]; then
+        printf '%s\n' "${DIGEST}" > "${DIGEST_OUT}"
+    fi
+    echo
+    echo "Staged, not signed: ${STAGED}"
+    echo "Digest:  ${DIGEST}"
+    echo "Version: ${VERSION}"
+    echo "No machine follows this tag. image/promote.sh signs it and moves"
+    echo "${PROFILE} and ${PROFILE}-${VERSION} to it."
+    exit 0
+fi
 
 # Signing, checked before anything is pushed.
 #

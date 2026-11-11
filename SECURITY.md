@@ -61,7 +61,9 @@ a new signed image is built every week.
 
 ## How images are protected
 
-Every image is signed with cosign when the weekly workflow builds it.
+Every image is signed with cosign after the weekly workflow builds it,
+in a job of its own that the maintainer approves; the tests and the
+build never see the key (0.1.86).
 Installed machines are set to refuse images from
 `ghcr.io/davidosdas-official` that do not carry that signature
 (`image/signing/`). The kernel and boot loader are Fedora's, with
@@ -79,7 +81,9 @@ not show up anywhere by itself.
 What happens, in order:
 
 1. **Stop the weekly workflow** (Actions → Weekly image → Disable) and
-   delete the `COSIGN_PRIVATE_KEY` and `COSIGN_PASSWORD` secrets.
+   delete the `COSIGN_PRIVATE_KEY` and `COSIGN_PASSWORD` secrets
+   (Settings → Environments → release; since 0.1.86 they are there, not
+   repository secrets), and reject any run waiting for approval.
 2. **Say so here and on the website**, with the time window in which
    the key may have been misused, and tell people **not to update**
    until a fixed image is out (`nexus update` without `--apply` only

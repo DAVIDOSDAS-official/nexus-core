@@ -2,6 +2,10 @@
 
 #include <nexus/system/update.hpp>
 
+#include <filesystem>
+#include <string>
+#include <unistd.h>
+
 using namespace nexus::system;
 
 // The shape rpm-ostree prints for a container-image origin with an
@@ -71,6 +75,58 @@ TEST(UpdateTest, ReadsFlatpakUpdatesAndSkipsTheRest) {
     EXPECT_EQ(apps[0].id, "org.mozilla.firefox");
     EXPECT_EQ(apps[0].version, "131.0");
     EXPECT_EQ(apps[1].version, "");
+}
+
+// Round 3 (0.1.86, R1): the version column is the app developer's
+// text and goes into the notification and the Shop.
+TEST(UpdateTest, FlatpakVersionIsPrintable) {
+    const auto apps = parseFlatpakUpdates(
+        "org.example.App\t1.0\x1b]52;c;aWQ=\x07\n"
+        "org.example.Bidi\t2.0\xe2\x80\xae" "evil\n"
+        "org.example.Long\t" + std::string(200, '9') + "\n");
+    ASSERT_EQ(apps.size(), 3u);
+    EXPECT_EQ(apps[0].version, "1.0?]52;c;aWQ=?");
+    EXPECT_EQ(apps[1].version, "2.0?evil");
+    EXPECT_EQ(apps[2].version.size(), 64u);
+}
+
+TEST(UpdateTest, FlatpakIdsWithOddCharactersAreSkipped) {
+    const auto apps = parseFlatpakUpdates(
+        "org.example.\x1b[2JApp\t1.0\n"
+        "org.exa\xe2\x80\x8bmple.App\t1.0\n"
+        "org.example.Fine_App-2\t1.0\n");
+    ASSERT_EQ(apps.size(), 1u);
+    EXPECT_EQ(apps[0].id, "org.example.Fine_App-2");
+}
+
+// Round 3 (0.1.86, P5): the daily check can be turned off per account.
+TEST(UpdateTest, NotifySwitchWritesAndRemovesTheFlag) {
+    namespace fs = std::filesystem;
+    const fs::path home = fs::temp_directory_path() /
+        ("nexus-notify-test-" + std::to_string(::getpid()));
+    fs::remove_all(home);
+    fs::create_directories(home);
+    std::string error;
+
+    EXPECT_FALSE(updateNotifyIsOff(home.string()));
+    EXPECT_EQ(updateNotifyOffFile(home.string()),
+              home.string() + "/.config/nexus/update-notify-off");
+
+    ASSERT_TRUE(setUpdateNotify(home.string(), false, error)) << error;
+    EXPECT_TRUE(updateNotifyIsOff(home.string()));
+    EXPECT_TRUE(fs::is_regular_file(home / ".config/nexus/update-notify-off"));
+    // Twice is fine.
+    ASSERT_TRUE(setUpdateNotify(home.string(), false, error)) << error;
+
+    ASSERT_TRUE(setUpdateNotify(home.string(), true, error)) << error;
+    EXPECT_FALSE(updateNotifyIsOff(home.string()));
+    // On when already on: nothing to remove, not an error.
+    EXPECT_TRUE(setUpdateNotify(home.string(), true, error)) << error;
+
+    EXPECT_FALSE(setUpdateNotify("", false, error));
+    EXPECT_FALSE(setUpdateNotify("relative/home", false, error));
+    EXPECT_FALSE(updateNotifyIsOff(""));
+    fs::remove_all(home);
 }
 
 TEST(UpdateTest, SummarisesForANotification) {

@@ -192,8 +192,16 @@ TEST(ProcessTest, ASecretOnStdinNeverAppearsInAnyCommandLine) {
             std::error_code ec;
             for (auto it = std::filesystem::directory_iterator("/proc", ec);
                  !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
-                std::ifstream in(it->path() / "cmdline", std::ios::binary);
-                std::string all((std::istreambuf_iterator<char>(in)), {});
+                // A process that exits mid-read makes libstdc++ throw
+                // (read() fails with ESRCH), whatever the stream's
+                // exception mask: caught, as a process that is gone.
+                std::string all;
+                try {
+                    std::ifstream in(it->path() / "cmdline", std::ios::binary);
+                    all.assign(std::istreambuf_iterator<char>(in), {});
+                } catch (const std::exception&) {
+                    continue;
+                }
                 if (all.find(secret) != std::string::npos) ++seen;
             }
         }
@@ -229,4 +237,27 @@ TEST(ProcessTest, PrintableRemovesEveryControlCharacter) {
     EXPECT_EQ(printable("a\nb\tc\x7f"), "a?b?c?");
     EXPECT_EQ(printable("\xc2\x9b" "31m"), "?31m");                  // C1 CSI in UTF-8
     EXPECT_EQ(printable("Fedora Linux 44 (KDE) \xc3\xa9\xe2\x80\x94"), "Fedora Linux 44 (KDE) \xc3\xa9\xe2\x80\x94");
+}
+
+// Round 3 (0.1.86, R2): text that turns around or hides, "Trojan
+// Source" style.
+TEST(ProcessTest, PrintableReplacesBidiControls) {
+    using nexus::system::printable;
+    EXPECT_EQ(printable("Fire\xe2\x80\xae" "xof"), "Fire?xof");            // U+202E
+    EXPECT_EQ(printable("a\xe2\x81\xa6" "b\xe2\x81\xa9"), "a?b?");         // U+2066, U+2069
+    EXPECT_EQ(printable("\xd8\x9c" "x"), "?x");                               // U+061C
+}
+
+TEST(ProcessTest, PrintableReplacesZeroWidthCharacters) {
+    using nexus::system::printable;
+    EXPECT_EQ(printable("Ste\xe2\x80\x8b" "am"), "Ste?am");                // U+200B
+    EXPECT_EQ(printable("\xef\xbb\xbf" "org.x.Y"), "?org.x.Y");             // U+FEFF
+    EXPECT_EQ(printable("a\xe2\x81\xa0" "b"), "a?b");                        // U+2060
+    // Neighbours that are ordinary text stay: U+2010 hyphen, U+2014
+    // dash, and Arabic and Hebrew words themselves.
+    EXPECT_EQ(printable("\xe2\x80\x90\xe2\x80\x94"), "\xe2\x80\x90\xe2\x80\x94");
+    EXPECT_EQ(printable("\xd8\xb3\xd9\x84\xd8\xa7\xd9\x85 \xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d"),
+              "\xd8\xb3\xd9\x84\xd8\xa7\xd9\x85 \xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d");
+    // Cut short at the end: no reading past the text.
+    EXPECT_EQ(printable("x\xe2\x80"), "x\xe2\x80");
 }

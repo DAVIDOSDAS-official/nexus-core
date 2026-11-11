@@ -2,7 +2,10 @@
 #include <cctype>
 
 #include <nexus/system/json.hpp>
+#include <nexus/system/process.hpp>
 
+#include <filesystem>
+#include <fstream>
 #include <sstream>
 
 namespace nexus::system {
@@ -197,12 +200,20 @@ std::vector<AppUpdate> parseFlatpakUpdates(const std::string& text) {
         words >> app.id;
         words >> app.version;
         // An application id has at least two dots (org.example.App);
-        // anything else is a header or a message, not an update.
+        // anything else is a header or a message, not an update. And
+        // only the characters an id may have: it is printed and handed
+        // to the Shop as it stands.
         int dots = 0;
-        for (char c : app.id) {
+        bool plain = !app.id.empty() && app.id.size() <= 255;
+        for (unsigned char c : app.id) {
             dots += c == '.';
+            plain = plain && (std::isalnum(c) || c == '.' || c == '_' || c == '-');
         }
-        if (dots >= 2) {
+        // The version is whatever the app's developer wrote, and it
+        // reaches the notification and the Shop: filtered like any
+        // outside text, and kept short (0.1.86, outside review R1).
+        app.version = printable(app.version.substr(0, 64));
+        if (dots >= 2 && plain) {
             out.push_back(app);
         }
     }
@@ -271,6 +282,47 @@ UpdateLines parseUpdateLines(const std::string& text) {
         }
     }
     return result;
+}
+
+
+std::string updateNotifyOffFile(const std::string& home) {
+    return home + "/.config/nexus/update-notify-off";
+}
+
+bool updateNotifyIsOff(const std::string& home) {
+    std::error_code ec;
+    return !home.empty() &&
+           std::filesystem::exists(updateNotifyOffFile(home), ec);
+}
+
+bool setUpdateNotify(const std::string& home, bool on, std::string& error) {
+    if (home.empty() || home[0] != '/') {
+        error = "no home directory";
+        return false;
+    }
+    const std::filesystem::path flag = updateNotifyOffFile(home);
+    std::error_code ec;
+    if (on) {
+        std::filesystem::remove(flag, ec);
+        if (ec) {
+            error = ec.message();
+            return false;
+        }
+        return true;
+    }
+    std::filesystem::create_directories(flag.parent_path(), ec);
+    if (ec) {
+        error = ec.message();
+        return false;
+    }
+    std::ofstream out(flag);
+    out << "Update notifications are off for this account.\n"
+           "Turn them on again: nexus update notify on --apply\n";
+    if (!out) {
+        error = "could not write " + flag.string();
+        return false;
+    }
+    return true;
 }
 
 }

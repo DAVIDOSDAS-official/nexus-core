@@ -166,7 +166,7 @@ lookup() {
     [ -n "${quiet}" ] || echo "Asking ${SERVICE} (it sees this IP address)..."
 
     local zone
-    zone="$(curl -fsS --max-time 10 "${SERVICE}" 2>/dev/null \
+    zone="$(curl -fsS --proto =https --max-time 10 "${SERVICE}" 2>/dev/null \
         | grep -o '"time_zone": *"[^"]*"' \
         | sed 's/.*"\([^"]*\)"$/\1/')"
 

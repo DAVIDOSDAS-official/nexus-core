@@ -7,7 +7,9 @@
 # nexus.firefox label, written by weekly-image.yml) with the newest in
 # Fedora's repositories, and when Fedora has a newer one it starts the
 # image build now. Machines still update when their person says so;
-# this only makes the fixed image exist sooner.
+# this only makes the fixed image exist sooner. Since 0.1.86 that build
+# waits for the maintainer to approve signing, like every other one:
+# GitHub emails when it is ready.
 
 name: Security watch
 
@@ -56,10 +58,13 @@ jobs:
             echo "The image has a newer Firefox than the repositories list; nothing started."
             exit 0
           fi
-          # Not while a build is already running or queued.
-          if [ -n "$(gh run list --workflow weekly-image.yml --json status \
-                  --jq '.[] | select(.status != "completed") | .status' | head -n 1)" ]; then
-            echo "A build is already running; it will pick the new Firefox up."
+          # Not while a build is already running, queued, or waiting for
+          # the maintainer to approve signing (0.1.86).
+          WAITING="$(gh run list --workflow weekly-image.yml --json status \
+                  --jq '.[] | select(.status != "completed") | .status' | head -n 1)"
+          if [ -n "${WAITING}" ]; then
+            echo "A build is already ${WAITING}; nothing started."
+            echo "(\"waiting\" means it is built and needs approval in GitHub to be released.)"
             exit 0
           fi
           echo "Fedora has a newer Firefox: starting the image build."

@@ -3,6 +3,11 @@ Description=Nexus: say when an update is available
 Documentation=man:nexus(1)
 # Runs in the person's session, so the notification reaches their
 # desktop. It only reads and notifies; nothing is installed.
+#
+# Off for an account that ran `nexus update notify off --apply`: then
+# nothing is asked of ghcr.io or Flathub at all (0.1.86, outside
+# review round 3, P5).
+ConditionPathExists=!%h/.config/nexus/update-notify-off
 
 [Service]
 Type=oneshot

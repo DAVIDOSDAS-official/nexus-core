@@ -93,4 +93,15 @@ struct UpdateLines {
 
 UpdateLines parseUpdateLines(const std::string& text);
 
+// The daily "update available" notification can be turned off per
+// account (0.1.86, outside review round 3, P5): a file in the person's
+// own configuration, which the user unit checks before it starts
+// (ConditionPathExists=!%h/.config/nexus/update-notify-off). Nothing
+// is checked or contacted while it is there.
+std::string updateNotifyOffFile(const std::string& home);
+bool updateNotifyIsOff(const std::string& home);
+// on: removes the file; off: writes it. False, with the reason in
+// error, if that could not be done.
+bool setUpdateNotify(const std::string& home, bool on, std::string& error);
+
 }

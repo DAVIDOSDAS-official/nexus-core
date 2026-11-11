@@ -104,6 +104,7 @@ void printUsage() {
         << "    nexus gamecheck --identifiers  what a game could recognise this computer by\n"
         << "    nexus language [list | add <name> | set <name>] [--apply]\n"
         << "    nexus update [--apply]   what is new; take it\n"
+        << "    nexus update notify off|on|status [--apply]  the daily update notification\n"
         << "    nexus app install|remove <flathub id> [--apply]\n"
         << "    nexus dualboot [add | remove | <number>] [--apply]  other systems on this disk\n"
         << "    nexus gaming [--apply]   what this machine does for games\n"
@@ -2684,12 +2685,15 @@ std::string fetchUrl(const std::string& url) {
         return {};
     }
     // The URL is built here from fixed parts and urlEncode()d input,
-    // so it contains no quote; checked anyway.
+    // so it contains no quote; checked anyway. https only, redirects
+    // included: a network that answers with a redirect to http:// must
+    // not get to write the verdict (0.1.86, outside review P6).
     if (url.find('\'') != std::string::npos) {
         return {};
     }
     const auto result = nexus::system::runCommand(
-        "curl -fsSL --max-time 20 --retry 2 " + shellQuote(url) + " 2>/dev/null",
+        "curl -fsSL --proto =https --proto-redir =https --max-time 20 --retry 2 " +
+            shellQuote(url) + " 2>/dev/null",
         false);
     return result.ok ? result.text : std::string{};
 }
@@ -6241,18 +6245,94 @@ int commandUpdate(
     // fields split by tabs. Read by a program, so never translated
     // and never reworded without changing the Shop with it.
     bool lines = false;
+    // nexus update notify off|on: the daily notification for this
+    // account (0.1.86, outside review round 3, P5).
+    std::string notifySwitch;
     for (const std::string& word : words) {
         if (word == "notify" || word == "--notify") {
             notify = true;
+        } else if (notify && notifySwitch.empty() &&
+                   (word == "off" || word == "on" || word == "status")) {
+            notifySwitch = word;
         } else if (word == "check" || word == "--check") {
             checkNow = true;
         } else if (word == "--lines") {
             lines = true;
         } else {
             std::cerr << "Unknown: nexus update " << word
-                      << "\nUse: nexus update [--apply]\n";
+                      << "\nUse: nexus update [--apply]"
+                         "\n     nexus update notify off|on|status [--apply]\n";
             return 2;
         }
+    }
+
+    const char* homeVar = std::getenv("HOME");
+    const std::string home = homeVar ? homeVar : "";
+
+    if (!notifySwitch.empty()) {
+        const bool off = nexus::system::updateNotifyIsOff(home);
+        if (notifySwitch == "status") {
+            std::cout << "The daily update notification is "
+                      << (off ? "off" : "on") << " for this account.\n"
+                      << (off ? "Turn it on:  nexus update notify on --apply\n"
+                              : "Turn it off: nexus update notify off --apply\n");
+            return 0;
+        }
+        // It is this account's setting: under sudo it would land in
+        // root's home and change nothing for the person.
+        if (nexus::system::haveRootPrivileges()) {
+            std::cout << "This is a setting of your own account; run it without sudo:\n"
+                         "    nexus update notify " << notifySwitch << " --apply\n";
+            return 1;
+        }
+        const bool wantOn = notifySwitch == "on";
+        if (off != wantOn) {
+            std::cout << "The daily update notification is already "
+                      << notifySwitch << " for this account.\n";
+            return 0;
+        }
+        if (wantOn) {
+            std::cout << "Turns the daily update check back on for this account: once a\n"
+                         "day, ghcr.io (GitHub) and Flathub are asked whether anything is\n"
+                         "new, and a notification says so if it is. Nothing is installed.\n";
+        } else {
+            std::cout << "Turns the daily update check off for this account: no daily\n"
+                         "question to ghcr.io (GitHub) or Flathub, and no notification.\n"
+                         "Updates still come whenever you ask: nexus update, or the Shop.\n"
+                         "Writes " << nexus::system::updateNotifyOffFile(home) << ".\n";
+        }
+        if (!apply) {
+            std::cout << "\nNothing has been changed. To do it:\n    "
+                      << invocation << " --apply\n";
+            return 0;
+        }
+        nexus::system::TransactionRecord record;
+        record.when = nexus::system::currentTimestamp();
+        record.request = "update notify " + notifySwitch;
+        record.kind = wantOn ? nexus::system::TransactionKind::Remove
+                             : nexus::system::TransactionKind::Install;
+        record.resolved = nexus::system::updateNotifyOffFile(home);
+        const std::string log = nexus::system::defaultTransactionLog();
+        const std::string marker = nexus::system::beginTransaction(log, record);
+        std::string error;
+        const bool ok = nexus::system::setUpdateNotify(home, wantOn, error);
+        record.outcome = ok ? (wantOn ? "removed" : "added") : "failed";
+        record.succeeded = ok;
+        record.exitCode = ok ? 0 : 1;
+        nexus::system::finishTransaction(log, marker, record);
+        if (!ok) {
+            std::cout << "\nCould not do it: " << error << "\n";
+            return 1;
+        }
+        std::cout << "\nDone: the daily update notification is " << notifySwitch
+                  << " for this account.\n";
+        return 0;
+    }
+
+    // Turned off for this account: the unit does not even start, but a
+    // `nexus update notify` run by hand respects it too.
+    if (notify && nexus::system::updateNotifyIsOff(home)) {
+        return 0;
     }
 
     const bool image = nexus::system::commandExists("rpm-ostree") &&
@@ -6334,10 +6414,11 @@ int commandUpdate(
             !nexus::system::commandExists("notify-send")) {
             return 0;
         }
-        const char* home = std::getenv("HOME");
         const std::string seenFile =
-            std::string(home ? home : "/tmp") + "/.cache/nexus/update-notified";
+            (home.empty() ? std::string("/tmp") : home) + "/.cache/nexus/update-notified";
         std::string seen;
+        // The first notification on this account says how to stop them.
+        const bool first = !std::filesystem::exists(seenFile);
         {
             std::ifstream in(seenFile);
             std::getline(in, seen);
@@ -6375,7 +6456,10 @@ int commandUpdate(
             quoted(summary + ". Nothing is installed until you ask: " +
                    (shop ? std::string("open Nexus Shop, Updates")
                          : std::string("open a terminal and run  "
-                                       "nexus update"))),
+                                       "nexus update")) +
+                   (first ? std::string(". Not wanted? In a terminal:  "
+                                        "nexus update notify off --apply")
+                          : std::string())),
             false);
         if (shop && answer.text.find("open") != std::string::npos) {
             nexus::system::runCommand(

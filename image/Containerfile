@@ -161,6 +161,47 @@ FROM quay.io/fedora/fedora-bootc:${FEDORA_VERSION} AS os
 # different from last time.
 ARG REFRESH=none
 
+# Fedora's Count Me off (0.1.86, outside review round 3, P3). It is an
+# anonymous weekly count -- the Fedora version and that the machine is
+# up, no ID -- sent by rpm-ostree's timer and by dnf when it refreshes
+# repositories. Anonymous, but still a report nobody asked for, and
+# Nexus says it sends none. Fedora's own documented opt-out for bootc
+# images, plus a dnf5 override so repositories added later (RPM Fusion
+# at first boot) are not counted either. The override is in /usr, the
+# distribution's place, so updates carry it and a person can still
+# overrule it in /etc. Before the first dnf below, so the builds are
+# not counted. To turn it back on, as on any Fedora:
+#     printf '[*]\ncountme=1\n' | sudo tee /etc/dnf/repos.override.d/80-nexus-no-countme.repo
+#     sudo systemctl unmask --now rpm-ostree-countme.timer
+# (and countme=1 back in /etc/yum.repos.d/*.repo for rpm-ostree).
+RUN set -eu; \
+    sed -i -e 's/^countme=1/countme=0/' /etc/yum.repos.d/*.repo; \
+    mkdir -p /usr/share/dnf5/repos.override.d; \
+    printf '# Nexus: no Count Me for any repository (see README).\n[*]\ncountme=0\n' \
+        > /usr/share/dnf5/repos.override.d/80-nexus-no-countme.repo; \
+    systemctl mask rpm-ostree-countme.timer; \
+    if grep -l '^countme=1' /etc/yum.repos.d/*.repo; then \
+        echo "Count Me still on in the files above"; exit 1; \
+    fi; \
+    echo "Count Me: off"
+
+# Privacy defaults that would otherwise be Fedora's and Mozilla's
+# (0.1.86, outside review round 3). Both are plain files, read by the
+# programs themselves; nothing runs.
+#
+# Firefox: telemetry, studies and ad measurement ("privacy-preserving
+# attribution") locked off; sponsored tiles, sponsored suggestions and
+# promotions off but not locked, so anyone can turn them back on in
+# Settings. Safe Browsing and tracking protection stay as Mozilla ships
+# them. /etc/firefox/policies is read by every Firefox on the system
+# and wins over a copy in Firefox's own directory. about:policies shows
+# what is active.
+COPY image/firefox/policies.json /etc/firefox/policies/policies.json
+# NetworkManager: the machine's name is not sent to every network it
+# joins, and IPv6 uses temporary addresses. See the file.
+COPY image/network/30-nexus-privacy.conf \
+     /usr/lib/NetworkManager/conf.d/30-nexus-privacy.conf
+
 # Nexus reads repository metadata, which arrives compressed in
 # whichever format the tool that wrote it preferred. Fedora uses zstd
 # for small repositories and zchunk for large ones, so an image that
@@ -530,7 +571,7 @@ RUN set -eu; \
 # making choices for people.
 RUN set -eu; \
     mkdir -p /usr/share/nexus; \
-    curl -fsSL --retry 3 -o /usr/share/nexus/flathub.flatpakrepo \
+    curl -fsSL --proto =https --proto-redir =https --retry 3 -o /usr/share/nexus/flathub.flatpakrepo \
         https://dl.flathub.org/repo/flathub.flatpakrepo; \
     grep -q '^GPGKey=' /usr/share/nexus/flathub.flatpakrepo; \
     echo "Flathub remote definition: /usr/share/nexus/flathub.flatpakrepo"

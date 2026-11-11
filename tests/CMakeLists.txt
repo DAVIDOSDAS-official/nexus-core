@@ -81,4 +81,8 @@ find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
     add_test(NAME ShellQuoting
              COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/check-shell-quoting.py ${PROJECT_SOURCE_DIR})
+    # curl stays on https; Firefox and NetworkManager privacy files
+    # are valid (0.1.86).
+    add_test(NAME NetworkHygiene
+             COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/check-network-hygiene.py ${PROJECT_SOURCE_DIR})
 endif()

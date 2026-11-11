@@ -745,10 +745,77 @@ hibernation, N7 boot check spoofable by name, N8 global allow-list.
   line in the build log.
 - Doctor: the boot-check warning turns ok once last-good is newer than
   failures.log.
-- Open: H1 (+ separate sign job needs David's current workflow files:
-  his have SHA pins this tree does not), L1, L8, I3, USB disks in
+- Open: H1 (done in 0.1.86), L1, L8, I3, USB disks in
   dualboot, systemd hardening of root units, runProgram caveats (>64 KiB
   input, process-wide SIGPIPE swap) noted.
+
+**11 Nov, Asus 0.1.85:** N7 boot check verified: display manager
+running, logind session 2 Type=wayland, so desktop_up is true.
+David's workflow files (SHA pins, persist-credentials: false) synced
+into this tree. GitHub account has two-factor login (David).
+
+**Privacy and security audit round 3 (0.1.85):** H1 the one serious
+item left; privacy P1 Firefox telemetry/studies/ad measurement (Fedora
+build reports), P2 hostname in every DHCP request (links networks the
+per-SSID MAC separates), P3 Count Me on, P4 no IPv6 temporary
+addresses, P5 daily update check with no off switch, P6 gamecheck curl
+follows redirects to http; R1 flatpak update version unfiltered, R2
+bidi/zero-width pass printable(), R3 root units unsandboxed.
+
+**Patch 112 (0.1.86):**
+- H1: weekly-image.yml is three jobs. tests (contents: read only),
+  build (packages: write, no key; pushes <profile>-unsigned with
+  `STAGE=1 image/publish.sh`, digest as job output digest_<profile>),
+  sign (environment: release, waits for David's approval; key is an
+  environment secret; image/promote.sh signs exactly that digest,
+  verifies with cosign.pub, then skopeo copy --preserve-digests moves
+  <profile> and <profile>-<version>, digest read back). Machines never
+  see an unsigned newest image any more (before, the tag moved before
+  signing). Residual, said in image/signing/README.md: a stolen login
+  with 2FA can still approve; a tampered build gets signed if approved.
+  Real fix later: local signing with a hardware key. David's one-time
+  setup in "Signing in its own job" below. Security-watch builds wait
+  for approval too.
+- Build retried once (podman build, layers reused; 11 Nov mirror
+  error); stage push retried 3x.
+- P1: image/firefox/policies.json -> /etc/firefox/policies/ (telemetry,
+  studies, attribution locked off; sponsored/promos off, unlocked).
+- P2/P4: image/network/30-nexus-privacy.conf ->
+  /usr/lib/NetworkManager/conf.d/ (dhcp-send-hostname=false v4/v6, a
+  global default only since NM 1.52; ip6-privacy=2).
+- P3: Count Me off before the first dnf: sed on /etc/yum.repos.d,
+  [*] countme=0 in /usr/share/dnf5/repos.override.d/80-nexus-no-
+  countme.repo (an /etc file of the same name overrules it), timer
+  masked; build fails if countme=1 is left.
+- P5: `nexus update notify off|on|status [--apply]` writes/removes
+  ~/.config/nexus/update-notify-off; the user unit has
+  ConditionPathExists=!%h/...; refused under sudo (would land in
+  /root); the first notification on an account says how to turn it off.
+- P6: every curl has --proto =https (and --proto-redir =https with -L).
+- R1: flatpak update ids must be [A-Za-z0-9._-]; versions printable(),
+  64 chars max. R2: printable() also replaces U+061C, U+200B-200F,
+  U+202A-202E, U+2060-2064, U+2066-2069, U+FEFF.
+- Tests: tools/check-network-hygiene.py in ctest (curl https, policies
+  JSON, NM keys); check-add-ons.sh checks the built image (policies,
+  NetworkManager --print-config, countme masked/0). +5 unit tests.
+- Open: R3 systemd sandboxing of root units, L1, L8, I3, USB disks in
+  dualboot, Rekor, a network-destination allow-list test, key rotation
+  after H1 (suggested by the audit; the key never left GitHub as far
+  as is known, so rotation is a decision, not an emergency).
+
+**Signing in its own job -- David's one-time setup (0.1.86):**
+1. Settings -> Environments -> New environment `release`. Required
+   reviewers: DAVIDOSDAS-official. Deployment branches and tags:
+   Selected -> `main`. (Leave "prevent self-review" off: you are the
+   only reviewer.)
+2. In that environment: Add secret COSIGN_PRIVATE_KEY and
+   COSIGN_PASSWORD, the same values as now.
+3. Settings -> Secrets and variables -> Actions: delete the repository
+   secrets COSIGN_PRIVATE_KEY and COSIGN_PASSWORD. Then nothing but the
+   sign job can read them.
+4. Each run: GitHub emails "waiting for review"; open the run, check
+   the build jobs passed and the digests in their summary, Review
+   deployments -> release -> Approve.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

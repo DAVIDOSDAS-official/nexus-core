@@ -102,6 +102,7 @@ nexus                      this machine in a few lines
 nexus guide                how to work this system
 nexus doctor               is anything wrong, and what to do
 nexus update [--apply]     what is new; take it
+nexus update notify off|on [--apply]   the daily "update available" check
 nexus app install|remove <flathub id> [--apply]
 nexus setup [add-ons] [--apply]
 nexus dualboot [add | remove | <number>] [--apply]
@@ -167,14 +168,30 @@ reaches, and when:
 
 | Where | When | What it learns |
 |---|---|---|
-| ghcr.io (GitHub) | the daily update check, and every update | your IP address and that a Nexus machine asked |
+| ghcr.io (GitHub) | the daily update check (off: `nexus update notify off --apply`), and every update | your IP address and that a Nexus machine asked |
 | Fedora mirrors | system updates and `nexus` package lookups | your IP address, which packages |
 | dl.flathub.org | apps from the Shop or `nexus app` | your IP address, which apps |
 | mirrors.rpmfusion.org | only if you add media codecs or Steam | your IP address, which packages |
 | geoip.fedoraproject.org | only if you turn on automatic time zone | your IP address (it answers with a time zone) |
 | Steam store, ProtonDB, GitHub (AreWeAntiCheatYet) | only when you run `nexus gamecheck <game>` | the game name you typed |
 | Docker Hub, registry.fedoraproject.org | only when you create a toolbox or server (`nexus cyber`, `nexus dev`, `nexus server`) | your IP address, which image |
-| Fedora's mirror list, once a week | on by default, as on every Fedora (`rpm-ostree-countme.timer`) | one anonymous count: the Fedora version and that the machine is up this week -- no ID. Off: `sudo systemctl disable --now rpm-ostree-countme.timer` |
+| dl.flathub.org, daily | the same daily update check, for apps (same switch) | your IP address, that apps are installed |
+
+Turned off in Nexus, though on in Fedora or Firefox as they ship
+(0.1.86):
+
+- **Firefox** telemetry, studies and ad measurement ("privacy-preserving
+  attribution") are locked off; sponsored tiles, sponsored suggestions
+  and Mozilla's promotions are off, and you can turn them back on in
+  Firefox's settings. Safe Browsing stays on: it protects you, and sends
+  only short hash prefixes. `about:policies` shows exactly what is set
+  (`/etc/firefox/policies/policies.json`).
+- **Fedora's Count Me**, an anonymous weekly count of running systems,
+  is off.
+- **The machine's name** is not sent to every network it joins (DHCP),
+  so the name cannot link one Wi-Fi network to the next; and on IPv6
+  networks, outgoing connections use temporary addresses. Your home
+  router's list of devices will not show the name.
 
 ## How this is made
 

@@ -1,5 +1,4 @@
-# Build, sign and publish the Nexus-CORE images every week -- with
-# nobody at a keyboard.
+# Build, sign and publish the Nexus-CORE images every week.
 #
 # Why this exists: Nexus is image-based. A machine's operating system
 # (kernel, desktop, Firefox, every library) arrives only as a whole
@@ -8,21 +7,31 @@
 # This job is what makes "users update whenever they like" true without
 # a person rebuilding by hand.
 #
-# What it does, in order, and stops at the first failure:
-#   1. runs the test suite
-#   2. pulls the newest Fedora base and builds the image with fresh
-#      packages (REFRESH changes every run)
-#   3. pushes it and signs it with the Nexus key (image/publish.sh --
-#      the same script used by hand), then verifies the signature
+# Three jobs, and only the last can sign (0.1.86, outside review H1):
+#   1. tests -- the test suite, with read-only access to the repository
+#      and nothing else: no registry, no key.
+#   2. build -- pulls the newest Fedora base, builds each edition with
+#      fresh packages, checks the add-ons and pushes the image to a
+#      staging tag no machine follows (<profile>-unsigned). It can push
+#      to the registry but has no signing key.
+#   3. sign -- waits for the maintainer to approve it in GitHub (the
+#      "release" environment), then signs exactly the digest the build
+#      job pushed, verifies the signature with the public key machines
+#      carry, and only then points <profile> and <profile>-<version> at
+#      it (image/promote.sh). The key is an environment secret: no
+#      other job can read it.
 #
-# A failed run changes nothing for users: nothing is pushed unless the
-# build and tests pass, and an image that could not be signed is
-# refused by every installed machine. GitHub emails the repository
-# owner when a scheduled run fails.
+# A failed or unapproved run changes nothing for users: machines follow
+# <profile>, which moves only after a verified signature. GitHub emails
+# the repository owner when a run fails, and when one waits for
+# approval.
 #
-# One-time setup (HANDOFF, "Automatic weekly images"):
-#   - secrets COSIGN_PRIVATE_KEY (the contents of cosign.key) and
-#     COSIGN_PASSWORD
+# One-time setup (HANDOFF, "Signing in its own job"):
+#   - Settings -> Environments -> New environment "release": required
+#     reviewer DAVIDOSDAS-official, deployment branches: main only
+#   - environment secrets COSIGN_PRIVATE_KEY (the contents of
+#     cosign.key) and COSIGN_PASSWORD in "release", and the repository
+#     secrets of the same names deleted
 #   - the package gives this repository write access
 #     (package settings -> Manage Actions access)
 #   - optional variable IMAGE_NAME; defaults to nexus-core-testing
@@ -39,78 +48,25 @@ on:
   # And by hand, from the Actions tab.
   workflow_dispatch:
 
-permissions:
-  contents: read
-  packages: write
+# Nothing by default; each job asks for what it uses.
+permissions: {}
 
 concurrency:
   group: weekly-image
   cancel-in-progress: false
 
 jobs:
-  image:
+  # The project's own code and apt run here, so nothing else does: no
+  # registry login, no key, read-only checkout.
+  tests:
     runs-on: ubuntu-24.04
-    timeout-minutes: 150
-
-    # One job per edition, side by side on separate runners. fail-fast
-    # off: a broken minimal build must not stop the KDE edition from
-    # getting its weekly fixes, and the other way round.
-    strategy:
-      fail-fast: false
-      matrix:
-        profile: [kde, minimal]
-
-    env:
-      IMAGE_NAME: ${{ vars.IMAGE_NAME || 'nexus-core-testing' }}
-      PROFILE: ${{ matrix.profile }}
-
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
-
-      # One login file for podman and cosign alike, in the job's own
-      # temporary directory (the runner context is not available at
-      # job level, so it is set here).
-      - name: Where the login goes
-        run: echo "REGISTRY_AUTH_FILE=${RUNNER_TEMP}/auth.json" >> "${GITHUB_ENV}"
-
-      # cosign 2.x, as image/publish.sh requires: cosign 3 writes
-      # signatures the machines cannot read yet.
-      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
-        with:
-          cosign-release: "v2.4.1"
-
-      # The key is checked first, before anything is built or pushed.
-      #
-      # The first run (26 September) pushed the image and then could not
-      # sign it -- "invalid pem block", a secret pasted wrongly -- which
-      # left the newest image unsigned, so every machine with signed
-      # updates refused it until it was fixed. Proving the key and its
-      # password produce the public key in the repository costs seconds,
-      # and a mistake here now stops the run with nothing published.
-      - name: Check the signing key
-        env:
-          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
-          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
-        run: |
-          KEYFILE="${RUNNER_TEMP}/cosign.key"
-          bash image/signing/write-key.sh "${KEYFILE}"
-          trap 'rm -f "${KEYFILE}"' EXIT
-          if ! cosign public-key --key "${KEYFILE}" > "${RUNNER_TEMP}/derived.pub"; then
-            echo "The key could not be opened: COSIGN_PASSWORD is wrong,"
-            echo "or COSIGN_PRIVATE_KEY was changed while pasting."
-            exit 1
-          fi
-          if ! diff -q <(tr -d '[:space:]' < "${RUNNER_TEMP}/derived.pub") \
-                       <(tr -d '[:space:]' < image/signing/cosign.pub) > /dev/null; then
-            echo "The key works but is not the partner of image/signing/cosign.pub."
-            echo "Machines would refuse what it signs."
-            exit 1
-          fi
-          # Checked, and gone again (0.1.82): written back only in the
-          # publish step, not left on disk through tests and build.
-          echo "Signing key and password match image/signing/cosign.pub."
 
       # apt with short timeouts and retries, and the step capped at 20
       # minutes: on 1 October the runner's Ubuntu mirror (azure.archive)
@@ -126,6 +82,44 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --parallel
           ctest --test-dir build --output-on-failure
+
+  build:
+    needs: tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    permissions:
+      contents: read
+      packages: write
+
+    # One job per edition, side by side on separate runners. fail-fast
+    # off: a broken minimal build must not stop the KDE edition from
+    # getting its weekly fixes, and the other way round.
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [kde, minimal]
+
+    # The digest each edition pushed, for the sign job. One output per
+    # edition: matrix jobs share one set of outputs, so a single name
+    # would hold whichever edition finished last.
+    outputs:
+      digest_kde: ${{ steps.stage.outputs.digest_kde }}
+      digest_minimal: ${{ steps.stage.outputs.digest_minimal }}
+
+    env:
+      IMAGE_NAME: ${{ vars.IMAGE_NAME || 'nexus-core-testing' }}
+      PROFILE: ${{ matrix.profile }}
+
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      # The registry login goes in the job's own temporary directory
+      # (the runner context is not available at job level, so it is set
+      # here).
+      - name: Where the login goes
+        run: echo "REGISTRY_AUTH_FILE=${RUNNER_TEMP}/auth.json" >> "${GITHUB_ENV}"
 
       # The runner starts with about 14 GB free; the image and its
       # build stages need more. These are toolchains this job never
@@ -162,15 +156,30 @@ jobs:
           # image's own version label is Fedora's).
           VERSION="$(sed -n 's/^ *VERSION \([0-9][0-9.]*\)$/\1/p' CMakeLists.txt | head -n 1)"
           test -n "${VERSION}"
-          podman build --target desktop \
-              --label nexus.version="${VERSION}" \
-              --build-arg NEXUS_PROFILE="${PROFILE}" \
-              --build-arg NEXUS_COMMIT="$(git rev-parse --short HEAD)" \
-              --build-arg REFRESH="$(date -u +%Y%m%d)" \
-              -t "localhost/nexus-os:${PROFILE}" \
-              -f image/Containerfile . 2>&1 | tee build.log
-          test "${PIPESTATUS[0]}" -eq 0
-          grep -E "Redistribution|Signing:|Splash|Identity|Pins:" build.log
+          COMMIT="$(git rev-parse --short HEAD)"
+          REFRESH="$(date -u +%Y%m%d)"
+          # Twice at most: a Fedora mirror that hands out a broken file
+          # fails dnf (11 November: "Unable to validate" on the minimal
+          # edition, fine on re-run). The second try reuses every layer
+          # the first one finished, so it costs only what failed. A real
+          # mistake fails both times, and the log shows it twice.
+          built=0
+          : > build.log
+          for try in 1 2; do
+            podman build --target desktop \
+                --label nexus.version="${VERSION}" \
+                --build-arg NEXUS_PROFILE="${PROFILE}" \
+                --build-arg NEXUS_COMMIT="${COMMIT}" \
+                --build-arg REFRESH="${REFRESH}" \
+                -t "localhost/nexus-os:${PROFILE}" \
+                -f image/Containerfile . 2>&1 | tee -a build.log
+            if [ "${PIPESTATUS[0]}" -eq 0 ]; then built=1; break; fi
+            [ "${try}" = 1 ] && { echo "Build failed (try 1); again in 2 minutes."; sleep 120; }
+          done
+          test "${built}" -eq 1
+          # Both tries are in the log, so the lines a cached layer does
+          # not print again are still there.
+          grep -E "Redistribution|Signing:|Splash|Identity|Pins:|Count Me" build.log
           # The Firefox version as a label, for security-watch.yml to
           # compare with Fedora's newest (0.1.82). A label-only build:
           # no new layer.
@@ -207,7 +216,80 @@ jobs:
           printf '%s' "${REGISTRY_TOKEN}" | podman login ghcr.io \
               --username "${REGISTRY_USER}" --password-stdin
 
-      - name: Publish and sign
+      # Push only, to <profile>-unsigned: no key in this job, and no
+      # machine follows that tag.
+      - name: Stage
+        id: stage
+        run: |
+          DIGEST_OUT="${RUNNER_TEMP}/digest" STAGE=1 NAME="${IMAGE_NAME}" \
+              PROFILE="${PROFILE}" ./image/publish.sh
+          DIGEST="$(cat "${RUNNER_TEMP}/digest")"
+          echo "digest_${PROFILE}=${DIGEST}" >> "${GITHUB_OUTPUT}"
+          echo "### ${PROFILE}: staged ${DIGEST}" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Forget the login
+        if: always()
+        run: rm -f "${REGISTRY_AUTH_FILE}"
+
+  # Waits for approval in GitHub (Settings -> Environments -> release),
+  # then signs and releases what the build job staged. Runs for each
+  # edition that built; one that failed is skipped, so a broken minimal
+  # build does not hold back the KDE edition.
+  sign:
+    needs: build
+    # Not when nothing was staged: then there is nothing to approve.
+    if: ${{ !cancelled() && (needs.build.outputs.digest_kde != '' || needs.build.outputs.digest_minimal != '') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [kde, minimal]
+
+    env:
+      IMAGE_NAME: ${{ vars.IMAGE_NAME || 'nexus-core-testing' }}
+      PROFILE: ${{ matrix.profile }}
+      DIGEST: ${{ needs.build.outputs[format('digest_{0}', matrix.profile)] }}
+
+    steps:
+      - name: Anything to sign?
+        id: what
+        run: |
+          if printf '%s' "${DIGEST}" | grep -Eqx 'sha256:[0-9a-f]{64}'; then
+            echo "Signing ${PROFILE}: ${DIGEST}"
+            echo "sign=yes" >> "${GITHUB_OUTPUT}"
+          else
+            echo "The ${PROFILE} build did not stage an image; nothing to sign."
+            echo "sign=no" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - if: steps.what.outputs.sign == 'yes'
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Where the login goes
+        if: steps.what.outputs.sign == 'yes'
+        run: echo "REGISTRY_AUTH_FILE=${RUNNER_TEMP}/auth.json" >> "${GITHUB_ENV}"
+
+      # cosign 2.x, as image/promote.sh requires: cosign 3 writes
+      # signatures the machines cannot read yet.
+      - if: steps.what.outputs.sign == 'yes'
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+        with:
+          cosign-release: "v2.4.1"
+
+      # The key and its password must produce the public key in the
+      # repository, or machines would refuse what it signs. Checked
+      # before anything is signed (26 September: a secret pasted wrongly
+      # left the newest image unsigned).
+      - name: Check the signing key
+        if: steps.what.outputs.sign == 'yes'
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
           COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
@@ -215,9 +297,41 @@ jobs:
           KEYFILE="${RUNNER_TEMP}/cosign.key"
           bash image/signing/write-key.sh "${KEYFILE}"
           trap 'rm -f "${KEYFILE}"' EXIT
-          COSIGN_KEY="${KEYFILE}" NAME="${IMAGE_NAME}" \
-              PROFILE="${PROFILE}" ./image/publish.sh
+          if ! cosign public-key --key "${KEYFILE}" > "${RUNNER_TEMP}/derived.pub"; then
+            echo "The key could not be opened: COSIGN_PASSWORD is wrong,"
+            echo "or COSIGN_PRIVATE_KEY was changed while pasting."
+            echo "They are secrets of the 'release' environment now (0.1.86)."
+            exit 1
+          fi
+          if ! diff -q <(tr -d '[:space:]' < "${RUNNER_TEMP}/derived.pub") \
+                       <(tr -d '[:space:]' < image/signing/cosign.pub) > /dev/null; then
+            echo "The key works but is not the partner of image/signing/cosign.pub."
+            echo "Machines would refuse what it signs."
+            exit 1
+          fi
+          echo "Signing key and password match image/signing/cosign.pub."
+
+      - name: Log in to GitHub Container Registry
+        if: steps.what.outputs.sign == 'yes'
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
+        run: |
+          printf '%s' "${REGISTRY_TOKEN}" | podman login ghcr.io \
+              --username "${REGISTRY_USER}" --password-stdin
+
+      - name: Sign and release
+        if: steps.what.outputs.sign == 'yes'
+        env:
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+        run: |
+          KEYFILE="${RUNNER_TEMP}/cosign.key"
+          bash image/signing/write-key.sh "${KEYFILE}"
+          trap 'rm -f "${KEYFILE}"' EXIT
+          COSIGN_KEY="${KEYFILE}" NAME="${IMAGE_NAME}" PROFILE="${PROFILE}" \
+              DIGEST="${DIGEST}" bash image/promote.sh
 
       - name: Forget the key
         if: always()
-        run: rm -f "${RUNNER_TEMP}/cosign.key" "${REGISTRY_AUTH_FILE}"
+        run: rm -f "${RUNNER_TEMP}/cosign.key" "${REGISTRY_AUTH_FILE:-/nonexistent}"

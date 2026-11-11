@@ -73,8 +73,11 @@ bool isPackageName(const std::string& name);
 // a repository) made safe to print: every control character -- C0
 // including newline and tab, DEL, and the C1 range in UTF-8 -- becomes
 // '?'. A terminal then cannot be told to hide lines, retitle itself or
-// write the clipboard (0.1.85, outside review N3). Ordinary UTF-8
-// letters pass unchanged.
+// write the clipboard (0.1.85, outside review N3). Characters that
+// print as nothing or reverse the text after them (zero-width spaces,
+// direction overrides and isolates) become '?' too, so a name cannot
+// pass for another (0.1.86, outside review R2). Ordinary UTF-8 letters,
+// including right-to-left scripts themselves, pass unchanged.
 std::string printable(const std::string& text);
 
 // Runs a program directly -- no /bin/sh, so nothing is parsed and only
