@@ -205,6 +205,14 @@ labwc_keyboard_file() {
     fi
 
     local file="${dir}/environment"
+    # Only a plain file, or none yet: a pipe or device there would hold
+    # first boot (and so the login screen) forever (0.1.85, outside
+    # review N5). Anything else is left alone.
+    if [ -e "${file}" ] || [ -L "${file}" ]; then
+        if [ -L "${file}" ] || [ ! -f "${file}" ]; then
+            return 0
+        fi
+    fi
     touch "${file}"
     sed -i '/^XKB_DEFAULT_\(LAYOUT\|VARIANT\|OPTIONS\)=/d' "${file}"
     {
@@ -252,7 +260,7 @@ sync_desktop_keyboard() {
         [ "${uid}" -ge 1000 ] 2> /dev/null || continue
         [ "${uid}" -lt 60000 ] || continue
         [ -d "${home}" ] || continue
-        runuser -u "${name}" -- env layouts="${layouts}" variants="${variants}" \
+        timeout 10 runuser -u "${name}" -- env layouts="${layouts}" variants="${variants}" \
             options="${options}" bash -c "$(declare -f labwc_keyboard_file)
 labwc_keyboard_file \"\$1\"" _ "${home}" < /dev/null || true
     done < <(getent passwd)

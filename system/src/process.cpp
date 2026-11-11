@@ -25,6 +25,25 @@ std::string shellQuote(const std::string& text) {
     return out + "'";
 }
 
+std::string printable(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(text[i]);
+        if (c < 0x20 || c == 0x7F) {
+            out += '?';
+        } else if (c == 0xC2 && i + 1 < text.size() &&
+                   static_cast<unsigned char>(text[i + 1]) >= 0x80 &&
+                   static_cast<unsigned char>(text[i + 1]) <= 0x9F) {
+            out += '?';   // U+0080..U+009F: C1 controls (CSI, OSC as one byte)
+            ++i;
+        } else {
+            out += static_cast<char>(c);
+        }
+    }
+    return out;
+}
+
 bool isPackageName(const std::string& name) {
     if (name.empty() || name.size() > 255 || name[0] == '-') return false;
     for (unsigned char c : name) {

@@ -13,15 +13,31 @@ import glob
 import re
 import sys
 
-# Fixed text or values checked before they get here, by name.
+# Fixed text or values checked before they get here: (file, name) and
+# how many uses of it there are today (0.1.85, outside review N8: a
+# global list of names let any new use of `options` or `unit` through).
+# A new use, or the same name in another file, fails -- read the code,
+# then raise the count here on purpose.
 ALLOWED = {
-    "rootFlag", "box", "tier->metapackage", "options", "port", "unit", "z",
-    "arguments", "paths", "errors", "nexus::system::kHardeningConf",
-    "std::string(kGrubEnv)", "quoted", "Q", "N",
-    "nexus::system::serverUnit(name)", "nexus::system::serverUnit(words[1])",
-    "nexus::system::serverUnit(options.name)",
-    'std::string(shop ? "-A open=\'Open Nexus Shop\' " : "")',
-    'quoted("Update available")', "pk",
+    ('cli/src/main.cpp', 'box'): 13,
+    ('cli/src/main.cpp', 'nexus::system::kHardeningConf'): 1,
+    ('cli/src/main.cpp', 'nexus::system::serverUnit(name)'): 1,
+    ('cli/src/main.cpp', 'nexus::system::serverUnit(options.name)'): 1,
+    ('cli/src/main.cpp', 'nexus::system::serverUnit(words[1])'): 1,
+    ('cli/src/main.cpp', 'options'): 1,
+    ('cli/src/main.cpp', 'pk'): 2,
+    ('cli/src/main.cpp', 'port'): 1,
+    ('cli/src/main.cpp', 'quoted'): 1,
+    ('cli/src/main.cpp', 'quoted("Update available")'): 1,
+    ('cli/src/main.cpp', 'rootFlag'): 6,
+    ('cli/src/main.cpp', 'std::string(kGrubEnv)'): 1,
+    ('cli/src/main.cpp', 'std::string(shop ? "-A open=\'Open Nexus Shop\' " : "")'): 1,
+    ('cli/src/main.cpp', 'tier->metapackage'): 1,
+    ('cli/src/main.cpp', 'unit'): 3,
+    ('cli/src/main.cpp', 'z'): 2,
+    ('system/src/compression.cpp', 'errors'): 1,
+    ('system/src/plan_apply.cpp', 'arguments'): 2,
+    ('system/src/services.cpp', 'paths'): 2,
 }
 
 CALL = re.compile(r"(runCommand|std::system|::system|popen)\s*\(")
@@ -55,6 +71,7 @@ def main(root):
     for d in ("system", "hardware", "core"):
         files += glob.glob(root + "/%s/src/*.cpp" % d)
     bad = []
+    seen = {}
     for f in files:
         src = open(f).read()
         for m in CALL.finditer(src):
@@ -62,7 +79,11 @@ def main(root):
             seg = re.sub(r"shellQuote\([^()]*(\([^()]*\))?[^()]*\)", "Q", seg)
             seg = re.sub(r"std::to_string\([^()]*\)", "N", seg)
             for v in re.findall(r"\+\s*([A-Za-z_][A-Za-z_0-9.:>\-\[\]]*(?:\([^()]*\))?)", seg):
-                if v not in ALLOWED:
+                if v in ("Q", "N"):
+                    continue
+                key = (f[len(root) + 1:], v)
+                seen[key] = seen.get(key, 0) + 1
+                if seen[key] > ALLOWED.get(key, 0):
                     line = src.count("\n", 0, m.start()) + 1
                     bad.append("%s:%d: %s goes into a shell unquoted" % (f[len(root) + 1:], line, v))
     for b in bad:

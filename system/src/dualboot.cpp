@@ -1,4 +1,5 @@
 #include <nexus/system/dualboot.hpp>
+#include <nexus/system/process.hpp>
 
 #include <nexus/system/json.hpp>
 
@@ -207,7 +208,9 @@ OsRelease parseOsRelease(const std::string& text) {
             continue;
         }
         const std::string key = line.substr(0, equals);
-        const std::string value = osReleaseValue(line.substr(equals + 1));
+        // Another system's file: no control characters reach a root
+        // terminal from it (0.1.85, outside review N3).
+        const std::string value = printable(osReleaseValue(line.substr(equals + 1)));
         if (key == "ID") {
             release.id = value;
         } else if (key == "NAME") {

@@ -24,7 +24,14 @@ TYPE="${TYPE:-anaconda-iso}"
 IMAGE="${IMAGE:-localhost/nexus-os:${PROFILE}}"
 OUTPUT="${OUTPUT:-${ROOT}/output}"
 
-BUILDER="quay.io/centos-bootc/bootc-image-builder:latest"
+# By digest (0.1.85, outside review M6): the builder runs as root with
+# --privileged and the host's container storage, so it is exactly the
+# version that was checked -- a new one is a deliberate change here.
+# Digests read on the Asus, 11 November 2026:
+#   skopeo inspect --format '{{.Digest}}' docker://quay.io/centos-bootc/bootc-image-builder:latest
+#   skopeo inspect --format '{{.Digest}}' docker://quay.io/skopeo/stable:latest
+BUILDER="quay.io/centos-bootc/bootc-image-builder@sha256:dab86ee6b46dcade411b37f4e70b07d93b6a06da0dbfec6fe89247a220e0d9f8"
+SKOPEO="quay.io/skopeo/stable@sha256:ed369b58b75b773ebe6cb8b6edd1c9b4323701c703777c8567e3c1fc7df9527c"
 
 # An ISO anybody can download must not carry a known account; a disk
 # image booted in a VM has nobody to ask.
@@ -99,7 +106,7 @@ fetch_with_skopeo() {
         echo "Fetching with skopeo in a container into ${dir}."
         local got=no
         for _ in 1 2 3 4 5 6 7 8; do
-            if podman pull quay.io/skopeo/stable:latest; then
+            if podman pull "${SKOPEO}"; then
                 got=yes
                 break
             fi
@@ -107,7 +114,7 @@ fetch_with_skopeo() {
             sleep 5
         done
         [ "${got}" = yes ] || return 1
-        skopeo=(podman run --rm -v "${dir}:/out" quay.io/skopeo/stable:latest)
+        skopeo=(podman run --rm -v "${dir}:/out" "${SKOPEO}")
         mount=/out
     fi
     local here="${mount:-${dir}}"

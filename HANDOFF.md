@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.84** (patches 1–110). **677 automated tests**, all passing.
+**Version 0.1.85** (patches 1–111). **679 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -696,6 +696,59 @@ builder :latest privileged. L1-L8, I1-I7.
   warning, L8 rootless servers, I3 history source labels, USB disks in
   dualboot, systemd hardening of root units, I7 in SECURITY.md (done
   as part of the list).
+
+**11 Nov, Asus 0.1.84:** kdeconnect removed from public; 8080 removed at
+runtime for the M3 phone test (result not reported yet -- the audit then
+rightly said runtime differs from saved). Digests read on the Asus:
+bootc-image-builder dab86ee6..., skopeo/stable ed369b58..., fedora-
+bootc:44 48acc575.... Doctor still warned about the 8 Nov rollback.
+
+**Adversarial audit round 2 (0.1.84):** 11 of 20 fixed, 3 partly, 6
+open (H1 the one that matters, now worse: the signing step shares the
+runner with Tests). New: N1 registry label into notifications (M), N2
+world-readable server backups with Caddy keys (M), N3 control chars to
+terminals, N4 btrfs log replay, N5 FIFO hangs first boot, N6 swap-file
+hibernation, N7 boot check spoofable by name, N8 global allow-list.
+
+**Patch 111 (0.1.85):**
+- N1: parseImageInspect keeps nexus.version only if it is
+  ^[0-9][0-9A-Za-z.+~-]{0,31}$ and Created only if timestamp chars;
+  everything downstream (notification, terminal, --lines) then says "a
+  new version". +1 test (the reviewer's PoC label).
+- N2: backups dir 0700, tar under umask 077, archives (old ones too)
+  0600; tmpfiles.d nexus-backups.conf sets the dir 0700 at every boot.
+  NOT a global umask(077) as suggested: `nexus history` reads
+  /var/lib/nexus without sudo, and children (dnf, podman, distrobox,
+  flatpak) would inherit it.
+- N3: printable() in process.hpp (C0 incl. \n\t, DEL, UTF-8 C1 -> ?),
+  applied where outside text is parsed: os-release of other disks,
+  ProtonDB/Steam/AreWeAntiCheatYet fields, dnf Summary, Flathub
+  name/summary/developer, language summaries; the installer prints the
+  other system's name through isprintable(). +1 test.
+- N4: dualboot mounts btrfs rescue=nologreplay, f2fs/bcachefs
+  norecovery.
+- N5: labwc_keyboard_file leaves anything but a plain file alone; each
+  runuser under timeout 10. (No unit timeout: first boot waits for
+  answers on the console.) PoC FIFO: returns at once.
+- N6: installer refuses to shrink when the ext4 holds a hibernated
+  /swapfile, /swap.img or /swap/swapfile (SUSPEND/LINHIB signature) or
+  cannot be checked, or the disk has a crypto_LUKS partition.
+- N7: boot check = display-manager.service active AND (sddm-greeter run
+  by the sddm user OR a logind session of Type wayland/x11). David to
+  verify on the Asus before relying on it (a false "no desktop" means a
+  rollback).
+- N8: check-shell-quoting.py allow-list keyed by (file, name) with
+  today's use count; one more use fails (tested by injecting one).
+- M6: build-installer.sh BUILDER and SKOPEO by digest. L6: base NOT
+  pinned (the build upgrades nothing, a pinned base would freeze
+  Fedora's fixes); its digest is a label (nexus.base-digest) and a
+  line in the build log.
+- Doctor: the boot-check warning turns ok once last-good is newer than
+  failures.log.
+- Open: H1 (+ separate sign job needs David's current workflow files:
+  his have SHA pins this tree does not), L1, L8, I3, USB disks in
+  dualboot, systemd hardening of root units, runProgram caveats (>64 KiB
+  input, process-wide SIGPIPE swap) noted.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

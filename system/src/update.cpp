@@ -1,4 +1,5 @@
 #include <nexus/system/update.hpp>
+#include <cctype>
 
 #include <nexus/system/json.hpp>
 
@@ -128,6 +129,32 @@ std::string imageReference(const std::string& origin) {
     return trim(origin.substr(at + marker.size()));
 }
 
+namespace {
+
+// What a registry label may say before Nexus repeats it (0.1.85,
+// outside review N1): skopeo reads labels before any signature check,
+// so whoever can push to the registry without the key would otherwise
+// write the text of every machine's "Update available" notification.
+// A version: a digit, then up to 31 of [0-9A-Za-z.+~-]. A date: the
+// characters of an ISO timestamp. Anything else is dropped.
+bool plainVersion(const std::string& text) {
+    if (text.empty() || text.size() > 32 || text[0] < '0' || text[0] > '9') return false;
+    for (unsigned char c : text) {
+        if (!std::isalnum(c) && c != '.' && c != '+' && c != '~' && c != '-') return false;
+    }
+    return true;
+}
+
+bool plainTimestamp(const std::string& text) {
+    if (text.size() > 40) return false;
+    for (unsigned char c : text) {
+        if (!std::isdigit(c) && c != '-' && c != ':' && c != 'T' && c != 'Z' && c != '.' && c != '+') return false;
+    }
+    return true;
+}
+
+}  // namespace
+
 RemoteImage parseImageInspect(const std::string& json) {
     RemoteImage out;
     const auto parsed = parseJson(json);
@@ -136,7 +163,9 @@ RemoteImage parseImageInspect(const std::string& json) {
     }
     out.digest = parsed.value["Digest"].asString();
     out.created = parsed.value["Created"].asString();
+    if (!plainTimestamp(out.created)) out.created.clear();
     out.nexusVersion = parsed.value["Labels"]["nexus.version"].asString();
+    if (!plainVersion(out.nexusVersion)) out.nexusVersion.clear();
     out.ok = out.digest.rfind("sha256:", 0) == 0;
     return out;
 }

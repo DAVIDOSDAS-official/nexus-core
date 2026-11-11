@@ -308,14 +308,45 @@ def system_name(name):
        subprocess.run(["mount", "-o", "ro,nodev,nosuid,noexec", "/dev/" + name, "/tmp/nexus-peek"]).returncode != 0:
         return "another system"
     try:
-        for line in open("/tmp/nexus-peek/etc/os-release"):
+        for line in open("/tmp/nexus-peek/etc/os-release", errors="replace"):
             if line.startswith("PRETTY_NAME="):
-                return line.split("=", 1)[1].strip().strip(chr(34))
+                shown = line.split("=", 1)[1].strip().strip(chr(34))
+                # Printed on the console: no control characters from the
+                # other system (0.1.85, outside review N3).
+                return "".join(c if c.isprintable() else "?" for c in shown)[:60] or "another system"
     except OSError:
         pass
     finally:
         subprocess.run(["umount", "/tmp/nexus-peek"])
     return "another system"
+
+def hibernated_into_file(name):
+    # Ubuntu and Mint hibernate into /swapfile or /swap.img inside the
+    # very ext4 that would be shrunk (0.1.85, outside review N6). A swap
+    # area that holds a hibernation image says so in the last bytes of
+    # its first page (S1SUSPEND, S2SUSPEND, ULSUSPEND, LINHIB0001)
+    # instead of SWAPSPACE2. True also when it cannot be looked at.
+    import os
+    os.makedirs("/tmp/nexus-swap-look", exist_ok=True)
+    look = ["mount", "-o", "ro,nodev,nosuid,noexec,noload", "/dev/" + name, "/tmp/nexus-swap-look"]
+    if subprocess.run(look, stderr=subprocess.DEVNULL).returncode != 0:
+        return True
+    try:
+        for swap in ("swapfile", "swap.img", "swap/swapfile"):
+            path = "/tmp/nexus-swap-look/" + swap
+            if os.path.islink(path) or not os.path.isfile(path):
+                continue
+            with open(path, "rb") as f:
+                page = f.read(65536)
+            for size in (4096, 8192, 16384, 65536):
+                tail = page[size - 10:size]
+                if b"SUSPEND" in tail or tail.startswith(b"LINHIB"):
+                    return True
+        return False
+    except OSError:
+        return True
+    finally:
+        subprocess.run(["umount", "/tmp/nexus-swap-look"])
 
 def on_mains():
     import glob
@@ -395,6 +426,14 @@ def offer_shrink(disk, gap):
                              capture_output=True, text=True).stdout.strip()
     kinds = subprocess.run(["lsblk", "-n", "-o", "FSTYPE", "/dev/" + (disk_of or name)],
                            capture_output=True, text=True).stdout.split()
+    if "crypto_LUKS" in kinds:
+        print("This disk has an encrypted partition (maybe encrypted swap, which can hold")
+        print("a hibernated system unseen): not shrinking automatically. The installer asks.")
+        return gap
+    if hibernated_into_file(name):
+        print("The other system is hibernated into a swap file (or it could not be")
+        print("checked): not shrinking. Start it, shut it down fully, install again.")
+        return gap
     if "swsuspend" in kinds:
         print("A system on this disk is hibernated: not shrinking. Start it,")
         print("shut it down fully (not hibernate), then install again.")

@@ -179,6 +179,11 @@ RUN echo "Package refresh: ${REFRESH}" \
 # this build (image/pin-images.py); `nexus` reads the result and pulls
 # exactly those bytes. A local build has no pinned-images file and
 # pulls by tag, as before -- the line below says which this is.
+# Server backups hold TLS and ACME keys and whole worlds: root's only,
+# set at every boot, so machines with older 0644 archives are covered
+# too (0.1.85, outside review N2).
+RUN printf 'd /var/lib/nexus/backups 0700 root root -\n' > /usr/lib/tmpfiles.d/nexus-backups.conf
+
 COPY image/pins/ /usr/share/nexus/pins/
 RUN if [ -s /usr/share/nexus/pins/pinned-images ]; then \
         echo "Pins: $(grep -vc '^#' /usr/share/nexus/pins/pinned-images) container images by digest"; \

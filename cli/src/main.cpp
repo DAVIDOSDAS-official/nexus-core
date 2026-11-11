@@ -46,6 +46,7 @@
 #include <nexus/system/site_copy.hpp>
 
 #include <pwd.h>
+#include <sys/stat.h>
 #include <grp.h>
 #include <cstring>
 
@@ -1061,7 +1062,7 @@ PackageFacts dnfFacts(const std::string& name) {
         const auto start = value.find_first_not_of(' ');
         value = start == std::string::npos ? "" : value.substr(start);
         if (key == "Summary" && facts.summary.empty()) {
-            facts.summary = value;
+            facts.summary = nexus::system::printable(value);   // repository text (0.1.85)
         } else if ((key == "Repository" || key == "From repository" ||
                     key == "Repo") && facts.repository.empty()) {
             facts.repository = value;
@@ -2479,12 +2480,28 @@ std::optional<nexus::Finding> checkBootCheck() {
             recent = std::time(nullptr) - when < 30L * 24 * 3600;
         }
     }
+    // A version marked good (last-good written) after the last failure.
+    bool goodSince = false;
+    if (recent) {
+        struct stat good {}, failures {};
+        if (::stat((dir + "/last-good").c_str(), &good) == 0 &&
+            ::stat((dir + "/failures.log").c_str(), &failures) == 0) {
+            goodSince = good.st_mtime > failures.st_mtime;
+        }
+    }
     if (recent && last.find("TEST:") != std::string::npos) {
         // The test switch (sudo touch /var/lib/nexus/boot-check/test-fail):
         // nothing was wrong; the rollback was asked for.
         f.health = nexus::Health::Ok;
         f.detail = "Test rollback on " + last.substr(0, 10) +
                    " worked: Nexus went back by itself. Nothing was wrong.";
+    } else if (recent && last.find("went back") != std::string::npos && goodSince) {
+        // A version has started fine since then: the problem is behind
+        // (the Asus, 11 November: still warned three days and several
+        // good starts after the 8 November rollback).
+        f.health = nexus::Health::Ok;
+        f.detail = "On " + last.substr(0, 10) + " a version without a desktop was rolled back;"
+                   " every version since has started fine.";
     } else if (recent && last.find("went back") != std::string::npos) {
         f.health = nexus::Health::Warning;
         f.detail = "On " + last.substr(0, 10) + " a new system version started without a desktop,"
@@ -3347,6 +3364,12 @@ struct LookInside {
             device.fstype == "ext2") {
             options += ",noload";
         } else if (device.fstype == "xfs") {
+            options += ",norecovery";
+        } else if (device.fstype == "btrfs") {
+            // btrfs replays its tree log even read-only (0.1.85,
+            // outside review N4): rescue=nologreplay keeps it untouched.
+            options += ",rescue=nologreplay";
+        } else if (device.fstype == "f2fs" || device.fstype == "bcachefs") {
             options += ",norecovery";
         }
         char pattern[] = "/run/nexus-dualboot-XXXXXX";
@@ -5717,13 +5740,28 @@ int commandServer(
             nexus::system::runCommand("systemctl daemon-reload 2>&1", true);
             openPorts(seen.ports, false);
         } else {
+            // Root's only (0.1.85, outside review N2): the archive holds
+            // what only root may read -- Caddy's TLS and ACME keys, a
+            // Minecraft world -- and was 0644 in a 0755 folder. The
+            // folder is 0700, the archive is made under umask 077 (no
+            // moment when it is readable) and set 0600 after; old ones
+            // in the folder are made 0600 too.
             std::error_code ec;
             fs::create_directories("/var/lib/nexus/backups", ec);
+            fs::permissions("/var/lib/nexus/backups", fs::perms::owner_all, fs::perm_options::replace, ec);
+            const mode_t before = ::umask(077);
             const auto tar = nexus::system::runCommand(
                 "tar -czf " + shellQuote(archive) + " -C /var/lib/nexus/servers " + shellQuote(name) + " 2>&1",
                 true);
+            ::umask(before);
             ok = tar.ok;
             if (!ok) error = firstLine(tar.text);
+            for (const auto& old : fs::directory_iterator("/var/lib/nexus/backups", ec)) {
+                std::error_code pe;
+                if (old.is_regular_file(pe))
+                    fs::permissions(old.path(), fs::perms::owner_read | fs::perms::owner_write,
+                                    fs::perm_options::replace, pe);
+            }
             nexus::system::runCommand("systemctl start " + unit + " 2>&1", true);
         }
 

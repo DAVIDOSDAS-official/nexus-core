@@ -1,4 +1,5 @@
 #include <nexus/system/gamecheck.hpp>
+#include <nexus/system/process.hpp>
 #include <nexus/system/json.hpp>
 
 #include <algorithm>
@@ -49,7 +50,7 @@ std::vector<SteamMatch> parseSteamSearch(const std::string& json) {
         }
         SteamMatch match;
         match.id = item["id"].asString();
-        match.name = item["name"].asString();
+        match.name = printable(item["name"].asString());
         if (!match.id.empty()) {
             out.push_back(std::move(match));
         }
@@ -74,9 +75,9 @@ ProtonSummary parseProtonSummary(const std::string& json) {
     if (!parsed.error.empty() || !parsed.value.isObject()) {
         return summary;
     }
-    summary.tier = parsed.value["tier"].asString();
-    summary.trending = parsed.value["trendingTier"].asString();
-    summary.confidence = parsed.value["confidence"].asString();
+    summary.tier = printable(parsed.value["tier"].asString());
+    summary.trending = printable(parsed.value["trendingTier"].asString());
+    summary.confidence = printable(parsed.value["confidence"].asString());
     // Clamped before converting: a number past long's range is
     // undefined behaviour (found by an outside review's fuzzer, 0.1.82).
     {
@@ -131,17 +132,17 @@ AntiCheatEntry findAntiCheat(const std::string& gamesJson,
     }
 
     entry.found = true;
-    entry.name = (*hit)["name"].asString();
+    entry.name = printable((*hit)["name"].asString());
     entry.steamId = (*hit)["storeIds"]["steam"].asString();
-    entry.status = (*hit)["status"].asString();
+    entry.status = printable((*hit)["status"].asString());
     entry.native = (*hit)["native"].boolean;
     for (const JsonValue& a : (*hit)["anticheats"].items) {
-        entry.anticheats.push_back(a.asString());
+        entry.anticheats.push_back(printable(a.asString()));
     }
     for (const JsonValue& note : (*hit)["notes"].items) {
         // [text, link]; the text is what a person reads.
         if (note.isArray() && !note.items.empty()) {
-            entry.notes.push_back(note.items.front().asString());
+            entry.notes.push_back(printable(note.items.front().asString()));
         }
     }
     return entry;

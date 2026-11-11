@@ -69,6 +69,14 @@ std::string shellQuote(const std::string& text);
 // in from the command line, before it is used anywhere.
 bool isPackageName(const std::string& name);
 
+// Text from outside Nexus (another disk's os-release, Steam, ProtonDB,
+// a repository) made safe to print: every control character -- C0
+// including newline and tab, DEL, and the C1 range in UTF-8 -- becomes
+// '?'. A terminal then cannot be told to hide lines, retitle itself or
+// write the clipboard (0.1.85, outside review N3). Ordinary UTF-8
+// letters pass unchanged.
+std::string printable(const std::string& text);
+
 // Runs a program directly -- no /bin/sh, so nothing is parsed and only
 // argv is visible in /proc -- with `input` written to its stdin and its
 // stdout (not stderr) returned. For secrets: they go through `input`,

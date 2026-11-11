@@ -55,12 +55,20 @@ if [ "${current}" = "${last_good}" ]; then
 fi
 
 desktop_up() {
-    # the login screen, or a desktop someone is
-    # already logged in to. By process name (-x), not anywhere in any
-    # command line (-f): a lingering process that merely mentions
-    # "plasmashell" must not mark a broken start good (0.1.84, outside
-    # review). sddm-greeter-qt6 is 16 characters; the kernel keeps 15.
-    pgrep -x 'sddm-greeter|sddm-greeter-qt|plasmashell|lxqt-panel' > /dev/null 2>&1
+    # The display manager runs, and either its login screen runs as the
+    # sddm user, or someone is logged in to a graphical session.
+    # Neither can be faked by a normal user: a process they name
+    # "plasmashell" runs as them, and logind sets the session type
+    # (0.1.85, outside review N7; 0.1.84 used names only).
+    systemctl is-active --quiet display-manager.service || return 1
+    pgrep -u sddm -x 'sddm-greeter|sddm-greeter-qt' > /dev/null 2>&1 && return 0
+    local session
+    for session in $(loginctl list-sessions --no-legend 2> /dev/null | awk '{print $1}'); do
+        case "$(loginctl show-session "${session}" -p Type --value 2> /dev/null)" in
+            wayland|x11) return 0 ;;
+        esac
+    done
+    return 1
 }
 
 failed=1

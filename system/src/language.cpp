@@ -1,4 +1,5 @@
 #include <nexus/system/language.hpp>
+#include <nexus/system/process.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -40,7 +41,7 @@ std::vector<Language> parseLanguagePacks(const std::string& text) {
         }
 
         const std::string package = trim(line.substr(0, bar));
-        const std::string summary = trim(line.substr(bar + 1));
+        const std::string summary = printable(trim(line.substr(bar + 1)));   // repository text (0.1.85)
 
         if (package.rfind(prefix, 0) != 0) {
             continue;

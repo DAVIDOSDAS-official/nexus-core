@@ -176,11 +176,21 @@ jobs:
           # no new layer.
           FIREFOX="$(podman run --rm "localhost/nexus-os:${PROFILE}" \
               rpm -q --qf '%{VERSION}-%{RELEASE}' firefox 2>/dev/null || true)"
-          if [ -n "${FIREFOX}" ]; then
+          # The Fedora base this was built from, by digest (0.1.85,
+          # outside review L6). Not pinned in the Containerfile: the
+          # build upgrades nothing, so a pinned base would freeze
+          # Fedora's security fixes. Recorded instead, in the image.
+          BASE="$(podman image inspect --format '{{.Digest}}' \
+              "quay.io/fedora/fedora-bootc:${FEDORA}" 2>/dev/null || true)"
+          LABELS=()
+          [ -n "${FIREFOX}" ] && LABELS+=(--label "nexus.firefox=${FIREFOX}")
+          [ -n "${BASE}" ] && LABELS+=(--label "nexus.base-digest=${BASE}")
+          if [ "${#LABELS[@]}" -gt 0 ]; then
             echo "FROM localhost/nexus-os:${PROFILE}" | podman build \
-                --label nexus.firefox="${FIREFOX}" -t "localhost/nexus-os:${PROFILE}" -f - "$(mktemp -d)"
-            echo "Firefox: ${FIREFOX}"
+                "${LABELS[@]}" -t "localhost/nexus-os:${PROFILE}" -f - "$(mktemp -d)"
           fi
+          echo "Firefox: ${FIREFOX:-unknown}"
+          echo "Base: quay.io/fedora/fedora-bootc:${FEDORA} at ${BASE:-unknown}"
 
       # Before anything is published: every add-on first boot offers
       # has to be installable from the repositories machines use.

@@ -218,3 +218,15 @@ TEST(ProcessTest, RunProgramParsesNothing) {
     const auto quick = nexus::system::runProgram({"true"}, std::string(1 << 20, 'x'));
     EXPECT_TRUE(quick.ran);
 }
+
+// Outside review, round 2 (0.1.85, N3): another disk's os-release kept
+// OSC 52 (clipboard write) and "conceal" sequences on the way to a root
+// terminal.
+TEST(ProcessTest, PrintableRemovesEveryControlCharacter) {
+    using nexus::system::printable;
+    EXPECT_EQ(printable("Linux Mint 22\x1b]52;c;aWQ=\x07\x1b[8m hidden"),
+              "Linux Mint 22?]52;c;aWQ=??[8m hidden");
+    EXPECT_EQ(printable("a\nb\tc\x7f"), "a?b?c?");
+    EXPECT_EQ(printable("\xc2\x9b" "31m"), "?31m");                  // C1 CSI in UTF-8
+    EXPECT_EQ(printable("Fedora Linux 44 (KDE) \xc3\xa9\xe2\x80\x94"), "Fedora Linux 44 (KDE) \xc3\xa9\xe2\x80\x94");
+}
