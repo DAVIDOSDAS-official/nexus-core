@@ -53,6 +53,14 @@ char at(const std::string& text, std::size_t index) {
 // character using order(), and runs of digits, compared numerically
 // with leading zeros ignored.
 int compareFragment(const std::string& left, const std::string& right) {
+    // at() answers '\0' past the end, so a real NUL inside a version
+    // moved no index and this never ended (0.1.84, an outside review's
+    // fuzzer). No real version holds one: compare such bytes plainly.
+    if (left.find('\0') != std::string::npos || right.find('\0') != std::string::npos) {
+        const int c = left.compare(right);
+        return c < 0 ? -1 : c > 0 ? 1 : 0;
+    }
+
     std::size_t i = 0;
     std::size_t j = 0;
 

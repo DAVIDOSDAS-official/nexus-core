@@ -2,7 +2,10 @@
 
 #include <sys/stat.h>
 
+#include <atomic>
 #include <cstdlib>
+#include <unistd.h>
+#include <thread>
 #include <filesystem>
 #include <fstream>
 
@@ -169,4 +172,49 @@ TEST(ProcessTest, WithoutAFolderTheFileIsDevNullNotAGuess) {
     }
     if (old) ::setenv("TMPDIR", saved.c_str(), 1); else ::unsetenv("TMPDIR");
     EXPECT_TRUE(std::filesystem::exists("/dev/null"));
+}
+
+// An outside review (0.1.84): the WireGuard private key went through
+// `sh -c "printf '<key>' | wg pubkey"`, and sh's arguments are readable
+// by every local user in /proc. runProgram passes it on stdin, with no
+// shell: a watcher reading every /proc/*/cmdline must never see it.
+TEST(ProcessTest, ASecretOnStdinNeverAppearsInAnyCommandLine) {
+    // Made at run time, so it is in no other process's command line
+    // (a shell that started the test could hold a literal).
+    std::string secret = "nexus-test-";
+    std::srand(static_cast<unsigned>(::getpid()));
+    for (int i = 0; i < 40; ++i) secret += static_cast<char>('a' + std::rand() % 26);
+    std::atomic<bool> stop{false};
+    std::atomic<int> seen{0};
+    std::thread watcher([&] {
+        while (!stop) {
+            // Processes come and go while this walks /proc: no throwing.
+            std::error_code ec;
+            for (auto it = std::filesystem::directory_iterator("/proc", ec);
+                 !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+                std::ifstream in(it->path() / "cmdline", std::ios::binary);
+                std::string all((std::istreambuf_iterator<char>(in)), {});
+                if (all.find(secret) != std::string::npos) ++seen;
+            }
+        }
+    });
+    for (int i = 0; i < 200; ++i) {
+        const auto r = nexus::system::runProgram({"cat"}, secret);
+        ASSERT_TRUE(r.ok);
+        ASSERT_EQ(r.text, secret);
+    }
+    stop = true;
+    watcher.join();
+    EXPECT_EQ(seen.load(), 0);
+}
+
+TEST(ProcessTest, RunProgramParsesNothing) {
+    // A shell would run the id; runProgram hands it to echo as text.
+    const auto r = nexus::system::runProgram({"echo", "a;id", "$(id)"});
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.text, "a;id $(id)\n");
+    EXPECT_FALSE(nexus::system::runProgram({"/nonexistent/program"}).ran);
+    // A child that never reads its input does not take us down.
+    const auto quick = nexus::system::runProgram({"true"}, std::string(1 << 20, 'x'));
+    EXPECT_TRUE(quick.ran);
 }

@@ -1,12 +1,19 @@
 # Image signing
 
-Every published image is signed with a key only the maintainer holds.
-Installed machines refuse an update that is not signed by it.
+Every published image is signed with the Nexus key. Installed
+machines refuse an update that is not signed by it.
 
-Without this a machine trusts whatever arrives under the registry name:
-anybody who gets write access to the GitHub account -- a leaked token,
-a phished password -- can push an image every Nexus machine installs on
-its next update.
+What that protects against: anybody who can push to the registry but
+cannot run this repository's workflow -- a leaked package token, a
+compromised registry, a mirror -- cannot get an image installed.
+
+What it does not protect against yet: the private key is a GitHub
+Actions secret, because the weekly workflow signs. So whoever takes
+over the maintainer's GitHub account can also run a workflow that signs
+(an outside review, 0.1.84, rated this the most serious open problem).
+What is in place: actions pinned to commits, and the
+key on disk only in the step that signs. What happens if the key is
+ever stolen is in SECURITY.md.
 
 ## The pieces
 

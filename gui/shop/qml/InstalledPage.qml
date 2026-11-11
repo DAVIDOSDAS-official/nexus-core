@@ -25,12 +25,14 @@ Flickable {
         spacing: 12
 
         Text {
+            textFormat: Text.PlainText
             text: root.apps.length === 1 ? "1 app installed" : root.apps.length + " apps installed"
             color: Theme.bright
             font.pixelSize: 28
             font.bold: true
         }
         Text {
+            textFormat: Text.PlainText
             text: "Apps from Flathub. Programs that are part of the system itself are updated with it, under Updates."
             color: Theme.dim
             font.pixelSize: 13
@@ -56,8 +58,8 @@ Flickable {
                     ColumnLayout {
                         spacing: 0
                         Layout.fillWidth: true
-                        Text { text: modelData.name; color: Theme.bright; font.pixelSize: 15; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
-                        Text { text: modelData.summary || modelData.appId; color: Theme.dim; font.pixelSize: 13; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Text { textFormat: Text.PlainText; text: modelData.name; color: Theme.bright; font.pixelSize: 15; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Text { textFormat: Text.PlainText; text: modelData.summary || modelData.appId; color: Theme.dim; font.pixelSize: 13; elide: Text.ElideRight; Layout.fillWidth: true }
                     }
                     Button2 { text: "Details"; visible: (modelData.key || "").length > 0; onClicked: root.openApp(modelData.key) }
                     Button2 { text: "Open"; onClicked: shop.launch(modelData.appId) }

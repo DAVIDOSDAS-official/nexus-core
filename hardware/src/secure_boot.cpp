@@ -106,7 +106,15 @@ SecureBootReport SecureBootDetector::detect() const {
 
     report.efiPresent = true;
 
-    const std::string secureBoot = readVariable(efivars, "SecureBoot");
+    // By full name, GUID included (0.1.84, outside review: a prefix
+    // match could read another vendor's "SecureBoot" variable).
+    const std::string kGlobal = "-8be4df61-93ca-11d2-aa0d-00e098032b8c";
+    const std::string kShim = "-605dab50-e046-4300-abb6-3dd810dd8b23";
+    auto exact = [&](const std::string& name) {
+        std::ifstream in(efivars / (name), std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(in), {});
+    };
+    const std::string secureBoot = exact("SecureBoot" + kGlobal);
 
     if (secureBoot.empty()) {
         report.unreadable.push_back(
@@ -118,21 +126,30 @@ SecureBootReport SecureBootDetector::detect() const {
 
     // Setup mode means the firmware will accept new keys without a
     // password, which is how a key gets enrolled in the first place.
-    const std::string setupMode = readVariable(efivars, "SetupMode");
+    const std::string setupMode = exact("SetupMode" + kGlobal);
 
     if (!setupMode.empty() &&
         stateFromVariable(setupMode) == SecureBootState::Enabled) {
         report.state = SecureBootState::SetupMode;
     }
 
-    // MokListRT is the machine owner's key list, as opposed to the
-    // manufacturer's db. Its presence means somebody has enrolled a
-    // key of their own.
-    const std::string mok = readVariable(efivars, "MokListRT");
+    // MokListRT: shim's key list. Since shim 15.3 it also carries the
+    // distribution's own built-in key, so a non-empty list does NOT
+    // mean the owner enrolled one (0.1.84, outside review). Kept as
+    // "a MOK list is present"; `mokutil --list-enrolled` says whose.
+    const std::string mok = exact("MokListRT" + kShim);
 
     if (mok.size() > 4) {
         report.ownerKeysEnrolled = true;
         report.enrolledKeys = 1;
+    }
+
+    // MokSBStateRT = 1: shim's checking was turned off with
+    // `mokutil --disable-validation` -- the firmware checks shim, and
+    // shim then checks nothing.
+    const std::string shimState = exact("MokSBStateRT" + kShim);
+    if (shimState.size() >= 5 && shimState[4] == 1) {
+        report.shimValidationDisabled = true;
     }
 
     return report;

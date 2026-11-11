@@ -134,7 +134,7 @@ ApplicationWindow {
                             c.stroke()
                         }
                     }
-                    Text { text: "Nexus Shop"; color: Theme.bright; font.pixelSize: 17; font.bold: true }
+                    Text { textFormat: Text.PlainText; text: "Nexus Shop"; color: Theme.bright; font.pixelSize: 17; font.bold: true }
                 }
 
                 NavButton { text: "Home"; current: window.section === "home"; Layout.fillWidth: true; onClicked: window.goHome() }
@@ -147,7 +147,7 @@ ApplicationWindow {
                 NavButton { text: "Installed"; current: window.section === "installed"; Layout.fillWidth: true; enabled: !shop.loading; onClicked: window.openPage("installed") }
                 NavButton { text: "History"; current: window.section === "history"; Layout.fillWidth: true; onClicked: window.openPage("history") }
                 NavButton { text: "Sources"; current: window.section === "sources"; Layout.fillWidth: true; onClicked: window.openPage("sources") }
-                Text { text: "EXPLORE"; color: Theme.dim; font.pixelSize: 11; font.bold: true; Layout.topMargin: 14; Layout.leftMargin: 14; Layout.bottomMargin: 4 }
+                Text { textFormat: Text.PlainText; text: "EXPLORE"; color: Theme.dim; font.pixelSize: 11; font.bold: true; Layout.topMargin: 14; Layout.leftMargin: 14; Layout.bottomMargin: 4 }
                 Repeater {
                     model: shop.categories
                     NavButton { text: modelData; current: window.section === modelData; Layout.fillWidth: true; enabled: !shop.loading; onClicked: window.openCategory(modelData) }

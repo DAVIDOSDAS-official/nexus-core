@@ -33,6 +33,7 @@ Flickable {
                 spacing: 4
                 Layout.fillWidth: true
                 Text {
+                    textFormat: Text.PlainText
                     text: root.checking && shop.updateCount === 0 ? "Checking…"
                         : shop.updateCount === 0 ? "Everything is up to date"
                         : shop.updateCount === 1 ? "1 update" : shop.updateCount + " updates"
@@ -41,6 +42,7 @@ Flickable {
                     font.bold: true
                 }
                 Text {
+                    textFormat: Text.PlainText
                     text: "Nexus checks once a day and only tells you. Nothing is installed until you press the button, and nothing restarts by itself."
                     color: Theme.dim
                     font.pixelSize: 13
@@ -65,6 +67,7 @@ Flickable {
 
         // Could not ask.
         Text {
+            textFormat: Text.PlainText
             visible: u.state === "error" || u.system === "unreachable"
             text: "Could not reach the registry to compare (offline?). Apps are checked separately below."
             color: Theme.warn
@@ -89,6 +92,7 @@ Flickable {
                 RowLayout {
                     spacing: 12
                     Text {
+                        textFormat: Text.PlainText
                         text: "The system"
                         color: Theme.bright
                         font.pixelSize: 18
@@ -106,11 +110,13 @@ Flickable {
                     }
                 }
                 Text {
+                    textFormat: Text.PlainText
                     text: "Running Nexus " + (u.running || "?") + ((u.runningDay || "").length ? "  (built " + u.runningDay + ")" : "")
                     color: Theme.text
                     font.pixelSize: 14
                 }
                 Text {
+                    textFormat: Text.PlainText
                     visible: root.systemNew
                     text: "New: Nexus " + (u.version || "") + ((u.day || "").length ? "  (built " + u.day + ")" : "")
                     color: Theme.accentText
@@ -120,12 +126,14 @@ Flickable {
                     Layout.fillWidth: true
                 }
                 Text {
+                    textFormat: Text.PlainText
                     visible: (u.diff || "").length > 0
                     text: u.diff || ""
                     color: Theme.dim
                     font.pixelSize: 13
                 }
                 Text {
+                    textFormat: Text.PlainText
                     visible: root.systemNew
                     text: "The version running now stays in the boot menu: if something is wrong, pick it there to go back."
                     color: Theme.dim
@@ -134,6 +142,7 @@ Flickable {
                     Layout.fillWidth: true
                 }
                 Text {
+                    textFormat: Text.PlainText
                     visible: !root.systemNew && u.system === "current"
                     text: "Up to date (checked just now)."
                     color: Theme.dim
@@ -143,6 +152,7 @@ Flickable {
         }
 
         Text {
+            textFormat: Text.PlainText
             text: root.apps.length > 0 ? "Apps · ready at once, no restart" : (root.checking ? "" : "Apps · up to date")
             visible: text.length > 0
             color: Theme.dim
@@ -166,10 +176,11 @@ Flickable {
                     ColumnLayout {
                         spacing: 0
                         Layout.fillWidth: true
-                        Text { text: modelData.name; color: Theme.bright; font.pixelSize: 14; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
-                        Text { text: modelData.id; color: Theme.dim; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Text { textFormat: Text.PlainText; text: modelData.name; color: Theme.bright; font.pixelSize: 14; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Text { textFormat: Text.PlainText; text: modelData.id; color: Theme.dim; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
                     }
                     Text {
+                        textFormat: Text.PlainText
                         visible: (modelData.version || "").length > 0
                         text: "→ " + modelData.version
                         color: Theme.text
@@ -181,6 +192,7 @@ Flickable {
         }
 
         Text {
+            textFormat: Text.PlainText
             text: "“Update everything” asks for your password once (the system part needs it), then runs  nexus update --apply. Every update is written in History."
             color: Theme.dim
             font.pixelSize: 12

@@ -57,6 +57,25 @@ public:
         out.write(content, 16);
     }
 
+    void shimVariable(const std::string& name, char value) {
+        withEfi();
+        std::ofstream out(efivars_ / (name + "-605dab50-e046-4300-abb6-3dd810dd8b23"),
+                          std::ios::binary);
+        const char header[4] = {0x06, 0x00, 0x00, 0x00};
+        out.write(header, 4);
+        out.write(&value, 1);
+    }
+
+    // A variable with the right name and someone else's GUID.
+    void foreignVariable(const std::string& name, char value) {
+        withEfi();
+        std::ofstream out(efivars_ / (name + "-11111111-2222-3333-4444-555555555555"),
+                          std::ios::binary);
+        const char header[4] = {0x06, 0x00, 0x00, 0x00};
+        out.write(header, 4);
+        out.write(&value, 1);
+    }
+
     std::string path() const {
         return root_.string();
     }
@@ -181,4 +200,25 @@ TEST(SecureBootTest, StateBecomesCapabilities) {
     ASSERT_EQ(names.size(), 2u);
     EXPECT_EQ(names[0], "secure-boot-enabled");
     EXPECT_EQ(names[1], "secure-boot-owner-keys");
+}
+
+// An outside review (0.1.84): shim's checking turned off with
+// mokutil --disable-validation was reported as Secure Boot fully on,
+// and "SecureBoot" was found by name prefix, whatever its GUID.
+TEST(SecureBootTest, ShimValidationOffIsReported) {
+    FakeFirmware firmware;
+    firmware.variable("SecureBoot", 1);
+    firmware.variable("SetupMode", 0);
+    firmware.shimVariable("MokSBStateRT", 1);
+    const auto report = nexus::hardware::SecureBootDetector(firmware.path()).detect();
+    EXPECT_EQ(report.state, nexus::hardware::SecureBootState::Enabled);
+    EXPECT_TRUE(report.shimValidationDisabled);
+}
+
+TEST(SecureBootTest, OnlyTheGlobalGuidCounts) {
+    FakeFirmware firmware;
+    firmware.foreignVariable("SecureBoot", 1);
+    const auto report = nexus::hardware::SecureBootDetector(firmware.path()).detect();
+    EXPECT_NE(report.state, nexus::hardware::SecureBootState::Enabled);
+    EXPECT_FALSE(report.shimValidationDisabled);
 }

@@ -214,11 +214,11 @@ std::string publicKeyOf(const std::string& privateKey) {
         return "";
     }
 
-    // Through a pipe rather than as an argument: arguments are
-    // visible to every process on the machine in /proc, and a private
-    // key on a command line is a private key anybody can read.
-    const ProcessResult derived = runCommand(
-        "printf '%s' " + shellQuote(privateKey) + " | wg pubkey", false);
+    // On wg's stdin, with no shell in between: arguments are visible
+    // to every process on the machine in /proc, and a private key on
+    // any command line -- sh's included -- is a private key anybody can
+    // read (0.1.84: it was sh's argument until an outside review).
+    const ProcessResult derived = runProgram({"wg", "pubkey"}, privateKey + "\n");
 
     return derived.ok ? firstLine(derived.text) : "";
 }

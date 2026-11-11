@@ -33,6 +33,7 @@ AbstractButton {
                 spacing: 2
                 Layout.fillWidth: true
                 Text {
+                    textFormat: Text.PlainText
                     text: root.app.name || ""
                     color: Theme.bright
                     font.pixelSize: 15
@@ -41,6 +42,7 @@ AbstractButton {
                     Layout.fillWidth: true
                 }
                 Text {
+                    textFormat: Text.PlainText
                     text: root.app.summary || ""
                     color: Theme.dim
                     font.pixelSize: 13

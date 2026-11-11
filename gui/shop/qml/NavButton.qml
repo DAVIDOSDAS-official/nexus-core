@@ -15,6 +15,7 @@ AbstractButton {
         border.color: root.activeFocus ? Theme.accent : "transparent"
     }
     contentItem: Text {
+        textFormat: Text.PlainText
         text: root.text
         color: root.current ? Theme.accentText : Theme.text
         font.pixelSize: 14

@@ -23,8 +23,9 @@ Flickable {
         width: Math.min(root.width - 64, 900)
         spacing: 10
 
-        Text { text: "History"; color: Theme.bright; font.pixelSize: 28; font.bold: true }
+        Text { textFormat: Text.PlainText; text: "History"; color: Theme.bright; font.pixelSize: 28; font.bold: true }
         Text {
+            textFormat: Text.PlainText
             text: "Every change Nexus made to this computer's software, from here or from a terminal. The same list as  nexus history."
             color: Theme.dim
             font.pixelSize: 13
@@ -33,6 +34,7 @@ Flickable {
             Layout.bottomMargin: 8
         }
         Text {
+            textFormat: Text.PlainText
             visible: root.records.length === 0
             text: "Nothing recorded yet."
             color: Theme.dim
@@ -52,6 +54,7 @@ Flickable {
                     width: parent.width - 32
                     spacing: 16
                     Text {
+                        textFormat: Text.PlainText
                         text: modelData.when
                         color: Theme.dim
                         font.family: Theme.mono
@@ -62,8 +65,8 @@ Flickable {
                     ColumnLayout {
                         spacing: 2
                         Layout.fillWidth: true
-                        Text { text: modelData.what; color: Theme.bright; font.pixelSize: 15; font.bold: true; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                        Text { text: modelData.resolved; visible: text.length > 0; color: Theme.dim; font.pixelSize: 13; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        Text { textFormat: Text.PlainText; text: modelData.what; color: Theme.bright; font.pixelSize: 15; font.bold: true; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        Text { textFormat: Text.PlainText; text: modelData.resolved; visible: text.length > 0; color: Theme.dim; font.pixelSize: 13; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     }
                     Chip { text: modelData.outcome || "?"; good: modelData.ok; strong: !modelData.ok; Layout.alignment: Qt.AlignTop }
                 }

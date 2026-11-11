@@ -35,11 +35,19 @@ std::vector<OstreeDeployment> parseOstreeAdminStatus(const std::string& text) {
 }
 
 std::optional<ImageRef> parseImageRef(const std::string& text) {
-    const auto scheme = text.find("://");
-    if (scheme == std::string::npos) return std::nullopt;
     ImageRef r;
-    r.transport = text.substr(0, scheme + 3);
-    std::string rest = text.substr(scheme + 3);
+    std::string rest;
+    const auto scheme = text.find("://");
+    if (scheme != std::string::npos) {
+        r.transport = text.substr(0, scheme + 3);
+        rest = text.substr(scheme + 3);
+    } else if (text.rfind("ostree-unverified-registry:", 0) == 0) {
+        // rpm-ostree's own short form, no docker:// (0.1.84).
+        r.transport = "ostree-unverified-registry:";
+        rest = text.substr(r.transport.size());
+    } else {
+        return std::nullopt;
+    }
     if (rest.empty()) return std::nullopt;
     const auto at = rest.find('@');
     if (at != std::string::npos) {
@@ -60,6 +68,13 @@ std::optional<ImageRef> parseImageRef(const std::string& text) {
     }
     if (r.repository.empty()) return std::nullopt;
     return r;
+}
+
+std::string transportFor(const ImageRef& ref) {
+    if (ref.repository.rfind("ghcr.io/davidosdas-official/", 0) == 0) {
+        return "ostree-image-signed:docker://";
+    }
+    return ref.transport;
 }
 
 std::string imageRefString(const ImageRef& ref) {

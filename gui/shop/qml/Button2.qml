@@ -12,6 +12,7 @@ Button {
     rightPadding: 18
     hoverEnabled: true
     contentItem: Text {
+        textFormat: Text.PlainText
         text: root.text
         color: root.primary ? "#0b0d0c" : (root.danger ? "#fca5a5" : Theme.bright)
         font.pixelSize: 14

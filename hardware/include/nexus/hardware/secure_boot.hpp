@@ -19,7 +19,8 @@ struct SecureBootReport {
 
     // Keys the owner of this machine has enrolled, as opposed to the
     // ones the manufacturer shipped.
-    bool ownerKeysEnrolled = false;
+    bool ownerKeysEnrolled = false;   // a MOK list is present (may be only the distro's key)
+    bool shimValidationDisabled = false;   // mokutil --disable-validation
     std::size_t enrolledKeys = 0;
 
     bool efiPresent = false;

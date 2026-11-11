@@ -1546,7 +1546,7 @@ int commandInstall(
     // it anything else.
     const auto applied =
         useRpmOstree
-            ? nexus::system::layerWithRpmOstree(requested)
+            ? nexus::system::layerWithRpmOstree({requested})
             : useRpm ? nexus::system::applyWithDnf(requested)
                      : nexus::system::applyWithApt(requested);
 
@@ -2734,11 +2734,18 @@ std::string antiCheatList(std::string& note) {
 
 namespace {
 
+// At most 4 MiB (0.1.84, outside review: a "grub.cfg" on another disk
+// that is really a device would be read as root without end).
 std::string readWholeFile(const std::string& path) {
-    std::ifstream in(path);
-    std::ostringstream text;
-    text << in.rdbuf();
-    return text.str();
+    std::ifstream in(path, std::ios::binary);
+    std::string text;
+    char buffer[65536];
+    while (in && text.size() < (4u << 20)) {
+        in.read(buffer, sizeof buffer);
+        text.append(buffer, static_cast<std::size_t>(in.gcount()));
+    }
+    if (text.size() > (4u << 20)) text.resize(4u << 20);
+    return text;
 }
 
 // Every language Fedora has a pack for. Asks dnf, which reads its own
@@ -2975,6 +2982,13 @@ int commandLanguage(
 
         std::cout << "\nAdd " << language->name << "\n\n";
 
+        // Names come from dnf's answer about the repositories, not from
+        // the person: only package names go on (0.1.84, outside review).
+        wanted.erase(std::remove_if(wanted.begin(), wanted.end(), [](const std::string& n) {
+            if (nexus::system::isPackageName(n)) return false;
+            std::cerr << "Left out, not a package name: " << n << "\n";
+            return true;
+        }), wanted.end());
         if (wanted.empty()) {
             std::cout << "Already added. To switch the menus to it:\n"
                       << "    nexus language set " << language->code << "\n";
@@ -3034,11 +3048,15 @@ int commandLanguage(
 
         std::cout << "\n";
         const auto applied = image
-            ? nexus::system::layerWithRpmOstree(names)
+            ? nexus::system::layerWithRpmOstree(wanted)
             : [&] {
                   nexus::system::ApplyResult result;
                   const auto ran = nexus::system::runCommand(
-                      "dnf install -y " + names, true);
+                      "dnf install -y" + [&] {
+                          std::string q;
+                          for (const auto& w : wanted) q += " " + shellQuote(w);
+                          return q;
+                      }(), true);
                   result.exitCode = ran.exitCode;
                   result.output.push_back(ran.text);
                   result.outcome = !ran.ran ? nexus::system::ApplyOutcome::Unavailable
@@ -3166,7 +3184,7 @@ int commandLanguage(
         }
 
         const auto ran = nexus::system::runCommand(
-            "localectl set-locale 'LANG=" + locale + "'", true);
+            "localectl set-locale " + shellQuote("LANG=" + locale), true);
         if (ran.exitCode != 0) {
             std::cout << "localectl refused (exit " << ran.exitCode << "): "
                       << ran.text << "\nNothing has been changed.\n";
@@ -3322,12 +3340,14 @@ struct LookInside {
     bool mounted = false;
 
     explicit LookInside(const nexus::system::BlockDevice& device) {
-        std::string options = "ro";
+        // Another system's filesystem, maybe a USB stick's: nothing on it
+        // runs, opens a device or gains rights here (0.1.84, outside review).
+        std::string options = "ro,nosuid,nodev,noexec";
         if (device.fstype == "ext4" || device.fstype == "ext3" ||
             device.fstype == "ext2") {
-            options = "ro,noload";
+            options += ",noload";
         } else if (device.fstype == "xfs") {
-            options = "ro,norecovery";
+            options += ",norecovery";
         }
         char pattern[] = "/run/nexus-dualboot-XXXXXX";
         if (!::mkdtemp(pattern)) {
@@ -3414,7 +3434,7 @@ std::vector<nexus::system::EfiLoader> readLoaders(
             files.push_back(name);
             std::string low = name;
             std::transform(low.begin(), low.end(), low.begin(), ::tolower);
-            if (low == "grub.cfg") {
+            if (low == "grub.cfg" && file.is_regular_file() && !file.is_symlink()) {
                 grubCfg = readWholeFile(file.path());
             }
         }
@@ -3428,6 +3448,13 @@ std::vector<nexus::system::EfiLoader> readLoaders(
         found.directory = entry.path().filename().string();
         found.file = "/" + efi.filename().string() + "/" + found.directory +
                      "/" + loader;
+        // Never into GRUB's script unless it is plainly a path (0.1.84).
+        if (!nexus::system::isSafeLoaderPath(found.file) ||
+            !nexus::system::isSafeFsUuid(found.espUuid)) {
+            std::cerr << "Skipped a boot loader with an unusual name: "
+                      << found.partition << " " << found.directory << "\n";
+            continue;
+        }
         found.target = nexus::system::grubStubTarget(grubCfg);
         loaders.push_back(found);
     }
@@ -3843,7 +3870,9 @@ int commandGaming(
         if (f == GamingFix::NtsyncAtStart) std::cout << "  Load NTSync at every start: " << kNtsyncConf << "\n";
         if (f == GamingFix::SplitLockOff)
             std::cout << "  Drop the split-lock slowdown, now and at every start: " << nexus::system::kSplitLockConf
-                      << "\n    (the kernel still logs split locks; the slowdown only matters on shared servers)\n";
+                      << "\n    The slowdown is a guard: it stops one program from stalling the whole\n"
+                         "    machine with split locks on purpose. Off, any program you run could do\n"
+                         "    that. On a one-person desktop that is usually a fair trade for games.\n";
     }
     std::cout << "\nIt will not\n  Change any game, Steam, or how the system updates\n"
                  "Undo any time: sudo nexus gaming off --apply\n";
@@ -4577,7 +4606,7 @@ int commandDev(
         }
         if (ok) {
             std::string pk;
-            for (const auto& p : packages) pk += " " + p;
+            for (const auto& p : packages) pk += " " + shellQuote(p);
             std::cout << "\nInstalling. dnf shows the download size and asks first.\n\n" << std::flush;
             ok = std::system(("distrobox enter " + box + " -- sudo dnf install" + pk).c_str()) == 0;
         }
@@ -4636,7 +4665,7 @@ int commandDev(
         }
     }
     std::string pk;
-    for (const auto& p : packages) pk += " " + p;
+    for (const auto& p : packages) pk += " " + shellQuote(p);
     const bool ok = std::system(("distrobox enter " + box + " -- sudo dnf remove" + pk).c_str()) == 0;
     record.outcome = ok ? "removed" : "failed";
     record.succeeded = ok; record.exitCode = ok ? 0 : 1;
@@ -4876,6 +4905,7 @@ int commandRebase(const std::vector<std::string>& raw, bool apply, const std::st
                      "  nexus rebase kde | minimal            switch edition (apps you added stay)\n"
                      "  nexus rebase sha256:<digest>          pin one exact build (stops updates)\n"
                      "  nexus rebase latest                   follow the newest build again\n"
+                     "  nexus rebase signed                   check every update's signature\n"
                      "Older builds and their digests: github.com/DAVIDOSDAS-official/nexus-core/pkgs/container/nexus-core/versions\n";
         return 0;
     }
@@ -4889,6 +4919,8 @@ int commandRebase(const std::vector<std::string>& raw, bool apply, const std::st
         if (edition.empty()) { std::cout << "Which edition? nexus rebase kde | minimal\n"; return 2; }
         next.digest.clear(); next.tag = edition;
         what = "the newest " + edition + " build, and its updates";
+    } else if (target == "signed") {
+        what = "the same image, with every update's signature checked";
     } else if (validDigest(target)) {
         next.tag.clear(); next.digest = target;
         what = "exactly build " + shortDigest(target) + " (no updates until: nexus rebase latest)";
@@ -4896,6 +4928,20 @@ int commandRebase(const std::vector<std::string>& raw, bool apply, const std::st
         std::cout << "Not something to rebase to: " << target << "\n"
                      "    kde | minimal | latest | sha256:<64 hex characters>\n";
         return 2;
+    }
+    // A Nexus image is always followed signature-checked from here on,
+    // whatever the machine was installed with (0.1.84).
+    next.transport = transportFor(next);
+    if (next.transport.rfind("ostree-image-signed:", 0) == 0) {
+        std::ifstream pol("/etc/containers/policy.json");
+        std::stringstream pb;
+        pb << pol.rdbuf();
+        if (!policyRequiresKey(pb.str(), "ghcr.io/davidosdas-official", "/etc/pki/containers/nexus-core.pub")) {
+            std::cout << "This machine's /etc/containers/policy.json does not require the Nexus key,\n"
+                         "so a signature-checked switch would be refused. First:\n"
+                         "    sudo python3 /usr/libexec/nexus/merge-policy\n";
+            return 1;
+        }
     }
     const std::string nextRef = imageRefString(next);
     if (nextRef == imageRefString(*ref)) {
@@ -5179,7 +5225,11 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
     {
         const auto sb = nexus::hardware::SecureBootDetector("/").detect();
         if (sb.state == nexus::hardware::SecureBootState::Enabled)
-            line(" ok ", "Secure Boot", "on: the firmware starts only signed boot code.");
+            line(sb.shimValidationDisabled ? "warn" : " ok ", "Secure Boot",
+                 sb.shimValidationDisabled
+                     ? "on, but shim's checking is turned off: it starts unsigned kernels."
+                     : "on: the firmware starts only signed boot loaders and kernels.",
+                 sb.shimValidationDisabled ? "sudo mokutil --enable-validation   (then restart)" : "");
         else if (sb.state == nexus::hardware::SecureBootState::Disabled)
             line("warn", "Secure Boot", "off: the firmware would start unsigned boot code too.",
                  "firmware settings -> Secure Boot; see: nexus secure-boot");
@@ -5227,7 +5277,7 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
             }
             else if (!d.image.empty())
                 line("warn", "System image", "updates are not signature-checked: " + d.image,
-                     "nexus rebase kde   (the signed Nexus image)");
+                     "sudo nexus rebase signed --apply");
             const auto days = nexus::system::daysSince(d.date, static_cast<long>(std::time(nullptr)));
             if (days) {
                 if (*days <= 14) line(" ok ", "Updates", *days == 0 ? std::string("system built today.")
@@ -6772,7 +6822,7 @@ int commandGamecheck(const std::vector<std::string>& words) {
         }
         std::cout << "\n  What " << launcher << " can see on this machine\n";
         const auto perms = nexus::system::runCommand(
-            "flatpak info --show-permissions " + app + " 2>/dev/null",
+            "flatpak info --show-permissions " + shellQuote(app) + " 2>/dev/null",
             false);
         if (!perms.ok ||
             perms.text.find("[Context]") == std::string::npos) {
@@ -8506,7 +8556,12 @@ int commandSecureBoot(const std::string& root) {
     std::cout << "Secure Boot: " << toString(report.state) << "\n";
 
     if (report.ownerKeysEnrolled) {
-        std::cout << "Owner keys:  enrolled\n";
+        std::cout << "MOK list:    present (Fedora's shim puts its own key there too;\n"
+                     "             mokutil --list-enrolled shows whose keys they are)\n";
+    }
+    if (report.shimValidationDisabled) {
+        std::cout << "Shim:        checking turned OFF (mokutil --disable-validation):\n"
+                     "             the firmware checks shim, and shim checks nothing.\n";
     }
 
     for (const std::string& problem : report.unreadable) {
@@ -8535,16 +8590,10 @@ int commandSecureBoot(const std::string& root) {
                 << "The firmware will only boot a kernel signed by a "
                 << "key it trusts.\n";
 
-            if (!report.ownerKeysEnrolled) {
-                std::cout
-                    << "\nOnly the manufacturer's keys are enrolled, "
-                    << "so a kernel Nexus\nbuilt would not boot as "
-                    << "things stand.\n";
-            } else {
-                std::cout
-                    << "\nA key of your own is enrolled, so a kernel "
-                    << "signed with it\nwould boot.\n";
-            }
+            std::cout
+                << "\nNexus uses Fedora's signed shim, boot loader and kernel, so it\n"
+                << "boots as it is. Not covered by Secure Boot: the initramfs and\n"
+                << "GRUB's settings files on /boot.\n";
 
             break;
 

@@ -25,8 +25,9 @@ Flickable {
             ColumnLayout {
                 spacing: 4
                 Layout.fillWidth: true
-                Text { text: "Sources"; color: Theme.bright; font.pixelSize: 28; font.bold: true }
+                Text { textFormat: Text.PlainText; text: "Sources"; color: Theme.bright; font.pixelSize: 28; font.bold: true }
                 Text {
+                    textFormat: Text.PlainText
                     text: "Nexus Shop shows apps from these sources and nowhere else. None can be added from here: a source Nexus does not know is not one it can vouch for."
                     color: Theme.dim
                     font.pixelSize: 13
@@ -56,11 +57,12 @@ Flickable {
                     spacing: 8
                     RowLayout {
                         spacing: 10
-                        Text { text: "●"; color: modelData.ready ? "#4ade80" : Theme.warn; font.pixelSize: 13 }
-                        Text { text: modelData.name; color: Theme.bright; font.pixelSize: 18; font.bold: true }
+                        Text { textFormat: Text.PlainText; text: "●"; color: modelData.ready ? "#4ade80" : Theme.warn; font.pixelSize: 13 }
+                        Text { textFormat: Text.PlainText; text: modelData.name; color: Theme.bright; font.pixelSize: 18; font.bold: true }
                         Chip { text: modelData.ready ? "available" : "not available"; good: modelData.ready; strong: !modelData.ready }
                     }
                     Text {
+                        textFormat: Text.PlainText
                         text: modelData.about || ""
                         visible: text.length > 0
                         color: Theme.text
@@ -69,6 +71,7 @@ Flickable {
                         Layout.fillWidth: true
                     }
                     Text {
+                        textFormat: Text.PlainText
                         text: modelData.detail || ""
                         color: Theme.dim
                         font.pixelSize: 13
@@ -80,6 +83,7 @@ Flickable {
         }
 
         Text {
+            textFormat: Text.PlainText
             Layout.topMargin: 8
             text: "Not here on purpose: installers from websites, and anything that asks you to add a source by hand. Fedora's own Flatpaks are not listed yet: their app list is not on this computer in a form the Shop can read."
             color: Theme.dim

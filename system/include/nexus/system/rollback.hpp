@@ -35,6 +35,13 @@ struct ImageRef {
 std::optional<ImageRef> parseImageRef(const std::string& text);
 std::string imageRefString(const ImageRef& ref);
 
+// The transport a Nexus image should be followed with: signature-checked
+// (ostree-image-signed:docker://) for anything under
+// ghcr.io/davidosdas-official/, unchanged for anything else (0.1.84,
+// outside review: rebasing kept an unverified transport as it was, so
+// a machine installed before signing could not be moved to it).
+std::string transportFor(const ImageRef& ref);
+
 // sha256: and 64 lowercase hex characters.
 bool validDigest(const std::string& digest);
 

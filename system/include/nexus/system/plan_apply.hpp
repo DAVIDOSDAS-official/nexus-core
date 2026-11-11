@@ -61,7 +61,10 @@ ApplyResult applyWithDnf(const std::string& requested);
 // one, so nothing takes effect until a reboot. The result says so:
 // Staged rather than Applied, because a change that has not happened
 // yet must not be reported as one that has.
-ApplyResult layerWithRpmOstree(const std::string& requested);
+// Every name is checked (isPackageName) and quoted; a name that is not
+// a package name refuses the whole call (0.1.84, outside review: names
+// from repository metadata reached a root shell unquoted).
+ApplyResult layerWithRpmOstree(const std::vector<std::string>& names);
 
 // Whether this machine is image-based: /usr read-only and rpm-ostree
 // present to layer onto it.

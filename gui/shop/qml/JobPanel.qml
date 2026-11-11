@@ -28,6 +28,7 @@ Rectangle {
             spacing: 12
             BusyIndicator { visible: shop.jobRunning; running: shop.jobRunning; implicitWidth: 24; implicitHeight: 24 }
             Text {
+                textFormat: Text.PlainText
                 text: shop.jobRunning ? shop.jobTitle + "…"
                     : shop.jobResult === "done" ? shop.jobTitle + ": done"
                     : shop.jobResult === "cancelled" ? shop.jobTitle + ": cancelled, nothing changed"
@@ -45,6 +46,7 @@ Rectangle {
             }
         }
         Text {
+            textFormat: Text.PlainText
             text: root.lastLines
             visible: text.length > 0
             color: Theme.dim

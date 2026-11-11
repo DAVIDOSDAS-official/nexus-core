@@ -11,7 +11,7 @@ enum class ResolutionPlanStatus {
 };
 
 struct ResolutionPlan {
-    ResolutionPlanStatus status;
+    ResolutionPlanStatus status = ResolutionPlanStatus::Failed;   // never "Ready" by accident (0.1.84)
     std::string reason;
 
     std::vector<std::string> install;

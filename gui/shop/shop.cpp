@@ -452,6 +452,10 @@ QVariantMap Shop::details(const QString& key) const {
         if (license.isEmpty()) license = q(offer->license);
         if (screenshots.isEmpty()) {
             for (const auto& shot : offer->screenshots) {
+                // https only: a plain http:// address tells whoever is on
+                // the network which app you are looking at, and lets them
+                // swap the picture (0.1.84, outside review).
+                if (shot.rfind("https://", 0) != 0) continue;
                 screenshots << q(shot);
             }
         }

@@ -11,6 +11,7 @@ Rectangle {
     radius: 6
     color: good ? Theme.okSoft : (strong ? Theme.accentSoft : "#1b201e")
     Text {
+        textFormat: Text.PlainText
         id: label
         anchors.centerIn: parent
         font.pixelSize: 12

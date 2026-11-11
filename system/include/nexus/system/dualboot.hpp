@@ -85,6 +85,15 @@ std::string systemName(const OsRelease& release);
 std::string grubStubTarget(const std::string& grubCfg);
 
 // A program the firmware can start, on an EFI partition.
+// What may be written into GRUB's own script from another system's
+// boot partition (0.1.84, outside review: a folder named
+// "x; }; set timeout=0; ..." on another ESP became GRUB commands run at
+// every boot). A loader path: /EFI/... of letters, digits and . _ -;
+// a filesystem UUID: hex digits and -. Anything else is left out of
+// the menu, never escaped and hoped for.
+bool isSafeLoaderPath(const std::string& path);
+bool isSafeFsUuid(const std::string& uuid);
+
 struct EfiLoader {
     std::string partition;   // /dev/nvme0n1p1
     std::string espUuid;     // 8687-F76C

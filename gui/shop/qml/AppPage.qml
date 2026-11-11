@@ -31,7 +31,7 @@ Flickable {
             text: "‹  Back"
             flat: true
             onClicked: root.back()
-            contentItem: Text { text: parent.text; color: Theme.dim; font.pixelSize: 14 }
+            contentItem: Text { textFormat: Text.PlainText; text: parent.text; color: Theme.dim; font.pixelSize: 14 }
             background: Rectangle { color: "transparent" }
         }
 
@@ -44,6 +44,7 @@ Flickable {
                 spacing: 6
                 Layout.fillWidth: true
                 Text {
+                    textFormat: Text.PlainText
                     text: root.app.name || ""
                     color: Theme.bright
                     font.pixelSize: 28
@@ -52,6 +53,7 @@ Flickable {
                     Layout.fillWidth: true
                 }
                 Text {
+                    textFormat: Text.PlainText
                     text: root.app.summary || ""
                     color: Theme.dim
                     font.pixelSize: 15
@@ -85,6 +87,7 @@ Flickable {
                     spacing: 12
                     Chip { text: "NEXUS SUGGESTS"; strong: true }
                     Text {
+                        textFormat: Text.PlainText
                         text: root.app.suggested || ""
                         color: Theme.bright
                         font.pixelSize: 20
@@ -96,8 +99,9 @@ Flickable {
                     RowLayout {
                         spacing: 10
                         Layout.fillWidth: true
-                        Text { text: "✓"; color: Theme.ok; font.pixelSize: 14; Layout.alignment: Qt.AlignTop }
+                        Text { textFormat: Text.PlainText; text: "✓"; color: Theme.ok; font.pixelSize: 14; Layout.alignment: Qt.AlignTop }
                         Text {
+                            textFormat: Text.PlainText
                             text: modelData
                             color: Theme.text
                             font.pixelSize: 14
@@ -107,6 +111,7 @@ Flickable {
                     }
                 }
                 Text {
+                    textFormat: Text.PlainText
                     visible: (root.app.otherNote || "").length > 0
                     text: root.app.otherNote || ""
                     color: Theme.dim
@@ -119,6 +124,7 @@ Flickable {
 
         // Every source, side by side.
         Text {
+            textFormat: Text.PlainText
             text: (root.app.sourceCount || 0) > 1 ? "Every source, side by side" : "Where it comes from"
             color: Theme.dim
             font.pixelSize: 15
@@ -142,6 +148,7 @@ Flickable {
                         Layout.fillWidth: true
                         spacing: 10
                         Text {
+                            textFormat: Text.PlainText
                             text: modelData.source
                             color: Theme.bright
                             font.pixelSize: 16
@@ -155,12 +162,12 @@ Flickable {
                         columns: 2
                         columnSpacing: 18
                         rowSpacing: 6
-                        Text { text: "Kind"; color: Theme.dim; font.pixelSize: 13 }
-                        Text { text: modelData.kind; color: Theme.text; font.pixelSize: 13 }
-                        Text { text: "Packaged by"; color: Theme.dim; font.pixelSize: 13 }
-                        Text { text: modelData.who; color: Theme.text; font.pixelSize: 13 }
-                        Text { text: "Restart"; color: Theme.dim; font.pixelSize: 13 }
-                        Text { text: modelData.restart; color: modelData.restart === "not needed" ? Theme.text : Theme.warn; font.pixelSize: 13 }
+                        Text { textFormat: Text.PlainText; text: "Kind"; color: Theme.dim; font.pixelSize: 13 }
+                        Text { textFormat: Text.PlainText; text: modelData.kind; color: Theme.text; font.pixelSize: 13 }
+                        Text { textFormat: Text.PlainText; text: "Packaged by"; color: Theme.dim; font.pixelSize: 13 }
+                        Text { textFormat: Text.PlainText; text: modelData.who; color: Theme.text; font.pixelSize: 13 }
+                        Text { textFormat: Text.PlainText; text: "Restart"; color: Theme.dim; font.pixelSize: 13 }
+                        Text { textFormat: Text.PlainText; text: modelData.restart; color: modelData.restart === "not needed" ? Theme.text : Theme.warn; font.pixelSize: 13 }
                     }
                     // Flathub: the Shop does it.
                     RowLayout {
@@ -184,6 +191,7 @@ Flickable {
                         Layout.fillWidth: true
                         spacing: 8
                         Text {
+                            textFormat: Text.PlainText
                             text: "Joins the system image: needs your password, and works after the next restart. From a terminal for now:"
                             color: Theme.dim
                             font.pixelSize: 13
@@ -249,6 +257,7 @@ Flickable {
         }
 
         Text {
+            textFormat: Text.PlainText
             text: "About"
             color: Theme.dim
             font.pixelSize: 15
@@ -265,6 +274,7 @@ Flickable {
             Layout.fillWidth: true
         }
         Text {
+            textFormat: Text.PlainText
             visible: (root.app.homepage || "").length > 0
             text: "Website: " + (root.app.homepage || "")
             color: Theme.accentText

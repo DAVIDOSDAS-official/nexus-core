@@ -18,6 +18,7 @@ Item {
         border.color: Theme.line
         visible: image.status !== Image.Ready
         Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             text: root.name.length > 0 ? root.name.charAt(0).toUpperCase() : "?"
             color: Theme.accentText

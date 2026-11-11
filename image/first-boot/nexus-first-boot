@@ -195,7 +195,8 @@ add_english_layout
 # stopped the login screen from starting. Lines an earlier version
 # wrote there are removed.
 labwc_keyboard_file() {
-    # $1: the home folder; $2: owner, or empty for /etc/skel.
+    # $1: the home folder. Run as its owner for a person's home (see
+    # sync_desktop_keyboard), as root only for /etc/skel.
     local dir="$1/.config/lxqt/labwc"
 
     if [ ! -d "${dir}" ]; then
@@ -211,12 +212,6 @@ labwc_keyboard_file() {
         [ -n "${variants}" ] && printf 'XKB_DEFAULT_VARIANT=%s\n' "${variants}"
         [ -n "${options}" ] && printf 'XKB_DEFAULT_OPTIONS=%s\n' "${options}"
     } >> "${file}"
-
-    if [ -n "$2" ]; then
-        # .config and .config/lxqt too, in case they were made here.
-        chown "$2" "$1/.config" "$1/.config/lxqt" 2> /dev/null
-        chown -R "$2" "${dir}"
-    fi
 }
 
 sync_desktop_keyboard() {
@@ -247,15 +242,22 @@ sync_desktop_keyboard() {
             ;;
     esac
 
+    # Each person's file is written BY that person (runuser), never by
+    # root: root writing (and chown-ing) inside a home follows whatever
+    # links its owner put there -- `ln -s /etc ~/.config/lxqt` made
+    # root give /etc to that user (0.1.84, outside review). As the
+    # person, a link only reaches what they could write anyway.
     local name uid gid home
     while IFS=: read -r name _ uid gid _ home _; do
         [ "${uid}" -ge 1000 ] 2> /dev/null || continue
         [ "${uid}" -lt 60000 ] || continue
         [ -d "${home}" ] || continue
-        labwc_keyboard_file "${home}" "${uid}:${gid}"
+        runuser -u "${name}" -- env layouts="${layouts}" variants="${variants}" \
+            options="${options}" bash -c "$(declare -f labwc_keyboard_file)
+labwc_keyboard_file \"\$1\"" _ "${home}" < /dev/null || true
     done < <(getent passwd)
 
-    labwc_keyboard_file /etc/skel ""
+    labwc_keyboard_file /etc/skel
 
     case "${layouts}" in
         *,*) echo "Keyboard (desktop): ${layouts}. Switch with Alt+Shift." ;;

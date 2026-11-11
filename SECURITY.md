@@ -24,7 +24,8 @@ Anything that lets someone do more than they should, for example:
 - an update or image that is accepted without a valid Nexus-CORE
   signature;
 - `nexus` changing the system without `--apply`, or doing more than
-  its "What Nexus will do" list says;
+  its "What Nexus will do" list says (the services below are the only
+  things that change it on their own);
 - a way for a normal user to gain root through Nexus, the Shop, or
   the services Nexus adds;
 - the installer or `nexus dualboot` changing another system's
@@ -33,6 +34,25 @@ Anything that lets someone do more than they should, for example:
 
 Problems in Fedora's own packages belong to Fedora; Nexus-CORE picks
 up their fixes in the weekly image.
+
+## What changes without `--apply`, by design
+
+A few services in the image act on their own, at boot, without
+anyone typing a command:
+
+- **first boot** (`nexus-first-boot`): after the questions on the
+  console, installs the add-ons chosen there and writes the keyboard
+  layout for each person (as that person, not as root);
+- **boot check** (`nexus-boot-check`): if a new version does not reach
+  the login screen, the machine goes back to the previous one by
+  itself;
+- **boot entry** (`nexus-boot-entry`): on the first start, removes
+  stale "Fedora" entries from the firmware's boot list -- only ones
+  whose partition no longer holds that loader;
+- **boot menu** (`nexus-boot-menu`): sets how long the boot menu
+  waits;
+- **update check** (daily, as the user): only looks; installing an
+  update always needs `nexus update --apply` or the Shop's button.
 
 ## Supported versions
 

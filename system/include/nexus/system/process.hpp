@@ -69,6 +69,14 @@ std::string shellQuote(const std::string& text);
 // in from the command line, before it is used anywhere.
 bool isPackageName(const std::string& name);
 
+// Runs a program directly -- no /bin/sh, so nothing is parsed and only
+// argv is visible in /proc -- with `input` written to its stdin and its
+// stdout (not stderr) returned. For secrets: they go through `input`,
+// never argv (0.1.84, outside review: `printf '<key>' | wg pubkey` put
+// the WireGuard private key in sh's arguments, which every local user
+// can read). argv[0] is looked up in PATH only if it has no '/'.
+ProcessResult runProgram(const std::vector<std::string>& argv, const std::string& input = "");
+
 // A scratch folder only this process can enter: mkdtemp, mode 0700,
 // owned by whoever runs it -- root under sudo. A file inside it cannot
 // be planted beforehand by anyone else, as a symlink or otherwise.

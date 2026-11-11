@@ -38,6 +38,7 @@ Flickable {
                 spacing: 14
                 BusyIndicator { running: shop.loading; implicitWidth: 28; implicitHeight: 28 }
                 Text {
+                    textFormat: Text.PlainText
                     text: "Reading the app lists…"
                     color: Theme.text
                     font.pixelSize: 15
@@ -51,12 +52,14 @@ Flickable {
             Layout.fillWidth: true
             visible: !shop.loading
             Text {
+                textFormat: Text.PlainText
                 text: "Nexus picks"
                 color: Theme.bright
                 font.pixelSize: 22
                 font.bold: true
             }
             Text {
+                textFormat: Text.PlainText
                 text: "Chosen by the Nexus project, not ranked by downloads or ratings."
                 color: Theme.dim
                 font.pixelSize: 13
@@ -81,6 +84,7 @@ Flickable {
         }
 
         Text {
+            textFormat: Text.PlainText
             text: "Explore"
             color: Theme.bright
             font.pixelSize: 22
@@ -112,6 +116,7 @@ Flickable {
                         border.color: cat.activeFocus ? Theme.accent : Theme.line
                     }
                     contentItem: Text {
+                        textFormat: Text.PlainText
                         text: cat.text
                         color: Theme.bright
                         font.pixelSize: 15

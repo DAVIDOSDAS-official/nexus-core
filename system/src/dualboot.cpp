@@ -386,7 +386,27 @@ std::vector<OtherSystem> matchSystems(
     return systems;
 }
 
+bool isSafeLoaderPath(const std::string& path) {
+    if (path.size() < 2 || path.size() > 255 || path[0] != '/') return false;
+    if (path.find("/../") != std::string::npos || path.find("//") != std::string::npos) return false;
+    for (unsigned char c : path) {
+        if (!std::isalnum(c) && c != '/' && c != '.' && c != '_' && c != '-') return false;
+    }
+    return true;
+}
+
+bool isSafeFsUuid(const std::string& uuid) {
+    if (uuid.empty() || uuid.size() > 64) return false;
+    for (unsigned char c : uuid) {
+        if (!std::isxdigit(c) && c != '-') return false;
+    }
+    return true;
+}
+
 std::string grubEntry(const OtherSystem& system) {
+    if (!isSafeLoaderPath(system.loader.file) || !isSafeFsUuid(system.loader.espUuid)) {
+        return "";
+    }
     std::ostringstream out;
     out << "menuentry '" << menuTitle(system.name) << "' --id "
         << system.entryId << " {\n"
@@ -395,7 +415,7 @@ std::string grubEntry(const OtherSystem& system) {
         << "\tinsmod chain\n"
         << "\tsearch --no-floppy --fs-uuid --set=root "
         << system.loader.espUuid << "\n"
-        << "\tchainloader " << system.loader.file << "\n"
+        << "\tchainloader '" << system.loader.file << "'\n"
         << "}\n";
     return out.str();
 }
@@ -404,7 +424,8 @@ std::string grubBlock(const std::vector<OtherSystem>& systems) {
     std::ostringstream out;
     int count = 0;
     for (const auto& system : systems) {
-        if (system.loader.file.empty() || system.entryId.empty()) {
+        if (system.loader.file.empty() || system.entryId.empty() ||
+            grubEntry(system).empty()) {
             continue;
         }
         if (count++ == 0) {

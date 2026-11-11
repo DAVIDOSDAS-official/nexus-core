@@ -3,7 +3,7 @@
 Updated 1 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.83** (patches 1–109). **668 automated tests**, all passing.
+**Version 0.1.84** (patches 1–110). **677 automated tests**, all passing.
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -635,6 +635,67 @@ container and could serve Caddy's TLS key.
 - Still open: M3 (David tests: remove 8080 from the firewall, connect
   from the phone), the Caddy link curl test (moot after the fix, but
   confirms the finding), M4 tlog, L4 builder by digest, main.cpp split.
+
+**11 Nov: weekly run, minimal failed** at dnf ("Unable to validate
+zchunk checksums" = a Fedora mirror mid-sync); KDE fine; re-run.
+
+**Adversarial audit of 0.1.82 (24-page PDF, 11 Nov):** no critical, no
+default path to root; 668 tests under ASan/UBSan, ~976k fuzz runs.
+H1 key in GitHub secrets (David decides: sign locally vs protected
+environment; rotate). M1 WireGuard key in sh's argv (PoC 20/20). M2
+ESP folder names into GRUB custom.cfg unescaped. M3 first-boot chown
+through user symlinks (when the marker was not written). M4 repo
+metadata names into `rpm-ostree install` unquoted (PoC ran id as root).
+M5 `nexus rebase kde` could not move unverified origins to signed. M6
+builder :latest privileged. L1-L8, I1-I7.
+
+**Patch 110 (0.1.84):**
+- M4: layerWithRpmOstree(vector) checks isPackageName and quotes each
+  (Refused otherwise); language add drops non-package names and quotes
+  the dnf line; locale, dev box package lists and flatpak app quoted.
+  tools/check-shell-quoting.py runs in ctest (ShellQuoting): fails on a
+  value joined into runCommand/system/popen without shellQuote (it
+  cannot see commands built in a variable first -- hence the checks at
+  the source too). +1 test (PlanApplyTest).
+- M1: runProgram(argv, stdin) in process.{hpp,cpp} (posix_spawnp,
+  pipes, no shell, SIGPIPE ignored while writing); publicKeyOf passes
+  the key on wg's stdin. Test: a /proc/*/cmdline watcher over 200 runs
+  with a run-time secret sees it 0 times (the old sh way: 8 of 8 in a
+  side check). +2 tests.
+- M2: isSafeLoaderPath / isSafeFsUuid; readLoaders skips and grubEntry
+  refuses anything else; chainloader path in quotes. +1 test with the
+  reviewer's exact name. (USB disks are still scanned -- open.)
+- M3: first-boot writes each person's labwc keyboard file with
+  `runuser -u <name>`, never root; no chown. Replayed the attack with a
+  real user: Permission denied, target stays root:root.
+- M5: parseImageRef reads `ostree-unverified-registry:` too;
+  transportFor() makes every ghcr.io/davidosdas-official image
+  ostree-image-signed:docker://; `nexus rebase signed` (and every
+  rebase) switches to it after checking policy.json; the audit's advice
+  points there. +1 test.
+- L2: SecureBoot/SetupMode/MokListRT read by exact GUID; MokSBStateRT
+  (shim validation off) read and reported (audit warn, fix mokutil
+  --enable-validation); "A key of your own is enrolled" replaced (shim
+  15.3+ copies Fedora's key into MokListRT). +2 tests.
+- L3: dualboot mounts ro,nosuid,nodev,noexec(+noload/norecovery);
+  readWholeFile caps at 4 MiB; grub.cfg only if a regular file.
+- L4: textFormat: Text.PlainText on every Shop Text (76) and Chip;
+  screenshots https only. qmllint: no new warnings; Shop starts
+  offscreen without QML errors.
+- L5: compareFragment with a NUL byte compares bytes (no hang). +1 test.
+- L7: installer refuses to shrink if a swsuspend (hibernated) swap is
+  on the disk or the ext4 has needs_recovery; peek mount with noload.
+- I1 boot-check matches process names (-x), not any command line.
+  I2 registry login through env:. I4 ResolutionPlan status defaults to
+  Failed. I5 gaming says what the split-lock guard protects.
+- Docs: image/signing/README.md no longer claims a key "only the
+  maintainer holds"; SECURITY.md lists what changes without --apply.
+- Open: H1 + key rotation + Rekor (decisions), M6/L6 digests for
+  bootc-image-builder, skopeo, fedora-bootc (David runs skopeo), I2
+  persist-credentials (sed on David's pinned workflows), L1 freshness
+  warning, L8 rootless servers, I3 history source labels, USB disks in
+  dualboot, systemd hardening of root units, I7 in SECURITY.md (done
+  as part of the list).
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

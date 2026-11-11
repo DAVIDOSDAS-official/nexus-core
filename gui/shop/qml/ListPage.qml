@@ -22,12 +22,14 @@ Item {
         ColumnLayout {
             spacing: 4
             Text {
+                textFormat: Text.PlainText
                 text: root.title
                 color: Theme.bright
                 font.pixelSize: 24
                 font.bold: true
             }
             Text {
+                textFormat: Text.PlainText
                 text: root.subtitle
                 color: Theme.dim
                 font.pixelSize: 13
@@ -47,6 +49,7 @@ Item {
             model: root.apps
             ScrollBar.vertical: ScrollBar {}
             Text {
+                textFormat: Text.PlainText
                 visible: root.apps.length === 0
                 width: grid.width - 16
                 text: "Nothing in the sources matches that. Try another word, or what the app does (“video editor”)."

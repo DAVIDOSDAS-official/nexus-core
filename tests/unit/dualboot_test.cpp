@@ -211,7 +211,7 @@ TEST(Dualboot, GrubEntryChainloads) {
         << entry;
     EXPECT_NE(entry.find("search --no-floppy --fs-uuid --set=root 8687-F76C"),
               std::string::npos);
-    EXPECT_NE(entry.find("chainloader /EFI/ubuntu/shimx64.efi"),
+    EXPECT_NE(entry.find("chainloader '/EFI/ubuntu/shimx64.efi'"),
               std::string::npos);
 }
 
@@ -258,4 +258,29 @@ TEST(Dualboot, BlockReplacedKeepingTheRest) {
 TEST(Dualboot, Sizes) {
     EXPECT_EQ(sizeInWords(102400000000u), "95.4 GiB");
     EXPECT_EQ(sizeInWords(629145600u), "600 MiB");
+}
+
+// An outside review (0.1.84): another system's ESP folder named as GRUB
+// script ran at every boot. Such a system is left out of the menu.
+TEST(Dualboot, AHostileLoaderNameNeverReachesGrub) {
+    using namespace nexus::system;
+    OtherSystem evil;
+    evil.name = "Evil";
+    evil.entryId = "evil";
+    evil.loader.espUuid = "8687-F76C";
+    evil.loader.file = "/EFI/x; }; set timeout=0; set default=0; menuentry y { true #/shimx64.efi";
+    EXPECT_EQ(grubEntry(evil), "");
+    EXPECT_EQ(grubBlock({evil}).find("set timeout"), std::string::npos);
+
+    OtherSystem uuid = evil;
+    uuid.loader.file = "/EFI/ubuntu/shimx64.efi";
+    uuid.loader.espUuid = "8687 }; set default=0";
+    EXPECT_EQ(grubEntry(uuid), "");
+
+    EXPECT_TRUE(isSafeLoaderPath("/EFI/Microsoft/Boot/bootmgfw.efi"));
+    EXPECT_FALSE(isSafeLoaderPath("/EFI/a b/x.efi"));
+    EXPECT_FALSE(isSafeLoaderPath("/EFI/../x.efi"));
+    EXPECT_FALSE(isSafeLoaderPath("/EFI/$x/y.efi"));
+    EXPECT_TRUE(isSafeFsUuid("8687-F76C"));
+    EXPECT_TRUE(isSafeFsUuid("5e2a8b0c-1f3d-4c2e-9a7b-0d6e5f4c3b2a"));
 }

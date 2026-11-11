@@ -69,3 +69,26 @@ TEST(RollbackTest, Digests) {
     EXPECT_FALSE(validDigest(B));
     EXPECT_FALSE(validDigest("sha256:" + B + "; rm -rf /"));
 }
+
+// An outside review (0.1.84): a machine on an unverified origin was told
+// to run `nexus rebase kde`, which could not read rpm-ostree's short
+// form at all and kept the long form unverified.
+TEST(RollbackTest, UnverifiedNexusOriginsMoveToSigned) {
+    using namespace nexus::system;
+    const auto shortForm = parseImageRef("ostree-unverified-registry:ghcr.io/davidosdas-official/nexus-core:kde");
+    ASSERT_TRUE(shortForm.has_value());
+    EXPECT_EQ(shortForm->repository, "ghcr.io/davidosdas-official/nexus-core");
+    EXPECT_EQ(shortForm->tag, "kde");
+    EXPECT_EQ(transportFor(*shortForm), "ostree-image-signed:docker://");
+
+    const auto longForm = parseImageRef("ostree-unverified-image:docker://ghcr.io/davidosdas-official/nexus-core:minimal");
+    ASSERT_TRUE(longForm.has_value());
+    ImageRef next = *longForm;
+    next.transport = transportFor(next);
+    EXPECT_EQ(imageRefString(next), "ostree-image-signed:docker://ghcr.io/davidosdas-official/nexus-core:minimal");
+
+    // Not a Nexus image: left as it is.
+    const auto other = parseImageRef("ostree-unverified-registry:quay.io/fedora/fedora-kinoite:44");
+    ASSERT_TRUE(other.has_value());
+    EXPECT_EQ(transportFor(*other), "ostree-unverified-registry:");
+}

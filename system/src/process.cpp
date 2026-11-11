@@ -3,11 +3,17 @@
 #include <filesystem>
 #include <vector>
 #include <unistd.h>
+#include <spawn.h>
+#include <fcntl.h>
+#include <csignal>
+#include <sstream>
 #include <cctype>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <sys/wait.h>
+
+extern char** environ;
 
 namespace nexus::system {
 
@@ -27,6 +33,73 @@ bool isPackageName(const std::string& name) {
         if (!fine) return false;
     }
     return true;
+}
+
+ProcessResult runProgram(const std::vector<std::string>& argv, const std::string& input) {
+    ProcessResult result;
+    if (argv.empty()) return result;
+
+    int toChild[2], fromChild[2];
+    if (::pipe2(toChild, O_CLOEXEC) != 0) return result;
+    if (::pipe2(fromChild, O_CLOEXEC) != 0) {
+        ::close(toChild[0]); ::close(toChild[1]);
+        return result;
+    }
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, toChild[0], 0);
+    posix_spawn_file_actions_adddup2(&actions, fromChild[1], 1);
+    posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0);
+
+    std::vector<char*> args;
+    for (const auto& a : argv) args.push_back(const_cast<char*>(a.c_str()));
+    args.push_back(nullptr);
+
+    pid_t pid = 0;
+    const int spawned = ::posix_spawnp(&pid, argv[0].c_str(), &actions, nullptr, args.data(), environ);
+    posix_spawn_file_actions_destroy(&actions);
+    ::close(toChild[0]);
+    ::close(fromChild[1]);
+    if (spawned != 0) {
+        ::close(toChild[1]);
+        ::close(fromChild[0]);
+        return result;
+    }
+    result.ran = true;
+
+    // Small inputs (keys): written whole, then closed so the child sees
+    // the end.
+    // A child that exits without reading would otherwise kill us with
+    // SIGPIPE; the write just fails instead.
+    struct sigaction ignore {}, previous {};
+    ignore.sa_handler = SIG_IGN;
+    ::sigaction(SIGPIPE, &ignore, &previous);
+    std::size_t done = 0;
+    while (done < input.size()) {
+        const ssize_t w = ::write(toChild[1], input.data() + done, input.size() - done);
+        if (w < 0) { if (errno == EINTR) continue; break; }
+        done += static_cast<std::size_t>(w);
+    }
+    ::close(toChild[1]);
+    ::sigaction(SIGPIPE, &previous, nullptr);
+
+    char buffer[4096];
+    while (true) {
+        const ssize_t n = ::read(fromChild[0], buffer, sizeof buffer);
+        if (n < 0) { if (errno == EINTR) continue; break; }
+        if (n == 0) break;
+        result.text.append(buffer, static_cast<std::size_t>(n));
+    }
+    ::close(fromChild[0]);
+
+    int status = 0;
+    while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+    result.exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + (WIFSIGNALED(status) ? WTERMSIG(status) : 0);
+    result.ok = result.exitCode == 0;
+    std::istringstream lines(result.text);
+    std::string line;
+    while (std::getline(lines, line)) result.lines.push_back(line);
+    return result;
 }
 
 ScratchDirectory::ScratchDirectory() {

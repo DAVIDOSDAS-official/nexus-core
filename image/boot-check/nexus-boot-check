@@ -55,8 +55,12 @@ if [ "${current}" = "${last_good}" ]; then
 fi
 
 desktop_up() {
-    # the login screen, or a desktop someone is already logged in to
-    pgrep -f 'sddm-greeter|plasmashell|lxqt-panel' > /dev/null 2>&1
+    # the login screen, or a desktop someone is
+    # already logged in to. By process name (-x), not anywhere in any
+    # command line (-f): a lingering process that merely mentions
+    # "plasmashell" must not mark a broken start good (0.1.84, outside
+    # review). sddm-greeter-qt6 is 16 characters; the kernel keeps 15.
+    pgrep -x 'sddm-greeter|sddm-greeter-qt|plasmashell|lxqt-panel' > /dev/null 2>&1
 }
 
 failed=1

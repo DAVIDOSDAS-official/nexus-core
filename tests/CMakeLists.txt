@@ -61,6 +61,7 @@ add_executable(component_test
     unit/security_audit_test.cpp
     unit/pins_test.cpp
     unit/site_copy_test.cpp
+    unit/plan_apply_test.cpp
 )
 
 target_link_libraries(component_test
@@ -74,3 +75,10 @@ target_link_libraries(component_test
 include(GoogleTest)
 
 gtest_discover_tests(component_test)
+
+# No value joined into a shell command without shellQuote (0.1.84).
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME ShellQuoting
+             COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/check-shell-quoting.py ${PROJECT_SOURCE_DIR})
+endif()

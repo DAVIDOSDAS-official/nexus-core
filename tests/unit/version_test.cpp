@@ -356,3 +356,16 @@ TEST(VersionFuzzTest, AgreesWithDpkgOnKnownHardCases) {
         }
     }
 }
+
+// An outside review's fuzzer (0.1.84): a NUL byte inside a version made
+// the comparison loop forever. It must answer, and consistently.
+TEST(VersionTest, ANulByteDoesNotHang) {
+    const std::string withNul("1\0a", 3);
+    const std::string other("1\0b", 3);
+    const int a = nexus::system::compareVersions(withNul, other);
+    const int b = nexus::system::compareVersions(other, withNul);
+    EXPECT_NE(a, 0);
+    EXPECT_EQ(a > 0, b < 0);
+    EXPECT_EQ(nexus::system::compareVersions(withNul, withNul), 0);
+    (void)nexus::system::compareVersions(std::string("\0", 1), "1.0");
+}

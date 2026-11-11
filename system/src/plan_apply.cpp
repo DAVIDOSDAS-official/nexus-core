@@ -182,15 +182,31 @@ bool isImageBased() {
            mounted.text.find("ro,") == 0;
 }
 
-ApplyResult layerWithRpmOstree(const std::string& requested) {
+ApplyResult layerWithRpmOstree(const std::vector<std::string>& names) {
     ApplyResult result;
+
+    std::string quoted;
+    for (const auto& name : names) {
+        if (!isPackageName(name)) {
+            result.outcome = ApplyOutcome::Refused;
+            result.exitCode = 2;
+            result.output.push_back("Not a package name, nothing done: " + name);
+            return result;
+        }
+        quoted += " " + shellQuote(name);
+    }
+    if (quoted.empty()) {
+        result.outcome = ApplyOutcome::Refused;
+        result.exitCode = 2;
+        result.output.push_back("No packages given.");
+        return result;
+    }
 
     // --idempotent: asking for something already layered is not a
     // failure, and treating it as one turns a repeated setup into an
     // error the user cannot act on.
     const std::string command =
-        "rpm-ostree install --idempotent --allow-inactive " +
-        requested;
+        "rpm-ostree install --idempotent --allow-inactive" + quoted;
 
     const ProcessResult ran = runCommand(command, true);
 

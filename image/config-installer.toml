@@ -300,7 +300,12 @@ def ext4_used(name):
 def system_name(name):
     import os
     os.makedirs("/tmp/nexus-peek", exist_ok=True)
-    if subprocess.run(["mount", "-o", "ro,nodev,nosuid,noexec", "/dev/" + name, "/tmp/nexus-peek"]).returncode != 0:
+    # noload: a read-only ext4 mount still replays the journal, which
+    # writes to the other system (0.1.84, outside review). Other
+    # filesystems do not know the option, so they get the plain mount.
+    peek = ["mount", "-o", "ro,nodev,nosuid,noexec,noload", "/dev/" + name, "/tmp/nexus-peek"]
+    if subprocess.run(peek, stderr=subprocess.DEVNULL).returncode != 0 and \
+       subprocess.run(["mount", "-o", "ro,nodev,nosuid,noexec", "/dev/" + name, "/tmp/nexus-peek"]).returncode != 0:
         return "another system"
     try:
         for line in open("/tmp/nexus-peek/etc/os-release"):
@@ -378,9 +383,28 @@ def offer_shrink(disk, gap):
         return gap
     name, size, keep, freed, used = best
     import shutil
-    missing = [t for t in ("e2fsck", "resize2fs", "sfdisk") if not shutil.which(t)]
+    missing = [t for t in ("e2fsck", "resize2fs", "sfdisk", "dumpe2fs") if not shutil.which(t)]
     if missing:
         print("Missing in the installer:", missing, "- not shrinking.")
+        return gap
+    # Not a system that was put to sleep or switched off mid-write
+    # (0.1.84, outside review): a hibernated system expects its disk
+    # exactly as it left it, and an unclean journal would be replayed
+    # by the check. Either way: the installer asks, nothing is shrunk.
+    disk_of = subprocess.run(["lsblk", "-n", "-o", "PKNAME", "/dev/" + name],
+                             capture_output=True, text=True).stdout.strip()
+    kinds = subprocess.run(["lsblk", "-n", "-o", "FSTYPE", "/dev/" + (disk_of or name)],
+                           capture_output=True, text=True).stdout.split()
+    if "swsuspend" in kinds:
+        print("A system on this disk is hibernated: not shrinking. Start it,")
+        print("shut it down fully (not hibernate), then install again.")
+        return gap
+    header = subprocess.run(["dumpe2fs", "-h", "/dev/" + name],
+                            capture_output=True, text=True).stdout
+    features = [l for l in header.splitlines() if l.startswith("Filesystem features:")]
+    if not features or "needs_recovery" in features[0]:
+        print("The other system was not shut down cleanly (or its state cannot be read):")
+        print("not shrinking. Start it, shut it down normally, then install again.")
         return gap
     if not on_mains():
         ask(["  Nexus could make room next to the system on this disk, but only",

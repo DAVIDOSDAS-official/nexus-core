@@ -39,20 +39,20 @@ Popup {
         spacing: 18
         ColumnLayout {
             spacing: 4
-            Text { text: root.title; color: Theme.bright; font.pixelSize: 22; font.bold: true; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-            Text { text: root.subtitle; visible: text.length > 0; color: Theme.dim; font.pixelSize: 14; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+            Text { textFormat: Text.PlainText; text: root.title; color: Theme.bright; font.pixelSize: 22; font.bold: true; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+            Text { textFormat: Text.PlainText; text: root.subtitle; visible: text.length > 0; color: Theme.dim; font.pixelSize: 14; wrapMode: Text.WordWrap; Layout.fillWidth: true }
         }
         ColumnLayout {
             spacing: 8
             visible: root.will.length > 0
-            Text { text: "WHAT NEXUS WILL DO"; color: Theme.accentText; font.pixelSize: 12; font.bold: true }
+            Text { textFormat: Text.PlainText; text: "WHAT NEXUS WILL DO"; color: Theme.accentText; font.pixelSize: 12; font.bold: true }
             Repeater {
                 model: root.will
                 RowLayout {
                     spacing: 10
                     Layout.fillWidth: true
-                    Text { text: (index + 1) + "."; color: Theme.dim; font.pixelSize: 14 }
-                    Text { text: modelData; color: Theme.text; font.pixelSize: 14; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Text { textFormat: Text.PlainText; text: (index + 1) + "."; color: Theme.dim; font.pixelSize: 14 }
+                    Text { textFormat: Text.PlainText; text: modelData; color: Theme.text; font.pixelSize: 14; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 }
             }
         }
@@ -67,14 +67,15 @@ Popup {
                 x: 14; y: 14
                 width: parent.width - 28
                 spacing: 6
-                Text { text: "IT WILL NOT"; color: Theme.dim; font.pixelSize: 12; font.bold: true }
+                Text { textFormat: Text.PlainText; text: "IT WILL NOT"; color: Theme.dim; font.pixelSize: 12; font.bold: true }
                 Repeater {
                     model: root.wont
-                    Text { text: "✕  " + modelData; color: Theme.text; font.pixelSize: 14; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Text { textFormat: Text.PlainText; text: "✕  " + modelData; color: Theme.text; font.pixelSize: 14; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 }
             }
         }
         Text {
+            textFormat: Text.PlainText
             visible: root.command.length > 0
             text: "Runs:  " + root.command
             color: Theme.dim
