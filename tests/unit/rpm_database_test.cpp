@@ -343,3 +343,36 @@ TEST(RpmDatabaseTest, AnyBuildSatisfiesAName) {
     EXPECT_EQ(result.components[0].architecture(), "i386");
     EXPECT_EQ(result.components[0].multiArch(), nexus::MultiArch::Foreign);
 }
+
+// 0.1.89: an rpm program is not an rpm system. Debian and Ubuntu ship
+// rpm as a tool with an empty /var/lib/rpm, and there a query creates
+// ~/.rpmdb; nexus asks rpm only where a database is really there.
+TEST(RpmDatabaseTest, ADatabaseIsOnlyThereWhenItsFileIs) {
+    namespace fs = std::filesystem;
+    char pattern[] = "/tmp/nexus-test-rpmroot-XXXXXX";
+    ASSERT_NE(mkdtemp(pattern), nullptr);
+    const std::string root = pattern;
+
+    EXPECT_FALSE(nexus::system::rpmDatabasePresent(root));
+
+    // Debian's rpm package: the folder exists, empty.
+    fs::create_directories(root + "/var/lib/rpm");
+    EXPECT_FALSE(nexus::system::rpmDatabasePresent(root));
+
+    // A folder of that name is not the file.
+    fs::create_directories(root + "/var/lib/rpm/Packages");
+    EXPECT_FALSE(nexus::system::rpmDatabasePresent(root));
+    fs::remove(root + "/var/lib/rpm/Packages");
+
+    // Fedora: the sqlite database under /usr/lib/sysimage/rpm.
+    fs::create_directories(root + "/usr/lib/sysimage/rpm");
+    std::ofstream(root + "/usr/lib/sysimage/rpm/rpmdb.sqlite") << "x";
+    EXPECT_TRUE(nexus::system::rpmDatabasePresent(root));
+    fs::remove(root + "/usr/lib/sysimage/rpm/rpmdb.sqlite");
+
+    // Older layout: Berkeley DB Packages under /var/lib/rpm.
+    std::ofstream(root + "/var/lib/rpm/Packages") << "x";
+    EXPECT_TRUE(nexus::system::rpmDatabasePresent(root));
+
+    fs::remove_all(root);
+}

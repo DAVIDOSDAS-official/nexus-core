@@ -208,7 +208,7 @@ TransactionPlan planTransaction(
     std::vector<std::vector<std::size_t>> components;
 
     struct Visit {
-        std::size_t node;
+        std::size_t node = 0;
         std::vector<std::size_t> neighbours;
         std::size_t next = 0;
     };

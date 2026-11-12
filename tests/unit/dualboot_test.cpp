@@ -258,6 +258,12 @@ TEST(Dualboot, BlockReplacedKeepingTheRest) {
 TEST(Dualboot, Sizes) {
     EXPECT_EQ(sizeInWords(102400000000u), "95.4 GiB");
     EXPECT_EQ(sizeInWords(629145600u), "600 MiB");
+    // 0.1.87: below a megabyte it said "0 MiB".
+    EXPECT_EQ(sizeInWords(1048576u), "1 MiB");
+    EXPECT_EQ(sizeInWords(204800u), "200 KiB");
+    EXPECT_EQ(sizeInWords(1024u), "1 KiB");
+    EXPECT_EQ(sizeInWords(512u), "512 bytes");
+    EXPECT_EQ(sizeInWords(0u), "0 bytes");
 }
 
 // An outside review (0.1.84): another system's ESP folder named as GRUB

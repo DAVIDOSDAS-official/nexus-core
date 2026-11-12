@@ -25,7 +25,7 @@ enum class ModelGapKind {
 
 struct ModelGap {
     std::string componentId;
-    ModelGapKind kind;
+    ModelGapKind kind = ModelGapKind::Unrepresented;
     std::string field;
     std::string detail;
 };

@@ -14,6 +14,57 @@ bool validServerName(const std::string& name) {
     });
 }
 
+UnitRun unitRunState(const std::string& isActiveOutput) {
+    // One word is expected. Anything around it (a second line, an
+    // error message) is not that word.
+    std::string state = isActiveOutput;
+    while (!state.empty() && (state.back() == '\n' || state.back() == ' ' ||
+                              state.back() == '\r' || state.back() == '\t')) {
+        state.pop_back();
+    }
+    if (state == "inactive" || state == "failed") {
+        return UnitRun::Stopped;
+    }
+    for (const char* running : {"active", "activating", "deactivating",
+                                "reloading", "refreshing", "maintenance"}) {
+        if (state == running) return UnitRun::Running;
+    }
+    return UnitRun::Unknown;
+}
+
+bool startAgainAfterBackup(const std::string& stateBefore) {
+    std::string state = stateBefore;
+    while (!state.empty() && (state.back() == '\n' || state.back() == ' ' ||
+                              state.back() == '\r' || state.back() == '\t')) {
+        state.pop_back();
+    }
+    return state != "inactive";
+}
+
+bool validDomainName(const std::string& name) {
+    if (name.empty() || name.size() > 253) {
+        return false;
+    }
+    std::size_t labels = 0;
+    std::size_t start = 0;
+    while (start <= name.size()) {
+        const std::size_t dot = std::min(name.find('.', start), name.size());
+        const std::string label = name.substr(start, dot - start);
+        if (label.empty() || label.size() > 63 ||
+            label.front() == '-' || label.back() == '-') {
+            return false;
+        }
+        for (char c : label) {
+            const bool fine = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                              (c >= '0' && c <= '9') || c == '-';
+            if (!fine) return false;
+        }
+        ++labels;
+        start = dot + 1;
+    }
+    return labels >= 1;
+}
+
 std::string serverUnit(const std::string& name) {
     return "nexus-" + name + ".service";
 }

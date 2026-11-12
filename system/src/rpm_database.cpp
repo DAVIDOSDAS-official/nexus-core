@@ -4,6 +4,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <utility>
@@ -112,6 +113,19 @@ RpmDatabase::RpmDatabase(std::string root)
 
 bool RpmDatabase::available() {
     return commandExists("rpm");
+}
+
+bool rpmDatabasePresent(const std::string& root) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    for (const char* folder : {"/usr/lib/sysimage/rpm", "/var/lib/rpm"}) {
+        for (const char* file : {"rpmdb.sqlite", "Packages", "Packages.db"}) {
+            if (fs::is_regular_file(fs::path(root + folder) / file, ec)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 RpmDatabaseResult RpmDatabase::parse(const std::string& queryOutput) {

@@ -89,9 +89,25 @@ int comparePortageVersions(
     // Portage compares numerically per component, so 9.10 is later
     // than 9.9 -- which a string comparison gets backwards. Suffixes
     // like -r1 order after the version they revise.
+    //
+    // The numbers are compared as the digits they are, at any length
+    // (0.1.88, review of patch 113). 0.1.86 used std::stol, which
+    // throws on twenty digits; 0.1.87 capped at the largest long, which
+    // no longer threw but called every number above it equal, so
+    // 10^30 and 10^30 + 1 compared the same. A number is its digits
+    // without leading zeros: the longer one is larger, and two of the
+    // same length compare as text.
     const auto split = [](const std::string& text) {
-        std::vector<long> parts;
+        std::vector<std::string> parts;
         std::string current;
+
+        const auto keep = [&parts](const std::string& digits) {
+            const std::size_t first = digits.find_first_not_of('0');
+            // All zeros is zero: the empty string, shorter than any
+            // other number.
+            parts.push_back(first == std::string::npos ? std::string()
+                                                       : digits.substr(first));
+        };
 
         for (char character : text) {
             if (std::isdigit(
@@ -101,30 +117,37 @@ int comparePortageVersions(
             }
 
             if (!current.empty()) {
-                parts.push_back(std::stol(current));
+                keep(current);
                 current.clear();
             }
         }
 
         if (!current.empty()) {
-            parts.push_back(std::stol(current));
+            keep(current);
         }
 
         return parts;
     };
 
-    const std::vector<long> ours = split(left);
-    const std::vector<long> theirs = split(right);
+    const std::vector<std::string> ours = split(left);
+    const std::vector<std::string> theirs = split(right);
+    const std::string zero;
 
     for (std::size_t index = 0;
          index < std::max(ours.size(), theirs.size());
          ++index) {
 
-        const long a = index < ours.size() ? ours[index] : 0;
-        const long b = index < theirs.size() ? theirs[index] : 0;
+        const std::string& a = index < ours.size() ? ours[index] : zero;
+        const std::string& b = index < theirs.size() ? theirs[index] : zero;
 
-        if (a != b) {
-            return a < b ? -1 : 1;
+        if (a.size() != b.size()) {
+            return a.size() < b.size() ? -1 : 1;
+        }
+
+        const int order = a.compare(b);
+
+        if (order != 0) {
+            return order < 0 ? -1 : 1;
         }
     }
 

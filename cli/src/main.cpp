@@ -2307,8 +2307,11 @@ nexus::Finding checkClock() {
     // is the second sign, for an rpm that skips without saying so.
     long newest = 0;
     bool notAlive = false;
-    const auto built = nexus::system::runCommand(
-        "rpm -qa --qf '%{BUILDTIME}\\n' 2>&1", false);
+    // Only where rpm has a database: on Debian or Ubuntu with rpm
+    // installed as a tool, a query would create one in ~/.rpmdb.
+    const auto built = nexus::system::rpmDatabasePresent()
+        ? nexus::system::runCommand("rpm -qa --qf '%{BUILDTIME}\\n' 2>&1", false)
+        : nexus::system::ProcessResult{};
     {
         std::istringstream in(built.text);
         std::string line;
@@ -2687,12 +2690,15 @@ std::string fetchUrl(const std::string& url) {
     // The URL is built here from fixed parts and urlEncode()d input,
     // so it contains no quote; checked anyway. https only, redirects
     // included: a network that answers with a redirect to http:// must
-    // not get to write the verdict (0.1.86, outside review P6).
+    // not get to write the verdict (0.1.86, outside review P6). Nothing
+    // asked for here is more than a few megabytes; an answer that says
+    // it is over 32 is refused rather than read into memory (0.1.87).
     if (url.find('\'') != std::string::npos) {
         return {};
     }
     const auto result = nexus::system::runCommand(
-        "curl -fsSL --proto =https --proto-redir =https --max-time 20 --retry 2 " +
+        "curl -fsSL --proto =https --proto-redir =https --max-time 20 --retry 2 "
+        "--max-filesize 33554432 " +
             shellQuote(url) + " 2>/dev/null",
         false);
     return result.ok ? result.text : std::string{};
@@ -2783,6 +2789,7 @@ std::vector<nexus::system::Language> fedoraLanguages() {
 }
 
 bool packageInstalled(const std::string& name) {
+    if (!nexus::system::rpmDatabasePresent()) return false;
     return nexus::system::runCommand(
         "rpm -q " + shellQuote(name) + " >/dev/null 2>&1", false).exitCode == 0;
 }
@@ -2796,6 +2803,7 @@ bool packageOffered(const std::string& name) {
 
 std::vector<std::string> addedLanguageCodes() {
     std::vector<std::string> codes;
+    if (!nexus::system::rpmDatabasePresent()) return codes;
     const auto ran = nexus::system::runCommand(
         "rpm -qa --qf '%{NAME}\\n' 'langpacks-*' 2>/dev/null", false);
     std::istringstream lines(ran.text);
@@ -5184,7 +5192,8 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
                     std::istringstream kv(now.services + " " + saved.services);
                     bool kde = false;
                     while (kv >> one) if (one == "kdeconnect") kde = true;
-                    if (kde && !runCommand("rpm -q kdeconnectd > /dev/null 2>&1", false).ok)
+                    if (kde && nexus::system::rpmDatabasePresent() &&
+                        !runCommand("rpm -q kdeconnectd > /dev/null 2>&1", false).ok)
                         line("warn", "Firewall", "zone " + zone + " lets KDE Connect's ports in, and KDE Connect is"
                              " not installed.",
                              "sudo firewall-cmd --permanent --zone=" + zone + " --remove-service=kdeconnect && sudo firewall-cmd --reload");
@@ -5564,11 +5573,12 @@ int commandServer(
         std::cerr << "Memory as 1280M or 2G, not: " << memory << "\n";
         return 2;
     }
-    for (char c : domain) {
-        if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '.' || c == '-')) {
-            std::cerr << "Not a domain name: " << domain << "\n";
-            return 2;
-        }
+    // Letters, digits, dots and hyphens also spell "--browse": the
+    // value goes onto Caddy's command line, so each part of it must
+    // start and end like a name (0.1.87, audit).
+    if (!domain.empty() && !nexus::system::validDomainName(domain)) {
+        std::cerr << "Not a domain name: " << domain << "\n";
+        return 2;
     }
 
     const std::string action = words.empty() ? "" : words[0];
@@ -5735,8 +5745,50 @@ int commandServer(
 
         bool ok = true;
         std::string error;
-        nexus::system::runCommand("systemctl stop " + unit + " 2>&1", true);
-        if (action == "remove") {
+        std::string notRestarted;
+        int interrupted = 0;
+        bool wasRunning = true;
+        {
+        // From "stopped" to "started again" in one piece: Ctrl-C or a
+        // closed terminal in between is remembered, not obeyed, so a
+        // server is never left down by an interrupted backup and the
+        // record never stays at "started" (0.1.87, audit). tar itself
+        // still stops on Ctrl-C; that shows below as a failed copy.
+        const nexus::system::HoldSignals hold;
+        // Started again unless it had been stopped on purpose: only a
+        // plain "inactive" counts as that. One that was starting,
+        // restarting after a crash, or failed gets its start as before.
+        const auto unitState = [&unit] {
+            return trimmed(nexus::system::runCommand(
+                "systemctl is-active " + shellQuote(unit) + " 2>/dev/null", false).text);
+        };
+        wasRunning = nexus::system::startAgainAfterBackup(unitState());
+        const auto stop = nexus::system::runCommand(
+            "systemctl stop " + shellQuote(unit), true);
+        // Stopped -- seen to be, not assumed (0.1.88, review of patch
+        // 113). 0.1.87 ignored what `systemctl stop` answered and went
+        // on: a copy taken from a server that was still writing is a
+        // backup that may not restore, under a name that says it will;
+        // and a unit file removed from under a running server leaves it
+        // running with nothing to stop it by. What decides is the state
+        // afterwards, not stop's exit code: stopping a server that was
+        // never started "fails" (unit not loaded) and is stopped all
+        // the same.
+        const std::string stateAfterStop = unitState();
+        if (nexus::system::unitRunState(stateAfterStop) != nexus::system::UnitRun::Stopped) {
+            ok = false;
+            const std::string said = firstLine(stop.text);
+            error = name + " did not stop";
+            if (!stop.ok && !said.empty()) {
+                error += ": " + said;
+            } else {
+                error += stateAfterStop.empty()
+                    ? std::string(" (systemd gave no answer about it)")
+                    : " (systemd says it is " + nexus::system::printable(stateAfterStop) + ")";
+            }
+            error += std::string(". Nothing was ") +
+                     (action == "remove" ? "removed" : "copied") + ".";
+        } else if (action == "remove") {
             std::error_code ec;
             fs::remove(nexus::system::serverQuadletPath(name), ec);
             ok = !ec;
@@ -5753,20 +5805,66 @@ int commandServer(
             std::error_code ec;
             fs::create_directories("/var/lib/nexus/backups", ec);
             fs::permissions("/var/lib/nexus/backups", fs::perms::owner_all, fs::perm_options::replace, ec);
+            // Under another name until it is whole: a copy that was cut
+            // short (no space, killed, Ctrl-C) used to stay in the
+            // folder under a finished backup's name.
+            const std::string partial = archive + ".partial";
             const mode_t before = ::umask(077);
             const auto tar = nexus::system::runCommand(
-                "tar -czf " + shellQuote(archive) + " -C /var/lib/nexus/servers " + shellQuote(name) + " 2>&1",
+                "tar -czf " + shellQuote(partial) + " -C /var/lib/nexus/servers " + shellQuote(name),
                 true);
             ::umask(before);
             ok = tar.ok;
-            if (!ok) error = firstLine(tar.text);
+            if (!ok) {
+                error = firstLine(tar.text);
+                if (error.empty()) {
+                    error = "tar stopped (exit " + std::to_string(tar.exitCode) + ")";
+                }
+            } else {
+                std::error_code moved;
+                fs::rename(partial, archive, moved);
+                ok = !moved;
+                if (!ok) error = moved.message();
+            }
+            if (!ok) {
+                std::error_code gone;
+                fs::remove(partial, gone);
+            }
             for (const auto& old : fs::directory_iterator("/var/lib/nexus/backups", ec)) {
                 std::error_code pe;
-                if (old.is_regular_file(pe))
-                    fs::permissions(old.path(), fs::perms::owner_read | fs::perms::owner_write,
-                                    fs::perm_options::replace, pe);
+                if (!old.is_regular_file(pe)) continue;
+                // What a run that was killed outright left behind: never
+                // a backup, only space.
+                if (old.path().extension() == ".partial") {
+                    fs::remove(old.path(), pe);
+                    continue;
+                }
+                fs::permissions(old.path(), fs::perms::owner_read | fs::perms::owner_write,
+                                fs::perm_options::replace, pe);
             }
-            nexus::system::runCommand("systemctl start " + unit + " 2>&1", true);
+        }
+        // Back the way it was. After a backup, and after a stop that
+        // did not work (a server that ran before must not be left
+        // half-stopped); not after a removal that went through. And
+        // seen to be running, not assumed from start's exit code.
+        const bool removed = action == "remove" && ok;
+        if (wasRunning && !removed) {
+            const auto started = nexus::system::runCommand(
+                "systemctl start " + shellQuote(unit), true);
+            const std::string stateAtEnd = unitState();
+            if (!started.ok) {
+                notRestarted = firstLine(started.text);
+                if (notRestarted.empty()) notRestarted = "systemctl start failed";
+            } else if (nexus::system::unitRunState(stateAtEnd) != nexus::system::UnitRun::Running) {
+                notRestarted = stateAtEnd.empty()
+                    ? std::string("systemd gave no answer about it")
+                    : "systemd says it is " + nexus::system::printable(stateAtEnd);
+            }
+        }
+        interrupted = hold.arrived();
+        }
+        if (interrupted != 0 && !ok) {
+            error = "stopped before it finished (interrupted)";
         }
 
         record.outcome = ok ? (action == "remove" ? "removed" : "backed up") : "failed";
@@ -5776,6 +5874,21 @@ int commandServer(
 
         if (!ok) {
             std::cout << "\nNot done: " << error << "\n";
+            if (!notRestarted.empty()) {
+                std::cout << name << " was running before and did not start again: "
+                          << notRestarted
+                          << "\n    sudo systemctl start " << unit
+                          << "\n    nexus server logs " << name << "\n";
+            } else if (wasRunning) {
+                std::cout << name << " is running.\n";
+            }
+            // Everything is back in place and recorded; now end the way
+            // the person asked, so that a script or a shell loop around
+            // this stops too instead of going on to the next server.
+            if (interrupted != 0) {
+                std::cout.flush();
+                nexus::system::endBySignal(interrupted);
+            }
             return 1;
         }
         if (action == "remove") {
@@ -5786,7 +5899,18 @@ int commandServer(
             const auto size = fs::file_size(archive, ec);
             std::cout << "\nDone. " << archive;
             if (!ec) std::cout << " (" << nexus::system::sizeInWords(size) << ")";
-            std::cout << "\nThe server is running again.\n";
+            // Said only when it is so (0.1.87: it was printed whatever
+            // `systemctl start` answered, or with a server that had
+            // been stopped on purpose).
+            if (!notRestarted.empty()) {
+                std::cout << "\n\nThe copy is whole, but " << name
+                          << " did not start again: " << notRestarted
+                          << "\n    sudo systemctl start " << unit
+                          << "\n    nexus server logs " << name << "\n";
+                return 1;
+            }
+            std::cout << (wasRunning ? "\nThe server is running again.\n"
+                                     : "\nThe server was not running before, and was left stopped.\n");
         }
         return 0;
     }
@@ -6414,8 +6538,15 @@ int commandUpdate(
             !nexus::system::commandExists("notify-send")) {
             return 0;
         }
-        const std::string seenFile =
-            (home.empty() ? std::string("/tmp") : home) + "/.cache/nexus/update-notified";
+        // No home, nowhere of its own to remember what was already
+        // said -- and so nothing is said. (Before 0.1.87 the note went
+        // to /tmp/.cache/nexus instead: a fixed name in a folder every
+        // user can write to, where a link put there first would have
+        // been written through.)
+        if (home.empty() || home[0] != '/') {
+            return 0;
+        }
+        const std::string seenFile = home + "/.cache/nexus/update-notified";
         std::string seen;
         // The first notification on this account says how to stop them.
         const bool first = !std::filesystem::exists(seenFile);
@@ -6426,8 +6557,11 @@ int commandUpdate(
         if (seen == summary) {
             return 0;
         }
+        // A home that cannot be written to is not a reason to fail the
+        // daily check: the notification is shown, just not remembered.
+        std::error_code seenError;
         std::filesystem::create_directories(
-            std::filesystem::path(seenFile).parent_path());
+            std::filesystem::path(seenFile).parent_path(), seenError);
         std::ofstream(seenFile) << summary << "\n";
 
         auto quoted = [](const std::string& text) {

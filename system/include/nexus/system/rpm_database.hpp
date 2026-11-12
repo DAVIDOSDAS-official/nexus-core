@@ -73,4 +73,12 @@ private:
     std::string root_;
 };
 
+// True when this machine (or the tree at root) has an rpm package
+// database: rpmdb.sqlite, Packages or Packages.db under
+// /usr/lib/sysimage/rpm or /var/lib/rpm. An rpm program alone is not
+// enough: Debian and Ubuntu ship rpm as a tool, and there a plain query
+// creates an empty database in the user's home (~/.rpmdb), which a
+// preview must not do (0.1.89).
+bool rpmDatabasePresent(const std::string& root = "");
+
 }

@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <spawn.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <csignal>
 #include <sstream>
 #include <cctype>
@@ -82,6 +83,13 @@ bool isPackageName(const std::string& name) {
     return true;
 }
 
+int exitCodeFromStatus(int status) {
+    if (status == -1) return -1;
+    if (WIFEXITED(status)) return WEXITSTATUS(status);
+    if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
+    return -1;
+}
+
 ProcessResult runProgram(const std::vector<std::string>& argv, const std::string& input) {
     ProcessResult result;
     if (argv.empty()) return result;
@@ -114,39 +122,162 @@ ProcessResult runProgram(const std::vector<std::string>& argv, const std::string
     }
     result.ran = true;
 
-    // Small inputs (keys): written whole, then closed so the child sees
-    // the end.
-    // A child that exits without reading would otherwise kill us with
-    // SIGPIPE; the write just fails instead.
-    struct sigaction ignore {}, previous {};
-    ignore.sa_handler = SIG_IGN;
-    ::sigaction(SIGPIPE, &ignore, &previous);
+    // Written and read at the same time (0.1.87, audit). Before, the
+    // whole input was written first and the output read afterwards: a
+    // program that answers as it reads (anything like `cat`) fills its
+    // output pipe at 64 KiB, stops reading, and both sides wait for
+    // ever. Keys are 45 bytes and never got there; nothing should have
+    // to know that limit.
+    //
+    // A child that exits without reading would kill this process with
+    // SIGPIPE on the next write. The signal is blocked for this thread
+    // while writing and taken off the queue afterwards if a write did
+    // raise it -- the process-wide handler is never touched, so another
+    // thread, or a caller's own handler, sees no change (before: the
+    // handler was swapped to "ignore" and back, for everyone).
+    sigset_t pipeSignal, previousMask, pendingBefore;
+    sigemptyset(&pipeSignal);
+    sigaddset(&pipeSignal, SIGPIPE);
+    sigemptyset(&pendingBefore);
+    ::sigpending(&pendingBefore);
+    const bool wasPending = sigismember(&pendingBefore, SIGPIPE) == 1;
+    ::pthread_sigmask(SIG_BLOCK, &pipeSignal, &previousMask);
+
+    ::fcntl(toChild[1], F_SETFL, ::fcntl(toChild[1], F_GETFL) | O_NONBLOCK);
+    ::fcntl(fromChild[0], F_SETFL, ::fcntl(fromChild[0], F_GETFL) | O_NONBLOCK);
+
+    int writeEnd = toChild[1];
+    int readEnd = fromChild[0];
     std::size_t done = 0;
-    while (done < input.size()) {
-        const ssize_t w = ::write(toChild[1], input.data() + done, input.size() - done);
-        if (w < 0) { if (errno == EINTR) continue; break; }
-        done += static_cast<std::size_t>(w);
+    bool brokenPipe = false;
+    if (input.empty()) {
+        ::close(writeEnd);
+        writeEnd = -1;
     }
-    ::close(toChild[1]);
-    ::sigaction(SIGPIPE, &previous, nullptr);
-
-    char buffer[4096];
-    while (true) {
-        const ssize_t n = ::read(fromChild[0], buffer, sizeof buffer);
-        if (n < 0) { if (errno == EINTR) continue; break; }
-        if (n == 0) break;
-        result.text.append(buffer, static_cast<std::size_t>(n));
+    char buffer[65536];
+    while (readEnd >= 0) {
+        struct pollfd fds[2];
+        fds[0].fd = readEnd;
+        fds[0].events = POLLIN;
+        fds[0].revents = 0;
+        fds[1].fd = writeEnd;   // -1 once the input is written: ignored
+        fds[1].events = POLLOUT;
+        fds[1].revents = 0;
+        if (::poll(fds, 2, -1) < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        if (writeEnd >= 0 && (fds[1].revents & (POLLOUT | POLLERR | POLLHUP)) != 0) {
+            const ssize_t w = ::write(writeEnd, input.data() + done, input.size() - done);
+            if (w > 0) done += static_cast<std::size_t>(w);
+            const bool failed = w < 0 && errno != EINTR && errno != EAGAIN;
+            if (failed && errno == EPIPE) brokenPipe = true;
+            if (failed || done >= input.size()) {
+                ::close(writeEnd);   // the child sees the end of its input
+                writeEnd = -1;
+            }
+        }
+        if ((fds[0].revents & (POLLIN | POLLERR | POLLHUP)) != 0) {
+            const ssize_t n = ::read(readEnd, buffer, sizeof buffer);
+            if (n > 0) {
+                result.text.append(buffer, static_cast<std::size_t>(n));
+            } else if (n == 0 || (errno != EINTR && errno != EAGAIN)) {
+                ::close(readEnd);
+                readEnd = -1;
+            }
+        }
     }
-    ::close(fromChild[0]);
+    if (writeEnd >= 0) ::close(writeEnd);
+    if (readEnd >= 0) ::close(readEnd);
 
+    if (brokenPipe && !wasPending) {
+        // Ours: take it off the queue before the mask goes back.
+        const struct timespec now {0, 0};
+        while (::sigtimedwait(&pipeSignal, nullptr, &now) < 0 && errno == EINTR) {}
+    }
+    ::pthread_sigmask(SIG_SETMASK, &previousMask, nullptr);
+
+    // How it ended -- or that this could not be found out (0.1.88,
+    // review of patch 113). waitpid can fail for reasons other than a
+    // signal arriving: with SIGCHLD ignored the kernel reaps children
+    // itself and waitpid says ECHILD. 0.1.87 looped only on EINTR and
+    // then read `status`, still 0 from its initialisation, as "exit
+    // 0": a program whose ending nobody saw was called a success.
     int status = 0;
-    while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
-    result.exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + (WIFSIGNALED(status) ? WTERMSIG(status) : 0);
+    pid_t waited = -1;
+    do {
+        waited = ::waitpid(pid, &status, 0);
+    } while (waited < 0 && errno == EINTR);
+    result.exitCode = waited == pid ? exitCodeFromStatus(status) : -1;
     result.ok = result.exitCode == 0;
     std::istringstream lines(result.text);
     std::string line;
     while (std::getline(lines, line)) result.lines.push_back(line);
     return result;
+}
+
+namespace {
+
+volatile std::sig_atomic_t heldSignal = 0;
+
+void rememberSignal(int number) {
+    heldSignal = number;
+}
+
+// SIGQUIT (Ctrl-\) with the others, as system(3) does for the program
+// that is waiting (0.1.88).
+const int heldSignals[] = {SIGINT, SIGHUP, SIGTERM, SIGQUIT};
+const int heldCount = sizeof heldSignals / sizeof *heldSignals;
+
+}  // namespace
+
+struct HoldSignals::Saved {
+    struct sigaction previous[heldCount];
+};
+
+HoldSignals::HoldSignals() : saved_(new Saved) {
+    heldSignal = 0;
+    struct sigaction action {};
+    action.sa_handler = rememberSignal;
+    sigemptyset(&action.sa_mask);
+    // Restarted, so a read or a wait in progress is not cut short.
+    action.sa_flags = SA_RESTART;
+    for (int i = 0; i < heldCount; ++i) {
+        ::sigaction(heldSignals[i], nullptr, &saved_->previous[i]);
+        // One that was already ignored when nexus started (nohup, a
+        // background job) stays ignored, for this process and for what
+        // it starts: that was the caller's choice.
+        if (saved_->previous[i].sa_handler == SIG_IGN) continue;
+        ::sigaction(heldSignals[i], &action, nullptr);
+    }
+}
+
+HoldSignals::~HoldSignals() {
+    for (int i = 0; i < heldCount; ++i) {
+        ::sigaction(heldSignals[i], &saved_->previous[i], nullptr);
+    }
+    delete saved_;
+}
+
+int HoldSignals::arrived() const {
+    return heldSignal;
+}
+
+void endBySignal(int number) {
+    // The default action, not blocked, then the signal itself: the
+    // process ends as if it had never been held, and whoever waits for
+    // it sees "ended by signal". If that somehow returns, the exit code
+    // a shell would report for it.
+    struct sigaction standard {};
+    standard.sa_handler = SIG_DFL;
+    sigemptyset(&standard.sa_mask);
+    ::sigaction(number, &standard, nullptr);
+    sigset_t one;
+    sigemptyset(&one);
+    sigaddset(&one, number);
+    ::pthread_sigmask(SIG_UNBLOCK, &one, nullptr);
+    ::raise(number);
+    ::_exit(128 + number);
 }
 
 ScratchDirectory::ScratchDirectory() {
@@ -221,7 +352,7 @@ ProcessResult runCommand(
 
     const int status = pclose(pipe);
 
-    result.exitCode = status == -1 ? -1 : WEXITSTATUS(status);
+    result.exitCode = exitCodeFromStatus(status);
     result.ok = result.exitCode == 0;
 
     // Split once, at the end, rather than line by line while reading.

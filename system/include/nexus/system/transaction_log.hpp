@@ -69,9 +69,19 @@ std::string beginTransaction(
     const TransactionRecord& record
 );
 
+// How long the log's lock is waited for, in milliseconds (5000 unless
+// set). For tests: a real lock is held for milliseconds.
+void setTransactionLockWait(int milliseconds);
+
 // Replace a started record with what actually happened. If the marker
 // is not found the record is appended anyway: losing the outcome is
 // worse than duplicating it.
+//
+// The log is rewritten only while its lock is held (0.1.88). If the
+// lock cannot be had in time, the outcome is added at the end with a
+// "Finishes:" line naming the started record, and readTransactions
+// leaves that started record out: one finished change is shown either
+// way, and nothing already in the log is touched.
 bool finishTransaction(
     const std::string& path,
     const std::string& marker,

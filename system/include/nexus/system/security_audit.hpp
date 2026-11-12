@@ -21,8 +21,8 @@ namespace nexus::system {
 
 struct HardeningSetting {
     std::string key;     // kernel.kptr_restrict
-    int wanted;          // value written by harden
-    bool atLeast;        // true: any value >= wanted is fine
+    int wanted = 0;      // value written by harden
+    bool atLeast = false; // true: any value >= wanted is fine
     std::string why;     // one line
     int alsoFine = -1;   // another value that is just as good (rp_filter: strict 1)
 };

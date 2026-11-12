@@ -242,7 +242,16 @@ ctest --test-dir build
 
 Needs a C++20 compiler and CMake 3.20, Qt 6 for the Shop, and
 GoogleTest for the tests (`-DNEXUS_BUILD_TESTS=OFF` to skip).
-About 650 automated tests (`ctest --test-dir build`).
+About 720 automated tests (`ctest --test-dir build`). Among them: every
+command that can change the system is run without `--apply` and must
+change nothing -- with `strace` installed that means every program it
+starts and every file it writes, anywhere; without it the test does a
+reduced check and says so. Every text parser is fed odd input
+(`build/tests/parser_fuzz 60` for a longer run). The built program's
+hardening is read back from the program itself, and the checks that
+do this are themselves tested against programs built to fail them.
+Every push is also tested with AddressSanitizer and
+UndefinedBehaviorSanitizer on GitHub (`.github/workflows/tests.yml`).
 
 To build an installer ISO from a published image:
 

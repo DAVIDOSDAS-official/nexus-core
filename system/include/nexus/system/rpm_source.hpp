@@ -16,7 +16,7 @@ enum class RpmGapKind {
 
 struct RpmGap {
     std::string componentId;
-    RpmGapKind kind;
+    RpmGapKind kind = RpmGapKind::UnknownFlag;
     std::string detail;
 };
 

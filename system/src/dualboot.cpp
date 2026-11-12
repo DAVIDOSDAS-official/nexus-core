@@ -517,9 +517,16 @@ std::string sizeInWords(std::uint64_t bytes) {
     char text[32];
     if (gib >= 1.0) {
         std::snprintf(text, sizeof text, "%.1f GiB", gib);
-    } else {
+    } else if (bytes >= 1024 * 1024) {
         std::snprintf(text, sizeof text, "%.0f MiB",
                       static_cast<double>(bytes) / (1024.0 * 1024));
+    } else if (bytes >= 1024) {
+        // Small things are not "0 MiB" (0.1.87: a website's backup).
+        std::snprintf(text, sizeof text, "%.0f KiB",
+                      static_cast<double>(bytes) / 1024.0);
+    } else {
+        std::snprintf(text, sizeof text, "%llu bytes",
+                      static_cast<unsigned long long>(bytes));
     }
     return text;
 }

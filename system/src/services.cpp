@@ -4,6 +4,7 @@
 #include <sstream>
 
 #include <nexus/system/process.hpp>
+#include <nexus/system/rpm_database.hpp>
 #include <nexus/system/snap_source.hpp>
 
 namespace nexus::system {
@@ -276,7 +277,7 @@ void attachOwners(ServicesResult& result, bool useRpm) {
     }
 
     if (useRpm) {
-        if (!commandExists("rpm")) {
+        if (!commandExists("rpm") || !rpmDatabasePresent()) {
             return;
         }
 

@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <vector>
+
 #include <filesystem>
 #include <fstream>
 
@@ -22,10 +24,30 @@ using nexus::system::unfinishedTransactions;
 
 namespace {
 
+// Removed again when the test program ends, with the lock file the log
+// code puts beside each (0.1.88: those used to stay in /tmp).
+struct ScratchLogs {
+    std::vector<std::string> paths;
+    pid_t owner = ::getpid();
+    ~ScratchLogs() {
+        if (::getpid() != owner) return;   // a forked child: not its to remove
+        for (const std::string& path : paths) {
+            std::error_code error;
+            std::filesystem::remove(path, error);
+            std::filesystem::remove(path + ".lock", error);
+            std::filesystem::remove(path + ".new", error);
+        }
+    }
+};
+
 std::string scratchLog() {
-    return (std::filesystem::temp_directory_path() /
-            ("nexus-txn-" + std::to_string(::getpid()) + "-" +
-             std::to_string(std::rand()) + ".log")).string();
+    static ScratchLogs made;
+    const std::string path =
+        (std::filesystem::temp_directory_path() /
+         ("nexus-test-txn-" + std::to_string(::getpid()) + "-" +
+          std::to_string(std::rand()) + ".log")).string();
+    made.paths.push_back(path);
+    return path;
 }
 
 TransactionRecord aChange(const std::string& request) {

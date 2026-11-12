@@ -1,0 +1,115 @@
+# Tests on every push and pull request.
+#
+# Why this exists (0.1.87, audit): until now the test suite ran in one
+# place only -- at the start of the weekly image build. A push that
+# broke something was found out days later, by the image not being
+# built. And no build anywhere ran with the sanitizers on, where a read
+# one byte past a buffer stops the run instead of going unnoticed.
+#
+# Two jobs, side by side:
+#   release     the build people get (hardening flags on), every test,
+#               and the built program checked for those flags. strace is
+#               installed here, so the --apply test is the full one:
+#               every program started and every file written. Then, as
+#               root (this machine is thrown away afterwards), the
+#               server backup cases and the --apply test again
+#   sanitizers  the same tests with AddressSanitizer and
+#               UndefinedBehaviorSanitizer, then the parser fuzzer for
+#               ten seconds per parser. No strace here: the leak check
+#               does not work under a tracer
+#
+# Nothing here can publish, sign or push: read-only access to the
+# repository, no registry login, no secrets. That is also what makes it
+# safe to run for pull requests from anyone.
+
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch makes the older run pointless.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      # apt with short timeouts and retries, as in the weekly build: a
+      # stuck mirror fails in minutes instead of holding the run.
+      - name: Tools
+        timeout-minutes: 10
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          sudo apt-get ${APT} update
+          sudo apt-get ${APT} install -y cmake g++ libgtest-dev binutils strace python3
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+
+      - name: Tests
+        run: ctest --test-dir build --output-on-failure
+
+      # Two tests need root: `nexus server backup` does, and previews
+      # go further as root (dual boot looks at the disks). The runner is
+      # a machine of its own that is deleted after the job; the tests
+      # still only ever talk to stand-ins for systemctl, tar and the
+      # rest, and remove what they made.
+      - name: The tests that need root
+        run: |
+          sudo NEXUS_TEST_ALLOW_ROOT=1 ctest --test-dir build --output-on-failure \
+              -R '^(ServerBackup|NoApplyChangesNothing|NoApplySelfTest)$'
+
+  sanitizers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Tools
+        timeout-minutes: 10
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          sudo apt-get ${APT} update
+          sudo apt-get ${APT} install -y cmake g++ libgtest-dev binutils
+
+      # -fno-sanitize-recover: the first report ends the test, so a
+      # finding cannot scroll past in a run that still says "passed".
+      # Two at a time: main.cpp alone takes several GB with these on.
+      - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
+        run: |
+          cmake -S . -B build-san -DCMAKE_BUILD_TYPE=Debug \
+              -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -O1"
+          cmake --build build-san -j2
+
+      # A command that takes two seconds takes twenty with the
+      # sanitizers and the leak check on: the --apply test is given
+      # more time per command.
+      - name: Tests under the sanitizers
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: print_stacktrace=1
+          NEXUS_TEST_COMMAND_TIMEOUT: "300"
+        run: ctest --test-dir build-san --output-on-failure
+
+      - name: Parser fuzzer, ten seconds per parser
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: ./build-san/tests/parser_fuzz 10

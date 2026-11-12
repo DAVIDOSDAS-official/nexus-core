@@ -61,7 +61,7 @@ PlanCheck checkPlanWithApt(
     }
 
     const int status = pclose(pipe);
-    const int code = status == -1 ? -1 : WEXITSTATUS(status);
+    const int code = exitCodeFromStatus(status);
 
     if (code != 0 && check.theirs.empty()) {
         std::ifstream why(errors);

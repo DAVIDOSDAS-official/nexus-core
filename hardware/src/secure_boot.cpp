@@ -7,47 +7,6 @@
 
 namespace nexus::hardware {
 
-namespace {
-
-// EFI variables are stored with a four-byte attribute header in
-// front of the value. Reading the first byte gives the attributes,
-// not the answer, and reports every machine as having Secure Boot
-// off.
-std::string readVariable(const std::filesystem::path& directory,
-                         const std::string& prefix) {
-    std::error_code error;
-
-    if (!std::filesystem::is_directory(directory, error)) {
-        return "";
-    }
-
-    for (const auto& entry :
-         std::filesystem::directory_iterator(directory, error)) {
-
-        const std::string name = entry.path().filename().string();
-
-        if (name.rfind(prefix + "-", 0) != 0) {
-            continue;
-        }
-
-        std::ifstream input(entry.path(), std::ios::binary);
-
-        if (!input) {
-            continue;
-        }
-
-        std::ostringstream buffer;
-
-        buffer << input.rdbuf();
-
-        return buffer.str();
-    }
-
-    return "";
-}
-
-}
-
 std::vector<std::string> SecureBootReport::capabilities() const {
     std::vector<std::string> names;
 

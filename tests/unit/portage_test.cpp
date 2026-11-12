@@ -209,3 +209,49 @@ TEST(PortageTest, ComparesVersionsNumerically) {
     // A revision orders after the version it revises.
     EXPECT_GT(comparePortageVersions("5.9-r1", "5.9"), 0);
 }
+
+// 0.1.87 (audit): twenty digits made std::stol throw, and the whole
+// command stopped with "Error: stol" on one odd version in a tree.
+TEST(PortageTest, AnOverlongNumberInAVersionDoesNotThrow) {
+    using nexus::system::comparePortageVersions;
+    const std::string huge(40, '9');
+    EXPECT_NO_THROW(comparePortageVersions(huge, "1"));
+    EXPECT_GT(comparePortageVersions(huge, "1"), 0);
+    EXPECT_LT(comparePortageVersions("1." + huge, "2"), 0);
+    EXPECT_EQ(comparePortageVersions(huge, huge), 0);
+}
+
+// 0.1.88 (review of patch 113): 0.1.87 stopped the exception by capping
+// at the largest long, and with that every number above 2^63 was the
+// same number. These all failed there.
+TEST(PortageTest, NumbersOfAnyLengthKeepTheirOrder) {
+    using nexus::system::comparePortageVersions;
+    const std::string big = "1" + std::string(30, '0');            // 10^30
+    const std::string bigger = "1" + std::string(29, '0') + "1";   // 10^30 + 1
+    const std::string longer = "1" + std::string(31, '0');         // 10^31
+    EXPECT_LT(comparePortageVersions(big, bigger), 0);
+    EXPECT_GT(comparePortageVersions(bigger, big), 0);
+    EXPECT_LT(comparePortageVersions(bigger, longer), 0);
+    EXPECT_GT(comparePortageVersions(std::string(40, '9'), std::string(39, '9')), 0);
+    // Just past what a long holds: 2^63 and 2^63 + 1.
+    EXPECT_LT(comparePortageVersions("9223372036854775808", "9223372036854775809"), 0);
+    EXPECT_GT(comparePortageVersions("9223372036854775808", "9223372036854775807"), 0);
+    // In a later component too, and against a short one.
+    EXPECT_LT(comparePortageVersions("1." + big, "1." + bigger), 0);
+    EXPECT_GT(comparePortageVersions("2.0", "1." + longer), 0);
+    EXPECT_LT(comparePortageVersions("1.2-r" + big, "1.2-r" + bigger), 0);
+}
+
+// Leading zeros do not make a number longer, and nothing is zero.
+TEST(PortageTest, LeadingZerosAndZeroCompareAsNumbers) {
+    using nexus::system::comparePortageVersions;
+    EXPECT_EQ(comparePortageVersions("007", "7"), 0);
+    EXPECT_EQ(comparePortageVersions(std::string(50, '0') + "7", "7"), 0);
+    EXPECT_EQ(comparePortageVersions("1.0", "1"), 0);
+    EXPECT_EQ(comparePortageVersions("1.000", "1.0"), 0);
+    EXPECT_LT(comparePortageVersions("1.0", "1.1"), 0);
+    EXPECT_GT(comparePortageVersions("1.10", "1.9"), 0);
+    EXPECT_LT(comparePortageVersions("0", "1"), 0);
+    EXPECT_EQ(comparePortageVersions("", ""), 0);
+    EXPECT_EQ(comparePortageVersions("", "0"), 0);
+}

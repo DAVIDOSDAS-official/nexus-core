@@ -19,7 +19,7 @@ enum class VersionRelation {
 };
 
 struct VersionConstraint {
-    VersionRelation relation;
+    VersionRelation relation = VersionRelation::Exactly;
     std::string version;
 };
 

@@ -86,7 +86,54 @@ std::string printable(const std::string& text);
 // never argv (0.1.84, outside review: `printf '<key>' | wg pubkey` put
 // the WireGuard private key in sh's arguments, which every local user
 // can read). argv[0] is looked up in PATH only if it has no '/'.
+// Input and output of any size: both are moved at the same time.
 ProcessResult runProgram(const std::vector<std::string>& argv, const std::string& input = "");
+
+// What a wait status means as one number: the program's exit code;
+// 128 + the signal's number if a signal ended it (as a shell reports
+// it, so 137 is "killed"); -1 if the status could not be read. Never 0
+// for a program that was killed (0.1.87, audit: runCommand read the
+// exit-code bits of a killed program, which are 0, and called a tar or
+// an rpm-ostree that the kernel had killed for memory a success).
+// runCommand and runProgram also report -1, never 0, when the ending
+// could not be collected at all (0.1.88).
+int exitCodeFromStatus(int status);
+
+// While one of these exists, Ctrl-C, a closed terminal and a polite
+// kill (SIGINT, SIGHUP, SIGTERM) do not end this process: they are
+// remembered, and arrived() says which came. For the few stretches
+// where stopping halfway is worse than finishing -- a server stopped
+// for its backup has to be started again whatever happens to the copy
+// (0.1.87, audit: Ctrl-C during `nexus server backup` left the server
+// down and the record at "started").
+//
+// Programs started meanwhile are not shielded: a handler, unlike
+// "ignore", does not survive exec, so the tar the terminal's Ctrl-C
+// also reaches still stops, and its failure is what the caller sees.
+// SIGQUIT (Ctrl-\) is held with them (0.1.88).
+// One at a time; not for use from more than one thread.
+class HoldSignals {
+public:
+    HoldSignals();
+    ~HoldSignals();
+    HoldSignals(const HoldSignals&) = delete;
+    HoldSignals& operator=(const HoldSignals&) = delete;
+
+    // The signal that arrived while held (the last, if several), or 0.
+    int arrived() const;
+
+private:
+    struct Saved;
+    Saved* saved_;
+};
+
+// Ends this process by the given signal, the way it would have ended
+// had the signal not been held: default action restored, then raised.
+// For after the held stretch is finished and cleaned up (0.1.88). A
+// shell that ran `nexus` in a loop goes on to the next round if nexus
+// merely exits 1 after Ctrl-C; it stops, as the person asked, only if
+// nexus is seen to have ended by the signal.
+[[noreturn]] void endBySignal(int number);
 
 // A scratch folder only this process can enter: mkdtemp, mode 0700,
 // owned by whoever runs it -- root under sudo. A file inside it cannot

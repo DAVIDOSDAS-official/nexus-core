@@ -817,6 +817,144 @@ bidi/zero-width pass printable(), R3 root units unsandboxed.
    the build jobs passed and the digests in their summary, Review
    deployments -> release -> Approve.
 
+**Patch 113 (0.1.87): full engineering audit of 0.1.86** (David's zip =
+patch 112 + his pinned fedora-version-check.yml). Baseline before any
+change: 685/685 tests; ASan+UBSan build 0 reports; -Wall -Wextra
+-Wshadow -Wconversion 17 warnings; cppcheck 0 errors; shellcheck 3
+unused-variable notes; a new mutation fuzzer, 1.67 million inputs over
+34 parsers, 0 crashes. Found and fixed (each with a test that fails on
+0.1.86):
+- A1 runCommand/plan_check read only the exit-code bits of a wait
+  status: a command killed by a signal (OOM killer, SIGKILL, a crash)
+  has 0 there and was reported ok. Bash (Fedora's /bin/sh) execs the
+  last command of a line, so this was reachable. exitCodeFromStatus():
+  128+signal, never 0.
+- A2 transaction log: finishing a record truncated and rewrote the
+  whole log in place, unlocked. Two nexus at once (Shop + terminal)
+  lost records (25 of 150 survived the new test); a kill or full disk
+  between truncate and write lost all history; a line break in a
+  field forged records (5 read back from 2 written). Now: owner-only
+  lock file <log>.lock (bounded wait), write-beside + fsync + rename,
+  every field on one line, appends fsynced.
+- A3 `nexus server backup`: Ctrl-C left the server stopped, a
+  cut-short archive under a finished backup's name, and the record at
+  "started"; "The server is running again." was printed whatever
+  systemctl start answered; a server stopped on purpose was started.
+  Now HoldSignals over stop..start, <name>.partial until whole,
+  started only if it ran before, start result reported (exit 1).
+- A4 runProgram wrote all input before reading any output: over 64 KiB
+  both ways it waited for ever (3 MiB through cat: 10 s timeout on
+  0.1.86). poll loop; SIGPIPE blocked per thread and drained, the
+  process-wide handler no longer swapped.
+- A5 the shipped nexus and nexus-shop had no hardening flags of their
+  own (the image builds with plain g++, not rpmbuild). CMake option
+  NEXUS_HARDENING (on): PIE, full RELRO, BIND_NOW, stack protector,
+  stack clash, CET, _FORTIFY_SOURCE=3, _GLIBCXX_ASSERTIONS.
+  tools/check-hardening.sh in ctest and in the Containerfile's builder
+  stage (the image build stops if a program lacks them). NOT yet seen
+  on Fedora's g++: the first image build is the test.
+- A6 smaller: --domain could spell an option ("--browse");
+  comparePortageVersions threw on 20+ digits; update-notified fell
+  back to /tmp/.cache/nexus without HOME; seven struct members with
+  no initial value; fetchUrl capped at 32 MiB; "0 MiB" for small
+  sizes; dead readVariable() removed.
+- New tests: tests/no-apply-changes-nothing.sh (46 commands without
+  --apply against stand-in tools: no tool asked to change anything,
+  no file changed; passes as user and as root in a container -- the
+  rule holds), tests/fuzz/parser_fuzz.cpp (ctest quick pass;
+  `parser_fuzz 60` for longer), Hardening. New workflow tests.yml:
+  every push and pull request, release build + sanitizer build +
+  fuzzer, read-only, no secrets. NOT yet run on GitHub.
+- Checked and left alone (already right): all workflows pinned, no
+  expressions in run blocks, no pull_request_target; no polkit,
+  sudoers or setuid files in the image; JSON depth limit 200; XML pull
+  parser not recursive; solver iterative; Shop runs programs by full
+  path with argument lists.
+- Open, with reasons, in the audit report (patch 113's reply): R3
+  systemd sandboxing of the root units (cannot be tested without
+  systemd; a wrong line in nexus-boot-check means a false rollback);
+  firewall-cmd --reload after opening a port drops a person's
+  unsaved runtime rules, and ports go to the default zone only;
+  core/resolver.cpp and dependency_graph.cpp are used by tests only;
+  main.cpp is 11,000 lines; L1, L8, I3, USB disks in dualboot, Rekor.
+
+**Patch 114 (0.1.88): independent review of patch 113, seven findings,
+all confirmed on 0.1.87 and fixed.** Not pushed by David at the time
+(113 applied locally only); 114 applies on top of 113.
+- R1 runProgram: waitpid failing with anything but EINTR (ECHILD when
+  SIGCHLD is ignored) left `status = 0` and the program was "ok".
+  Now exit -1, not ok. Shown on 0.1.87: runProgram({"false"}) ok=1.
+- R2 LogLock waited 5 s and then rewrote the log without the lock.
+  Now held() is asked: without the lock the log is only added to
+  ("Finishes: <marker>" on the outcome; readers drop the started half
+  it names). Appends survive a concurrent rewrite both ways (the
+  appender re-adds if its file was renamed away; the rewriter copies
+  across what reached the old file late, and re-reads if the log grew).
+  Folder fsync after create and rename; a torn last record is closed
+  off before the next is added. Tests: lock held by another process;
+  8 writers, half never waiting for the lock; SIGKILL at random
+  moments, 25 rounds over a 300-record log.
+- R3 server backup/remove went on whatever `systemctl stop` did: a
+  copy from a running server, a unit file removed from under one.
+  Now the state after stop must be inactive or failed, else nothing is
+  copied or removed and a server that ran is seen running again.
+  After Ctrl-C the cleanup finishes and nexus then ends by the signal
+  (a shell loop stops). SIGQUIT held too. tests/server-backup-check.sh:
+  18 cases with stand-in systemctl/tar, root only, run by GitHub;
+  0.1.87 fails 9 of them.
+- R4 check-hardening.sh passed a file with no GNU_STACK segment and
+  printed protections it had not looked for. Now: GNU_STACK must exist
+  and be RW; FORTIFY, libstdc++ assertions, the CET mark and
+  stack-clash probes are read from the program (--expect=...), and the
+  header says what each proves ("at least one" for the per-function
+  ones; CET is a mark, not enforcement). Self-test builds a program
+  without each protection and requires a failure.
+- R5 no-apply test: with strace it now sees every program started (by
+  full path; unclassified programs fail) and every file written
+  anywhere, failed attempts included; 75 commands incl. the read-only
+  ones; ~110 stand-ins; the binary is searched for built-in tool
+  paths. Without strace it runs the reduced check and its last line
+  says what was not checked. Self-test: 12 ways of breaking the rule.
+- R6 Portage numbers compared as digit strings of any length (0.1.87's
+  cap made 10^30 == 10^30+1).
+- R7 extra: fd-leak and zombie test over the failure paths; kill test
+  for the log; five signal cases for backup.
+- Not verified here, for David: tests.yml on GitHub (now with strace
+  and a root step); the image build's hardening check on Fedora's g++
+  with all eight protections expected; `ctest` on the Acer with and
+  without strace; a real `sudo nexus server backup <name> --apply`
+  with Ctrl-C on the Asus.
+- Still open: power-loss durability is by design (fsync of file and
+  folder), not tested; a nexus killed outright (SIGKILL) mid-backup
+  leaves the server stopped and the record at "started"; plain
+  records added twice in the rarest double race are not de-duplicated;
+  everything listed as open under patch 113.
+
+**Patch 115 (0.1.89): first run of the patch 114 tests on Pop!_OS.**
+717 of 718 passed on the Acer; NoApplyChangesNothing (with strace)
+failed on five commands. Reproduced here by installing rpm and kmod.
+- `nexus doctor`, `language`, `source firefox` ran `rpm -q...` because
+  the rpm program exists. Debian's rpm keeps its database in ~/.rpmdb
+  and a plain query creates it: a preview wrote to the user's home.
+  Real, on any Debian/Ubuntu with rpm installed. Now rpm is asked only
+  where an rpm database file is present (rpmDatabasePresent():
+  rpmdb.sqlite / Packages / Packages.db under /usr/lib/sysimage/rpm or
+  /var/lib/rpm). Fedora is unaffected. Test:
+  RpmDatabaseTest.ADatabaseIsOnlyThereWhenItsFileIs.
+- `nexus gaming` (and `gaming split-lock`) run `modinfo ntsync`, which
+  only reads; the tracer resolved /usr/sbin/modinfo to /usr/bin/kmod
+  and did not know it. Test bug: multi-call programs (kmod, busybox,
+  toybox) are now judged by the name they were started as, so modinfo
+  reads and modprobe by its own path is still caught.
+- One command (on the Acer: probably `source firefox`; not reproduced
+  here) opened an unnamed O_TMPFILE file in /tmp. Such a file has no
+  name and is gone on close; keeping it needs linkat, which is checked.
+  In /tmp, /var/tmp, /dev/shm it is now noted in the test's summary
+  (with the program that did it), not a failure; elsewhere still one.
+- Findings now say which program did them ("[by modinfo]").
+- New test NoApplyTraceRules pins these rules on a hand-written log
+  (fails on the 0.1.88 tracer). 719 tests.
+
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
 hint for a mistyped package (java-lastest -> java-latest-openjdk);
