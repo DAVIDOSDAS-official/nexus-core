@@ -179,7 +179,7 @@ CHANGES="${CHANGES}"'|^curl .*( -X ?(POST|PUT|DELETE|PATCH)| --request ?(POST|PU
 # A rehearsal is not a change: the package manager is asked what it
 # WOULD do (apt-get --dry-run, dnf --assumeno) so the preview can be
 # checked against it.
-REHEARSAL='^(apt|apt-get) .*(--dry-run|--simulate|--just-print|--no-act|--recon| -s )|^(dnf|dnf5) .*--assumeno'
+REHEARSAL='^(apt|apt-get) .*(--dry-run|--simulate|--just-print|--no-act|--recon| -s )|^(dnf|dnf5) .*--assumeno|^rpm-ostree install .*--dry-run'
 
 # A mount is a change unless it is read-only (nexus dualboot looks
 # inside other systems' partitions read-only, with sudo, and says so).

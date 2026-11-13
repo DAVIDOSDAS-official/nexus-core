@@ -1342,6 +1342,72 @@ int commandInstall(
         }
     }
 
+    // Removals, replacements and downgrades are never only in
+    // --explain: nobody approving "install X" expects them (0.1.91,
+    // round-4 audit M2).
+    if (check.changes.beyondInstalling()) {
+        std::cout << "  Also        " << manager << " would also:\n";
+        for (const std::string& line : check.changes.describeBeyondInstalling()) {
+            std::cout << "                " << line << "\n";
+        }
+    }
+
+    // On the image, rpm-ostree does the work with its own resolver,
+    // and takes weak dependencies dnf's check leaves out. Its list is
+    // the one that will run, so it is the one asked for and shown
+    // (0.1.91, round-4 audit M3).
+    const bool layering = useRpm && nexus::system::isImageBased();
+    nexus::system::PlanCheck layer;
+
+    if (layering && (check.agreement == nexus::system::PlanAgreement::Agrees ||
+                     check.agreement == nexus::system::PlanAgreement::Differs)) {
+        const std::set<std::string>& approved =
+            check.agreement == nexus::system::PlanAgreement::Agrees ? expected : check.theirs;
+        layer = nexus::system::checkPlanWithRpmOstree(requested, approved);
+
+        switch (layer.agreement) {
+            case nexus::system::PlanAgreement::Agrees:
+                std::cout << "  Layered     rpm-ostree adds the same "
+                          << layer.theirs.size() << " package(s)";
+                break;
+            case nexus::system::PlanAgreement::Differs:
+                std::cout << "  Layered     rpm-ostree would add "
+                          << layer.theirs.size() << " package(s), "
+                          << layer.onlyTheirs.size()
+                          << " not in dnf's list (weak dependencies\n"
+                             "              and its own rules); its list is the one used:\n";
+                for (const std::string& name : layer.onlyTheirs) {
+                    std::cout << "                + " << name << "\n";
+                }
+                break;
+            case nexus::system::PlanAgreement::Refused:
+                std::cout << "\nrpm-ostree refuses this plan:\n";
+                for (const std::string& message : layer.refusal) {
+                    std::cout << "    " << message << "\n";
+                }
+                break;
+            case nexus::system::PlanAgreement::Unavailable:
+                std::cout << "  Layered     rpm-ostree could not be asked; "
+                             "the plan cannot be applied\n";
+                break;
+        }
+        if (layer.agreement == nexus::system::PlanAgreement::Agrees) {
+            std::cout << "\n";
+        }
+        if (!layer.refreshed.empty() &&
+            (layer.agreement == nexus::system::PlanAgreement::Agrees ||
+             layer.agreement == nexus::system::PlanAgreement::Differs)) {
+            std::cout << "              (and recomputes " << layer.refreshed.size()
+                      << " package(s) layered earlier, which may move to newer versions)\n";
+        }
+        if (layer.changes.beyondInstalling()) {
+            std::cout << "  Also        rpm-ostree would also:\n";
+            for (const std::string& line : layer.changes.describeBeyondInstalling()) {
+                std::cout << "                " << line << "\n";
+            }
+        }
+    }
+
     if (showCommands) {
         // The commands, not the outcome.
         //
@@ -1396,21 +1462,30 @@ int commandInstall(
     // for. A plan that differs by leaving out the requested package
     // itself is not a preview that was slightly off; it is the package
     // manager meaning something else by that name.
-    const bool differs =
-        check.agreement == nexus::system::PlanAgreement::Differs &&
-        check.theirs.count(requested) > 0;
+    //
+    // 0.1.91: the rule lives in decideInstall (plan_check), with the
+    // two additions of the round-4 audit: on the image, rpm-ostree's
+    // own list is the one confirmed; and a plan that also removes,
+    // replaces or downgrades needs a typed "yes", and is refused
+    // under -y.
+    const auto decision = nexus::system::decideInstall(
+        requested, expected, check, layering ? &layer : nullptr, assumeYes);
 
-    if (!check.safeToApply() && !differs) {
+    if (!decision.allowed) {
         std::cout
-            << "\nRefusing to apply an unverified plan.\n"
+            << "\nRefusing to apply: " << decision.reason << ".\n"
             << "Nothing has been changed.\n";
 
         return 1;
     }
 
-    if (differs) {
+    const bool differs =
+        check.agreement == nexus::system::PlanAgreement::Differs;
+
+    if (differs || layering) {
         std::cout
-            << "\n" << manager << " agrees to install " << requested
+            << "\n" << (layering ? std::string("rpm-ostree") : manager)
+            << " agrees to install " << requested
             << "; its list is the one that\nwill be used, not Nexus's.\n";
     }
 
@@ -1429,39 +1504,51 @@ int commandInstall(
     // The plan is shown before anything happens, and the person says
     // yes to that plan rather than to a question with no content.
     if (!assumeYes) {
-        // When the plans differ, the package manager's list: it is the
-        // one that will run.
-        const std::set<std::string>& willInstall =
-            differs ? check.theirs : expected;
+        // The list of the tool that will run, every name of it: what
+        // is confirmed is what happens (0.1.91; it used to stop at 20).
+        const std::set<std::string>& willInstall = decision.willChange;
 
-        std::cout << "\nWould install:\n";
-
-        std::size_t shown = 0;
+        std::cout << "\nWould install " << willInstall.size() << " package(s):\n";
 
         for (const std::string& name : willInstall) {
             std::cout << "    " << name << "\n";
+        }
 
-            if (++shown >= 20) {
-                std::cout
-                    << "    ... and " << (willInstall.size() - shown)
-                    << " more\n";
-                break;
+        if (!decision.alsoChanges.empty()) {
+            std::cout << "\nAnd would also:\n";
+            for (const std::string& line : decision.alsoChanges) {
+                std::cout << "    " << line << "\n";
             }
         }
 
-        std::cout << "\nProceed? [Y/n] ";
-
         std::string answer;
 
-        std::getline(std::cin, answer);
+        if (decision.typedConfirmation) {
+            std::cout << "\nThis changes more than it adds. Type 'yes' to confirm: ";
+            std::getline(std::cin, answer);
+            if (answer != "yes") {
+                std::cout << "Nothing has been changed.\n";
+                return 1;
+            }
+        } else {
+            std::cout << "\nProceed? [Y/n] ";
 
-        // Enter is yes: the plan is on the screen and the command was
-        // run with --apply, so the person has asked twice already.
-        if (!(answer.empty() || answer == "y" || answer == "Y" ||
-              answer == "yes")) {
-            std::cout << "Nothing has been changed.\n";
-            return 1;
+            std::getline(std::cin, answer);
+
+            // Enter is yes: the plan is on the screen and the command
+            // was run with --apply, so the person has asked twice
+            // already.
+            if (!(answer.empty() || answer == "y" || answer == "Y" ||
+                  answer == "yes")) {
+                std::cout << "Nothing has been changed.\n";
+                return 1;
+            }
         }
+    } else if (layering && !layer.onlyTheirs.empty()) {
+        // -y: no prompt, but what was added beyond dnf's list is on the
+        // screen above and in the record below.
+        std::cout << "\n-y given: going ahead with rpm-ostree's list of "
+                  << decision.willChange.size() << " package(s).\n";
     }
 
     // Written before the work starts. An interrupted process does
@@ -1473,7 +1560,7 @@ int commandInstall(
     record.when = nexus::system::currentTimestamp();
     record.request = capability;
     record.resolved = requested;
-    record.packages = expected;
+    record.packages = decision.willChange;   // what was confirmed
 
     const std::string log = nexus::system::defaultTransactionLog();
 
@@ -1534,6 +1621,9 @@ int commandInstall(
             }
         }
     }
+
+    // The plan was checked with rpm-ostree; it is the one to run it.
+    useRpmOstree = useRpmOstree || layering;
 
     // Named for what actually runs: on an image-based system dnf only
     // checked the plan, and rpm-ostree carries it out.
@@ -1946,6 +2036,53 @@ int commandRemove(
         return 0;
     }
 
+    // What the package manager itself would remove (0.1.91, round-4
+    // audit M1). `dnf remove` also takes everything that depends on a
+    // target and the dependencies left unused, and Nexus's own plan
+    // cannot see rpm's rich dependencies; so the count confirmed below
+    // is the package manager's, and a removal it would not confirm is
+    // not carried out.
+    const std::set<std::string> planned(plan.removed.begin(), plan.removed.end());
+    const auto removal = useRpm
+        ? nexus::system::checkRemovalWithDnf(plan.removed, planned)
+        : nexus::system::checkRemovalWithApt(plan.removed, planned);
+    const std::string tool = useRpm ? "dnf" : "apt";
+
+    switch (removal.agreement) {
+        case nexus::system::PlanAgreement::Agrees:
+            std::cout << "\nChecked:   " << tool << " would remove the same "
+                      << removal.theirs.size() << " package(s).\n";
+            break;
+        case nexus::system::PlanAgreement::Differs:
+            std::cout << "\nChecked:   " << tool << " would remove "
+                      << removal.theirs.size() << " package(s); its list is the one used.\n";
+            if (!removal.onlyTheirs.empty()) {
+                std::cout << "\nAlso removed by " << tool << " (not in the plan above):\n";
+                for (const std::string& name : removal.onlyTheirs) {
+                    std::cout << "    " << name << "\n";
+                }
+            }
+            if (!removal.onlyOurs.empty()) {
+                std::cout << "\nIn the plan above, but " << tool << " would not remove:\n";
+                for (const std::string& name : removal.onlyOurs) {
+                    std::cout << "    " << name << "\n";
+                }
+            }
+            break;
+        case nexus::system::PlanAgreement::Refused:
+            std::cout << "\n" << tool << " refuses this removal:\n";
+            for (const std::string& message : removal.refusal) {
+                std::cout << "    " << message << "\n";
+            }
+            break;
+        case nexus::system::PlanAgreement::Unavailable:
+            std::cout << "\nChecked:   " << tool << " could not be asked"
+                      << (nexus::system::haveRootPrivileges()
+                              ? "; the removal cannot be applied.\n"
+                              : " without root; with sudo it is asked first.\n");
+            break;
+    }
+
     if (!apply) {
         std::cout
             << "\nNothing has been changed. Use --apply to remove, "
@@ -1963,13 +2100,22 @@ int commandRemove(
         return 1;
     }
 
+    const auto decision = nexus::system::decideRemoval(planned, removal, assumeYes);
+
+    if (!decision.allowed) {
+        std::cout << "\nRefusing to remove: " << decision.reason << ".\n"
+                  << "Nothing has been changed.\n";
+        return 1;
+    }
+
     // Removing is the dangerous direction, so the confirmation is
     // stricter than for installing: the count is stated and the whole
-    // word must be typed. A y/N prompt is answered by reflex.
+    // word must be typed. A y/N prompt is answered by reflex. The count
+    // is the package manager's (0.1.91).
     if (!assumeYes) {
         std::cout
-            << "\nThis will remove " << plan.removed.size()
-            << " component(s). Type 'remove' to confirm: ";
+            << "\nThis will remove " << decision.willChange.size()
+            << " package(s). Type 'remove' to confirm: ";
 
         std::string answer;
 
@@ -1987,8 +2133,7 @@ int commandRemove(
     record.when = nexus::system::currentTimestamp();
     record.request = "remove " + target;
     record.resolved = plan.target;
-    record.packages = std::set<std::string>(
-        plan.removed.begin(), plan.removed.end());
+    record.packages = decision.willChange;   // what was confirmed
 
     const std::string log = nexus::system::defaultTransactionLog();
 
@@ -9636,7 +9781,8 @@ int commandSetup(
     if (!assumeYes) {
         std::cout
             << "\nInstall " << total
-            << " thing(s)? [y/N] ";
+            << " thing(s)? Each is shown in full and asked again before"
+               " it is installed. [y/N] ";
 
         std::string answer;
 
@@ -9657,9 +9803,13 @@ int commandSetup(
     for (const std::string& name : wanted) {
         std::cout << "\n=== " << name << " ===\n";
 
+        // Each item asks on its own, with its full list (0.1.91,
+        // round-4 audit M4): "Install 5 things?" approves five names,
+        // not the packages each brings. -y given to setup is given to
+        // each item too.
         const int status = commandInstall(
             aliases, universe, installed, name, architecture,
-            gUseRpmVersions, true, true, false, invocation,
+            gUseRpmVersions, true, assumeYes, false, invocation,
             std::string{}, false);
 
         if (status == 0) {

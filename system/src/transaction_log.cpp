@@ -9,6 +9,7 @@
 #include <sstream>
 #include <unistd.h>
 #include <fcntl.h>
+#include <grp.h>
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <cerrno>
@@ -118,12 +119,43 @@ bool writeAll(int fd, const std::string& text) {
 //   - a log whose last record was cut short (a full disk, a kill in
 //     the middle of a write) is closed off with a blank line first, so
 //     the new record does not run into the broken one.
+// Who may read the log (0.1.91, round-4 audit L-item). It says what
+// was installed and removed, and when; that is nobody else's business
+// on a shared machine. Owner root, group the administrators' group
+// (wheel on Fedora, sudo on Debian and Ubuntu), mode 0640: the
+// people who could run nexus with sudo can still read `nexus history`
+// without it, and other accounts cannot. Applied when root writes,
+// so a log made 0644 by an older nexus is put right on its next
+// write. Permissions are only ever taken away (a 0600 log stays
+// 0600); a log written by an ordinary user only loses its "others"
+// bits.
+void restrictLog(int fd) {
+    struct stat info {};
+    if (::fstat(fd, &info) != 0) return;
+    if (::geteuid() == 0) {
+        for (const char* name : {"wheel", "sudo", "admin"}) {
+            if (const struct group* found = ::getgrnam(name)) {
+                if (info.st_gid != found->gr_gid) {
+                    [[maybe_unused]] const int ignored = ::fchown(fd, 0, found->gr_gid);
+                }
+                break;
+            }
+        }
+    }
+    // Only ever taken away: a log someone made 0600 stays 0600.
+    const mode_t wanted = (info.st_mode & 0777) & 0640;
+    if ((info.st_mode & 0777) != wanted) {
+        [[maybe_unused]] const int ignored = ::fchmod(fd, wanted);
+    }
+}
+
 bool appendToLog(const std::string& path, const std::string& text) {
     for (int attempt = 0; attempt < 5; ++attempt) {
         const bool existed = ::access(path.c_str(), F_OK) == 0;
         const int fd = ::open(path.c_str(),
-                              O_RDWR | O_APPEND | O_CREAT | O_CLOEXEC, 0644);
+                              O_RDWR | O_APPEND | O_CREAT | O_CLOEXEC, 0640);
         if (fd < 0) return false;
+        restrictLog(fd);
 
         std::string whole;
         struct stat before {};
@@ -204,9 +236,9 @@ enum class Replaced { Yes, Grew, Failed };
 Replaced replaceLog(const std::string& path, const LogSnapshot& old,
                     const std::string& contents) {
     const std::string fresh = path + ".new";
-    mode_t mode = 0644;
+    mode_t mode = 0640;   // see restrictLog: kept, never widened
     struct stat info {};
-    if (::fstat(old.fd, &info) == 0) mode = info.st_mode & 0777;
+    if (::fstat(old.fd, &info) == 0) mode = (info.st_mode & 0777) & 0640;
 
     ::unlink(fresh.c_str());   // a leftover from a run that was killed
     const int fd = ::open(fresh.c_str(),
@@ -214,6 +246,7 @@ Replaced replaceLog(const std::string& path, const LogSnapshot& old,
     if (fd < 0) return Replaced::Failed;
     bool ok = writeAll(fd, contents);
     ok = ::fchmod(fd, mode) == 0 && ok;   // open() is cut down by the umask
+    restrictLog(fd);
     ok = ::fsync(fd) == 0 && ok;
     ok = ::close(fd) == 0 && ok;
     if (!ok) {

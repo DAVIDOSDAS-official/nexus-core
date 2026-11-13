@@ -234,6 +234,8 @@ TEST(TransactionLogTest, AStagedUpdateTakesEffectAfterTheRestart) {
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <grp.h>
+#include <sys/stat.h>
 
 #include <fstream>
 #include <vector>
@@ -653,4 +655,41 @@ TEST(TransactionLogTest, AFinishesLineRetiresTheStartedHalf) {
     EXPECT_EQ(readTransactions(path).size(), 2u);
 
     removeLog(path);
+}
+
+// 0.1.91 (round-4 audit): the history is not for every account. A new
+// log is 0640, a 0644 log from an older nexus becomes 0640 on its next
+// write, and a rewrite (finishing a transaction) keeps it so. As root
+// the group is the administrators' group; that part is checked by the
+// root-only run of the suite (here: the "others" bit, which needs no
+// root).
+TEST(TransactionLogTest, TheLogIsNotReadableByOtherAccounts) {
+    struct stat info {};
+    const std::string fresh = temporaryLog();
+    TransactionRecord record;
+    record.when = "2026-11-13T19:26:00Z";
+    record.request = "vlc";
+    record.outcome = "applied";
+    record.succeeded = true;
+    ASSERT_TRUE(recordTransaction(fresh, record));
+    ASSERT_EQ(::stat(fresh.c_str(), &info), 0);
+    EXPECT_EQ(info.st_mode & 0777, 0640u);
+
+    const std::string old = temporaryLog();
+    { std::ofstream make(old); }
+    ::chmod(old.c_str(), 0644);
+    const std::string marker = beginTransaction(old, record);
+    ASSERT_EQ(::stat(old.c_str(), &info), 0);
+    EXPECT_EQ(info.st_mode & 0777, 0640u);
+    ASSERT_TRUE(finishTransaction(old, marker, record));
+    ASSERT_EQ(::stat(old.c_str(), &info), 0);
+    EXPECT_EQ(info.st_mode & 0777, 0640u);
+    EXPECT_EQ(info.st_mode & S_IROTH, 0u);
+
+    if (::geteuid() == 0) {
+        if (const struct group* admins = ::getgrnam("wheel") ? ::getgrnam("wheel")
+                                         : ::getgrnam("sudo")) {
+            EXPECT_EQ(info.st_gid, admins->gr_gid);
+        }
+    }
 }

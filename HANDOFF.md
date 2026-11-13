@@ -974,6 +974,45 @@ that has no frame over a page, failed although nothing was wrong.
 - Not known yet: what Fedora's compiler actually emits. The next
   image build prints it in the "verified in the file" line.
 
+**Patch 117 (0.1.91): what is confirmed is what runs (round-4 audit).**
+The Asus, 13 November: `nexus install vlc` said 11 packages (dnf: 12);
+`rpm-ostree install --dry-run vlc` listed 193, because it recomputes
+the whole layer (gcc, nmap, wireshark... layered earlier, already in
+the booted deployment) and takes weak dependencies dnf's check leaves
+out. 56 rich dependencies installed. transactions.log was 0644.
+- M2: dnf's dry run is read whole (parseDnfTransaction): installs,
+  upgrades, reinstalls, downgrades, removals (dependents and unused
+  dependencies), and "replacing" rows as replacements, not as a
+  package called "replacing". A plan that also removes, replaces or
+  downgrades no longer "agrees"; those lines are always shown, need a
+  typed "yes", and are refused under -y. 0.1.89's parser called such a
+  plan Agrees (shown with the old library).
+- M3: on the image, rpm-ostree is asked first, with the options the
+  real layering uses (--dry-run --idempotent --allow-inactive). Its
+  list, less what the running system already has (rpm -q), is the list
+  shown and confirmed; packages it adds beyond dnf's list are listed
+  by name; recomputed earlier layers are counted. If rpm-ostree cannot
+  be asked or refuses, nothing is layered. The confirmation now lists
+  every name (it stopped at 20).
+- M1: `nexus remove` asks dnf (`remove --assumeno`) or apt
+  (`remove --simulate`) what it would remove, in the preview too. The
+  count typed against is the package manager's; extra removals are
+  listed by name and refused under -y; a removal the tool will not
+  confirm, or one that would also install, is not done. dnf declining
+  to answer without root is "could not be asked", not a refusal.
+- M4: `nexus setup` asks once for the set, then each item shows its
+  full list and asks again (-y given to setup goes to each item).
+- L: transactions.log is 0640, group wheel (sudo/admin on Debian)
+  when root writes; an older 0644 log is fixed on its next write;
+  permissions are only ever narrowed (a 0600 log stays 0600).
+- Rules in plan_check (decideInstall, decideRemoval) with 13 new
+  tests on dnf 4/5 tables, the Asus rpm-ostree output, apt, and both
+  decisions; 1 log test. 731 tests.
+- Not verified here: dnf 5's exact wording for removals, downgrades
+  and replacements on Fedora 44 (shape known, wording from dnf's
+  documentation and memory); `dnf remove --assumeno` as an ordinary
+  user on Fedora; the image install flow end to end (needs the Asus).
+
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
 hint for a mistyped package (java-lastest -> java-latest-openjdk);
