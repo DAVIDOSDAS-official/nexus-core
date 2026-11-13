@@ -955,6 +955,25 @@ failed on five commands. Reproduced here by installing rpm and kmod.
 - New test NoApplyTraceRules pins these rules on a hand-written log
   (fails on the 0.1.88 tracer). 719 tests.
 
+**Patch 116 (0.1.90): the image build stopped at the stack-clash check.**
+On GitHub (Fedora's g++) both nexus and nexus-shop got "PROBLEM: ...
+missing: stack clash probes (none found)"; every other protection was
+read back fine. The 0.1.88 checker looked for one instruction spelling
+(`orq $0x0,(%rsp)`); a program whose compiler probes another way, or
+that has no frame over a page, failed although nothing was wrong.
+- The checker now reads the property itself from every function: no
+  constant step of the stack pointer downwards larger than one page
+  (sub $N,%rsp or add $-N,%rsp). A frame taken in one jump fails and
+  is named with its size; frames taken a page at a time pass; a
+  program with no frame over a page passes and says so. Run-time
+  sized frames are counted, not judged.
+- Self-test: a program with no large frame, and a hand-written
+  function that steps a page at a time with a plain store, must pass;
+  the same with a two-page jump must fail. Both new passes fail on the
+  0.1.89 checker. Works with mawk and gawk.
+- Not known yet: what Fedora's compiler actually emits. The next
+  image build prints it in the "verified in the file" line.
+
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
 hint for a mistyped package (java-lastest -> java-latest-openjdk);

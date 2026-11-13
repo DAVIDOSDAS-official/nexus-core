@@ -162,6 +162,49 @@ case ",${expect_all}," in *",stack-clash,"*)
         { verdict no-clash 1 --expect=stack-clash; verdict no-clash 0; } ;;
 esac
 
+# ---- stack clash judged by what the code does, not by one probe spelling
+# (0.1.90: Fedora's compiler took every large frame a page at a time, yet
+# the 0.1.88 checker looked for one exact instruction and failed it).
+# -fstack-protector-all: these tiny programs have no buffer, and the
+# stack protector is always required.
+if [ "$(uname -m)" = x86_64 ]; then
+    # A program with no frame over a page: nothing to probe, passes.
+    printf 'int main(int c, char**) { return c - 1; }\n' > "${WORK}/small.cpp"
+    "${CXX}" -O2 ${PIE} -fstack-protector-all ${CLASH} ${RELRO} ${NOW} ${NX} "${WORK}/small.cpp" \
+        -o "${WORK}/small" 2> "${WORK}/small.log" && verdict small 0 --expect=stack-clash
+    # Pages taken one at a time, each touched with a plain store instead
+    # of "or": passes. The same frame taken in one jump: fails.
+    cat > "${WORK}/steps.S" <<'ASM'
+        .text
+        .globl paged
+paged:  sub $0x1000,%rsp
+        movq $0,(%rsp)
+        sub $0x1000,%rsp
+        movq $0,(%rsp)
+        add $0x2000,%rsp
+        ret
+        .globl jump
+jump:   sub $0x2000,%rsp
+        movq $0,(%rsp)
+        add $0x2000,%rsp
+        ret
+        .section .note.GNU-stack,"",@progbits
+ASM
+    printf 'extern "C" void %s();\nint main() { %s(); return 0; }\n' paged paged > "${WORK}/paged.cpp"
+    printf 'extern "C" void %s();\nint main() { %s(); return 0; }\n' jump jump > "${WORK}/jump.cpp"
+    for name in paged jump; do
+        "${CXX}" -O2 ${PIE} -fstack-protector-all ${CLASH} ${RELRO} ${NOW} ${NX} "${WORK}/${name}.cpp" \
+            "${WORK}/steps.S" -o "${WORK}/${name}" 2> "${WORK}/${name}.log" || {
+            failures=$((failures + 1)); echo "FAILED: could not build ${name}"; sed 's/^/    | /' "${WORK}/${name}.log"; }
+    done
+    verdict paged 1 --expect=stack-clash   # jump() is in it too: one jump anywhere fails
+    printf 'extern "C" void paged();\nint main() { paged(); return 0; }\n' > "${WORK}/onlypaged.cpp"
+    sed '/globl jump/,/ret/d' "${WORK}/steps.S" > "${WORK}/onlypaged.S"
+    "${CXX}" -O2 ${PIE} -fstack-protector-all ${CLASH} ${RELRO} ${NOW} ${NX} "${WORK}/onlypaged.cpp" \
+        "${WORK}/onlypaged.S" -o "${WORK}/onlypaged" 2> "${WORK}/onlypaged.log" &&
+        verdict onlypaged 0 --expect=stack-clash
+fi
+
 # ---- things that are not programs, and a misspelt protection
 printf 'not a program\n' > "${WORK}/text"
 verdict text 1

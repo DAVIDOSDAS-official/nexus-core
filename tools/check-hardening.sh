@@ -43,12 +43,18 @@
 #                     if every part of the program has it. Whether the
 #                     protection is switched on is up to the kernel and
 #                     the processor, not this file
-#   stack-clash       x86-64 only: at least one function with a frame
-#                     larger than a page probes its stack as it grows
-#                     (the instruction -fstack-clash-protection adds).
-#                     Evidence that the flag was in effect, from the
-#                     code itself; a program with no large frame would
-#                     show nothing either way
+#   stack-clash       x86-64 only: no function moves the stack pointer
+#                     down by more than one page (4096 bytes) in a
+#                     single step. That is the property
+#                     -fstack-clash-protection exists for: a large
+#                     frame is taken a page at a time, each page
+#                     touched, so it cannot jump over the guard page.
+#                     Read from the disassembly of every function, not
+#                     from one probe instruction (whose spelling differs
+#                     between compiler versions: 0.1.90). Frames sized
+#                     at run time (alloca, arrays of variable length)
+#                     are counted but not judged. A program with no
+#                     frame over a page passes, and says so
 #
 # "at least one" is the limit of what a finished program can show for
 # the per-function protections: it proves the flag reached the build,
@@ -181,12 +187,37 @@ for program in "${programs[@]}"; do
             *) note cet no "CET mark (IBT and SHSTK not both set)" ;;
         esac
         if command -v objdump > /dev/null 2>&1; then
-            probes="$(objdump -d --no-show-raw-insn "${program}" 2>/dev/null \
-                | grep -cE 'orq?[[:space:]]+\$0x0,\(%rsp\)' || true)"
-            if [ "${probes}" -gt 0 ]; then
-                note stack-clash yes "stack clash probes (${probes} large frames)"
+            # Every constant step of the stack pointer downwards:
+            # "sub $N,%rsp", or "add $-N,%rsp" (printed as a 64-bit
+            # two's complement). One over 0x1000 is an unprobed jump.
+            stack="$(objdump -d --no-show-raw-insn "${program}" 2>/dev/null | awk '
+                function hex(h,   i, n) { n = 0; h = tolower(h)
+                    for (i = 1; i <= length(h); i++) n = n * 16 + index("0123456789abcdef", substr(h, i, 1)) - 1
+                    return n }
+                /^[0-9a-f]+ <.*>:$/ { fn = $2; next }
+                {
+                    step = 0
+                    if (match($0, /sub[q]?[ \t]+\$0x[0-9a-f]+,%rsp/)) {
+                        t = substr($0, RSTART, RLENGTH); sub(/.*\$0x/, "", t); sub(/,.*/, "", t)
+                        # "sub $-N" (16 digits, top bit set) moves the stack up: not a step down.
+                        if (!(length(t) == 16 && t ~ /^[89a-f]/)) step = hex(t)
+                    } else if (match($0, /add[q]?[ \t]+\$0xffffffff[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f],%rsp/)) {
+                        t = substr($0, RSTART, RLENGTH); sub(/.*\$0xffffffff/, "", t); sub(/,.*/, "", t)
+                        step = 4294967296 - hex(t)
+                    } else if ($0 ~ /sub[q]?[ \t]+%r[a-z0-9]+,%rsp/) {
+                        dynamic++
+                    }
+                    if (step == 4096) paged++
+                    if (step > 4096 && !(fn in seen)) { seen[fn] = 1; bad++; if (bad <= 3) worst = worst " " fn " (" step " bytes)" }
+                }
+                END { printf "%d %d %d%s\n", bad + 0, paged + 0, dynamic + 0, worst }')"
+            read -r stack_bad stack_paged stack_dynamic stack_worst <<< "${stack}"
+            if [ "${stack_bad:-1}" -gt 0 ]; then
+                note stack-clash no "stack clash protection (${stack_bad} function(s) step the stack more than a page at once:${stack_worst:- unknown})"
+            elif [ "${stack_paged}" -gt 0 ]; then
+                note stack-clash yes "stack clash protection (no step over a page; ${stack_paged} large frame(s) taken a page at a time; ${stack_dynamic} run-time sized, not judged)"
             else
-                note stack-clash no "stack clash probes (none found)"
+                note stack-clash yes "stack clash protection (no frame over a page in this program; ${stack_dynamic} run-time sized, not judged)"
             fi
         elif expected stack-clash; then
             missing="${missing}, stack clash probes (objdump is not installed, so not checked)"
