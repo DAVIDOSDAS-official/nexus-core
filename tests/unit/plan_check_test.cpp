@@ -99,26 +99,30 @@ namespace {
 using nexus::system::PackageChanges;
 using nexus::system::PlanCheck;
 
-// Several stand-in programs first on PATH, C locale.
+// Stand-in programs first on PATH, added one at a time. (A constructor
+// taking a list of pairs was ambiguous with one brace-enclosed pair on
+// some compilers: the Acer, 13 November.)
 class FakeTools {
 public:
-    explicit FakeTools(const std::vector<std::pair<std::string, std::string>>& tools) {
+    FakeTools() {
         dir_ = std::filesystem::temp_directory_path() /
                ("nexus-test-tools-" + std::to_string(::getpid()));
         std::filesystem::create_directories(dir_);
-        for (const auto& [name, script] : tools) {
-            const auto path = dir_ / name;
-            { std::ofstream out(path); out << "#!/bin/sh\n" << script; }
-            std::filesystem::permissions(path, std::filesystem::perms::owner_all);
-        }
         const char* old = std::getenv("PATH");
         path_ = old == nullptr ? "" : old;
         ::setenv("PATH", (dir_.string() + ":" + path_).c_str(), 1);
     }
+    FakeTools(const FakeTools&) = delete;
+    FakeTools& operator=(const FakeTools&) = delete;
     ~FakeTools() {
         ::setenv("PATH", path_.c_str(), 1);
         std::error_code error;
         std::filesystem::remove_all(dir_, error);
+    }
+    void add(const std::string& name, const std::string& script) {
+        const auto path = dir_ / name;
+        { std::ofstream out(path); out << "#!/bin/sh\n" << script; }
+        std::filesystem::permissions(path, std::filesystem::perms::owner_all);
     }
 private:
     std::filesystem::path dir_;
@@ -216,8 +220,9 @@ TEST(PlanCheckTest, ADnf4ObsoleteIsAReplacementNotAPackageCalledReplacing) {
 }
 
 TEST(PlanCheckTest, AnInstallThatAlsoRemovesDoesNotAgreeEvenWithTheSameNames) {
-    FakeTools tools({{"dnf",
-        std::string("printf '%s' '") + kDnf5Mixed + "'\nexit 1\n"}});
+    FakeTools tools;
+    tools.add("dnf",
+        std::string("printf '%s' '") + kDnf5Mixed + "'\nexit 1\n");
     const auto check = checkPlanWithDnf(
         "newtool", std::set<std::string>{"newtool", "libfoo"});
     EXPECT_EQ(check.agreement, PlanAgreement::Differs);
@@ -227,11 +232,10 @@ TEST(PlanCheckTest, AnInstallThatAlsoRemovesDoesNotAgreeEvenWithTheSameNames) {
 }
 
 TEST(PlanCheckTest, RpmOstreesListLessWhatIsAlreadyHereIsWhatIsNew) {
-    FakeTools tools({
-        {"rpm-ostree", std::string("cat <<'EOF'\n") + kRpmOstree + "EOF\n"},
-        // gcc is layered already; the others are not installed.
-        {"rpm", "for a in \"$@\"; do case \"$a\" in gcc) echo gcc;; -q|--qf|*NAME*) ;; "
-                "*) echo \"package $a is not installed\";; esac; done\nexit 4\n"}});
+    FakeTools tools;
+    tools.add("rpm-ostree", std::string("cat <<'EOF'\n") + kRpmOstree + "EOF\n");
+    tools.add("rpm", "for a in \"$@\"; do case \"$a\" in gcc) echo gcc;; -q|--qf|*NAME*) ;; "
+                "*) echo \"package $a is not installed\";; esac; done\nexit 4\n");
     const auto check = nexus::system::checkPlanWithRpmOstree(
         "vlc", std::set<std::string>{"vlc", "vlc-plugin-pipewire"});
     EXPECT_EQ(check.agreement, PlanAgreement::Differs);
@@ -243,9 +247,9 @@ TEST(PlanCheckTest, RpmOstreesListLessWhatIsAlreadyHereIsWhatIsNew) {
 }
 
 TEST(PlanCheckTest, RpmOstreeAddingNothingUnapprovedAgrees) {
-    FakeTools tools({
-        {"rpm-ostree", std::string("cat <<'EOF'\n") + kRpmOstree + "EOF\n"},
-        {"rpm", "echo gcc\nexit 4\n"}});
+    FakeTools tools;
+    tools.add("rpm-ostree", std::string("cat <<'EOF'\n") + kRpmOstree + "EOF\n");
+    tools.add("rpm", "echo gcc\nexit 4\n");
     const auto check = nexus::system::checkPlanWithRpmOstree(
         "vlc", std::set<std::string>{"vlc", "vlc-plugin-pipewire", "daala-libs",
                                      "perl-Text-Tabs+Wrap"});
@@ -253,7 +257,8 @@ TEST(PlanCheckTest, RpmOstreeAddingNothingUnapprovedAgrees) {
 }
 
 TEST(PlanCheckTest, ARemovalTakesWhatDnfSaysNotWhatNexusPlanned) {
-    FakeTools tools({{"dnf",
+    FakeTools tools;
+    tools.add("dnf",
         "cat <<'EOF'\n"
         "Package  Arch  Version  Repository  Size\n"
         "Removing:\n"
@@ -262,7 +267,7 @@ TEST(PlanCheckTest, ARemovalTakesWhatDnfSaysNotWhatNexusPlanned) {
         " needs-target x86_64 1-1 @System 1 MiB\n"
         "Removing unused dependencies:\n"
         " libonlyfortarget x86_64 1-1 @System 1 MiB\n"
-        "EOF\nexit 1\n"}});
+        "EOF\nexit 1\n");
     const auto check = nexus::system::checkRemovalWithDnf(
         {"target", "libonlyfortarget"}, {"target", "libonlyfortarget"});
     EXPECT_EQ(check.agreement, PlanAgreement::Differs);
@@ -278,9 +283,10 @@ TEST(PlanCheckTest, ARemovalTakesWhatDnfSaysNotWhatNexusPlanned) {
 }
 
 TEST(PlanCheckTest, DnfDecliningToAnswerWithoutRootIsNotARefusal) {
-    FakeTools tools({{"dnf",
+    FakeTools tools;
+    tools.add("dnf",
         "echo 'This command has to be run with superuser privileges "
-        "(under the root user on most systems).' >&2\nexit 1\n"}});
+        "(under the root user on most systems).' >&2\nexit 1\n");
     const auto check = nexus::system::checkRemovalWithDnf({"target"}, {"target"});
     EXPECT_EQ(check.agreement, PlanAgreement::Unavailable);
     EXPECT_FALSE(nexus::system::decideRemoval({"target"}, check, false).allowed);
