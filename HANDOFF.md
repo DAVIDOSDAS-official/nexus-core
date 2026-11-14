@@ -1013,6 +1013,42 @@ out. 56 rich dependencies installed. transactions.log was 0644.
   documentation and memory); `dnf remove --assumeno` as an ordinary
   user on Fedora; the image install flow end to end (needs the Asus).
 
+**Patch 118:** test code only. FakeTools took a list of pairs; with one
+brace-enclosed pair the Acer's compiler found it ambiguous with the
+copy constructor. Stand-ins are now added with tools.add(name, script).
+
+**Patch 119 (0.1.92): the Asus test of 0.1.91.**
+`nexus install vlc` on the Asus printed no "Layered" line: the
+rpm-ostree check (M3) never ran. isImageBased() asked
+`findmnt -no OPTIONS /usr`, which prints nothing on a bootc/composefs
+image (/usr is not a mount point of its own), and read that as
+"writable". The install path's older block read the same empty answer
+as "not writable" and layered anyway, so 0.1.91 would layer without
+rpm-ostree's list having been shown.
+- isImageBased(): /run/ostree-booted, else statvfs("/usr") read-only,
+  with rpm-ostree present. One answer for the whole install command.
+  Test: PlanApplyTest.AnOstreeSystemIsImageBasedWithoutAUsrMountPoint.
+- `dnf remove --assumeno nmap` on the Asus confirmed dnf 5's table:
+  "Removing:" heading, one-space rows, "Transaction Summary:"; the
+  removal check read it right ("dnf would remove the same 1").
+- `nexus remove` on Fedora no longer warns about
+  /var/lib/apt/extended_states.
+- `nexus remove --apply` on the image stops before the confirmation and
+  names `rpm-ostree uninstall` (dnf cannot remove from the image; it
+  used to fail after the person had typed "remove"). Real removal of
+  layered packages through rpm-ostree is still to do.
+
+**Patch 120 (test only):** NoApplyChangesNothing failed on the Acer for
+`nexus setup media,development,vpn`: /etc/cups/subscriptions.conf
+changed during the command. cupsd rewrites that file on its own; strace
+showed no process of nexus's touching it. With strace, a watched file
+that changed but that the trace reader never names (as a finding or as
+an allowed write, paths resolved) was changed by another program, and
+is listed at the end instead of failing. Without strace every change
+still fails. Checked as root with a loop touching /etc during the whole
+run (passes, every command lists the file), and the self-test still
+catches all 12 rule-breakers.
+
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
 hint for a mistyped package (java-lastest -> java-latest-openjdk);

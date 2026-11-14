@@ -1579,12 +1579,10 @@ int commandInstall(
     bool useRpmOstree = false;
 
     if (nexus::system::commandExists("bootc")) {
-        const auto mounts = nexus::system::runCommand(
-            "findmnt -no OPTIONS /usr 2>/dev/null", false);
-
-        const bool writable =
-            mounts.text.find("rw,") != std::string::npos ||
-            mounts.text.rfind("rw", 0) == 0;
+        // One answer to "is this the image?" for the whole command
+        // (0.1.92): this block and the rpm-ostree check above asked it
+        // in two different ways, and on the Asus they disagreed.
+        const bool writable = !nexus::system::isImageBased();
 
         if (!writable) {
             std::cerr
@@ -1951,10 +1949,15 @@ int commandRemove(
     bool showCommands,
     const std::string& invocation
 ) {
-    const auto automatic =
-        nexus::system::readAutoInstalled(statesPath);
+    // apt keeps a record of what came along automatically; on an rpm
+    // system there is none to read here (0.1.92: the Asus was warned
+    // about /var/lib/apt). Every package then counts as wanted, and
+    // what dnf would also take is shown by its own check below.
+    const auto automatic = useRpm
+        ? std::set<std::string>{}
+        : nexus::system::readAutoInstalled(statesPath);
 
-    if (automatic.empty()) {
+    if (automatic.empty() && !useRpm) {
         std::cerr
             << "Warning: no auto-installed record found at "
             << statesPath << ".\n"
@@ -2097,6 +2100,20 @@ int commandRemove(
             << "    sudo " << invocation << "\n"
             << "\nNothing has been changed.\n";
 
+        return 1;
+    }
+
+    // On the image, dnf cannot remove anything: packages layered with
+    // rpm-ostree come off with `rpm-ostree uninstall`, which is not
+    // wired up yet. Stop here, plainly, instead of letting dnf fail
+    // after the confirmation (0.1.92, seen on the Asus).
+    if (useRpm && nexus::system::isImageBased()) {
+        std::cout
+            << "\nThis system is an image: removing goes through rpm-ostree,\n"
+            << "which nexus remove does not do yet. For a package you layered:\n"
+            << "    sudo rpm-ostree uninstall";
+        for (const std::string& name : plan.removed) std::cout << " " << name;
+        std::cout << "\n\nNothing has been changed.\n";
         return 1;
     }
 

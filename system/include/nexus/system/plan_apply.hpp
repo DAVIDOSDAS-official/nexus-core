@@ -70,6 +70,14 @@ ApplyResult layerWithRpmOstree(const std::vector<std::string>& names);
 // present to layer onto it.
 bool isImageBased();
 
+// The same question about the tree at `root` (tests). An ostree
+// system marks itself with /run/ostree-booted; failing that, a
+// read-only /usr is asked of the kernel (statvfs), not of findmnt:
+// on a bootc image with composefs /usr is not a mount point of its
+// own, findmnt printed nothing, and 0.1.91 took the Asus for a
+// mutable system (14 Nov), so rpm-ostree's list was never asked for.
+bool isImageBasedAt(const std::string& root);
+
 ApplyResult removeWithDnf(
     const std::vector<std::string>& packages
 );

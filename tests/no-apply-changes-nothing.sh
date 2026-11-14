@@ -257,6 +257,8 @@ case "${LIMIT}" in *[!0-9]* | "") LIMIT=60 ;; esac
 SEEN_PROGRAMS="${WORK}/programs.txt"
 SEEN_UNNAMED="${WORK}/unnamed.txt"
 : > "${SEEN_UNNAMED}"
+SEEN_ELSEWHERE="${WORK}/elsewhere.txt"
+: > "${SEEN_ELSEWHERE}"
 : > "${SEEN_PROGRAMS}"
 run_one() {
     local program="$1"; shift
@@ -287,6 +289,7 @@ run_one() {
     asked="$(stub_findings)"
     [ -z "${asked}" ] || add_problem "${asked}"
 
+    traced_all=""
     if [ "${TRACE}" -eq 1 ]; then
         traced="$(python3 -I "${TRACE_PY}" "${WORK}/trace.txt" --summary \
             --nexus "${program}" --stubs "${STUBS}" \
@@ -299,6 +302,7 @@ run_one() {
         # change, but shown at the end so it is never invisible.
         printf '%s\n' "${traced}" | grep '^SUMMARY ' | sed -n 's/.* unnamed=//p' | tr ';' '\n' \
             | grep -v '^$' | sed "s|^|nexus ${*:-}: |" >> "${SEEN_UNNAMED}" || true
+        traced_all="${traced}"
         traced="$(printf '%s\n' "${traced}" | grep -v '^SUMMARY ')"
         [ -z "${traced}" ] || add_problem "${traced}"
         if [ ! -s "${WORK}/trace.txt" ]; then
@@ -306,7 +310,30 @@ run_one() {
         fi
     fi
 
-    if [ -n "${changed}" ]; then
+    if [ -n "${changed}" ] && [ "${TRACE}" -eq 1 ]; then
+        # With strace, every file nexus or anything it started opened
+        # for writing, renamed, removed or re-permissioned is named by
+        # the trace reader (paths resolved, relative ones included),
+        # either as a finding or in its list of allowed writes. A file
+        # that changed but that the reader never names
+        # was changed by something else on the machine at the same
+        # moment (the Acer, 14 Nov: cupsd rewriting
+        # /etc/cups/subscriptions.conf during `nexus setup`). Noted at
+        # the end, not a failure; a changed file the trace does name is.
+        outside=""; inside=""
+        while IFS= read -r path; do
+            [ -n "${path}" ] || continue
+            if printf '%s\n' "${traced_all:-}" | grep -qF -- "${path}"; then
+                inside="${inside}${path} "
+            else
+                outside="${outside}${path} "
+            fi
+        done <<< "${changed}"
+        [ -z "${inside}" ] || add_problem "changed on disk: ${inside}"
+        [ -z "${outside}" ] || printf 'nexus %s: %s\n' "${*:-}" "${outside}" >> "${SEEN_ELSEWHERE}"
+    elif [ -n "${changed}" ]; then
+        # Without strace nothing tells nexus's changes from anyone
+        # else's: every change counts.
         add_problem "changed on disk: $(printf '%s' "${changed}" | tr '\n' ' ')"
     fi
     case "${code}" in
@@ -531,6 +558,11 @@ if [ "${TRACE}" -eq 1 ]; then
     echo "    /dev/null, ~/.cache and nexus's own scratch in /tmp -- attempts that failed included."
     echo "    No mount, reboot, kernel-module, clock, hostname or swap system call."
     echo "    No stand-in was asked to change anything."
+    if [ -s "${SEEN_ELSEWHERE}" ]; then
+        echo "    Changed while a command ran, but not by anything it started (strace"
+        echo "    saw no process of nexus's touch these; another program on the machine did):"
+        sort -u "${SEEN_ELSEWHERE}" | sed 's/^/        /'
+    fi
     if [ -s "${SEEN_UNNAMED}" ]; then
         echo "    Unnamed temporary files (O_TMPFILE: no name, gone when closed; keeping one"
         echo "    would need linkat, which is checked) were opened by:"

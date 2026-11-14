@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <nexus/system/process.hpp>
+#include <sys/statvfs.h>
 #include <unistd.h>
 
 namespace nexus::system {
@@ -167,19 +168,22 @@ ApplyResult applyWithApt(const std::string& requested) {
 namespace nexus::system {
 
 bool isImageBased() {
-    if (!commandExists("rpm-ostree")) {
-        return false;
-    }
+    return isImageBasedAt("");
+}
 
+bool isImageBasedAt(const std::string& root) {
     // rpm-ostree being present is not enough: a machine can have the
     // tool and a writable /usr, and there layering would be the wrong
     // answer.
-    const ProcessResult mounted =
-        runCommand("findmnt -no OPTIONS /usr 2>/dev/null", false);
-
-    return mounted.text.rfind("ro", 0) == 0 ||
-           mounted.text.find(",ro,") != std::string::npos ||
-           mounted.text.find("ro,") == 0;
+    if (!commandExists("rpm-ostree")) {
+        return false;
+    }
+    if (::access((root + "/run/ostree-booted").c_str(), F_OK) == 0) {
+        return true;
+    }
+    struct statvfs info {};
+    return ::statvfs((root + "/usr").c_str(), &info) == 0 &&
+           (info.f_flag & ST_RDONLY) != 0;
 }
 
 ApplyResult layerWithRpmOstree(const std::vector<std::string>& names) {
