@@ -2046,10 +2046,15 @@ int commandRemove(
     // is the package manager's, and a removal it would not confirm is
     // not carried out.
     const std::set<std::string> planned(plan.removed.begin(), plan.removed.end());
-    const auto removal = useRpm
+    // On the image dnf cannot remove anything; rpm-ostree takes layered
+    // packages off (0.1.93). Its own plan is the one checked and shown.
+    const bool imageBased = useRpm && nexus::system::isImageBased();
+    const auto removal = imageBased
+        ? nexus::system::checkRemovalWithRpmOstree(plan.removed, planned)
+        : useRpm
         ? nexus::system::checkRemovalWithDnf(plan.removed, planned)
         : nexus::system::checkRemovalWithApt(plan.removed, planned);
-    const std::string tool = useRpm ? "dnf" : "apt";
+    const std::string tool = imageBased ? "rpm-ostree" : useRpm ? "dnf" : "apt";
 
     switch (removal.agreement) {
         case nexus::system::PlanAgreement::Agrees:
@@ -2077,6 +2082,11 @@ int commandRemove(
             for (const std::string& message : removal.refusal) {
                 std::cout << "    " << message << "\n";
             }
+            if (imageBased) {
+                std::cout << "\nOn the image, only packages you added (layered) can be"
+                             " removed, by\nthe name you added them with:"
+                             " rpm-ostree status lists them.\n";
+            }
             break;
         case nexus::system::PlanAgreement::Unavailable:
             std::cout << "\nChecked:   " << tool << " could not be asked"
@@ -2084,6 +2094,12 @@ int commandRemove(
                               ? "; the removal cannot be applied.\n"
                               : " without root; with sudo it is asked first.\n");
             break;
+    }
+
+    if (imageBased && !removal.refreshed.empty() &&
+        removal.agreement != nexus::system::PlanAgreement::Refused) {
+        std::cout << "  (rpm-ostree also recomputes the " << removal.refreshed.size()
+                  << " package(s) layered earlier that stay; they may move to newer versions)\n";
     }
 
     if (!apply) {
@@ -2100,20 +2116,6 @@ int commandRemove(
             << "    sudo " << invocation << "\n"
             << "\nNothing has been changed.\n";
 
-        return 1;
-    }
-
-    // On the image, dnf cannot remove anything: packages layered with
-    // rpm-ostree come off with `rpm-ostree uninstall`, which is not
-    // wired up yet. Stop here, plainly, instead of letting dnf fail
-    // after the confirmation (0.1.92, seen on the Asus).
-    if (useRpm && nexus::system::isImageBased()) {
-        std::cout
-            << "\nThis system is an image: removing goes through rpm-ostree,\n"
-            << "which nexus remove does not do yet. For a package you layered:\n"
-            << "    sudo rpm-ostree uninstall";
-        for (const std::string& name : plan.removed) std::cout << " " << name;
-        std::cout << "\n\nNothing has been changed.\n";
         return 1;
     }
 
@@ -2158,10 +2160,11 @@ int commandRemove(
         nexus::system::beginTransaction(log, record);
 
     std::cout
-        << "\nHanding the plan to " << (useRpm ? "dnf" : "apt")
-        << ".\n\n";
+        << "\nHanding the plan to " << tool << ".\n\n";
 
-    const auto removed = useRpm
+    const auto removed = imageBased
+        ? nexus::system::uninstallWithRpmOstree(plan.removed)
+        : useRpm
         ? nexus::system::removeWithDnf(plan.removed)
         : nexus::system::removeWithApt(plan.removed);
 
@@ -2172,7 +2175,8 @@ int commandRemove(
     record.outcome = toString(removed.outcome);
     record.exitCode = removed.exitCode;
     record.succeeded =
-        removed.outcome == nexus::system::ApplyOutcome::Applied;
+        removed.outcome == nexus::system::ApplyOutcome::Applied ||
+        removed.outcome == nexus::system::ApplyOutcome::Staged;
 
     if (!nexus::system::finishTransaction(log, marker, record)) {
         std::cerr
@@ -2185,8 +2189,15 @@ int commandRemove(
         return 0;
     }
 
+    if (removed.outcome == nexus::system::ApplyOutcome::Staged) {
+        std::cout << "\nDone. It takes effect the next time the machine starts;"
+                     " until then\nthe packages are still there. The previous"
+                     " state stays in the boot menu.\n";
+        return 0;
+    }
+
     std::cout
-        << "\n" << (useRpm ? "dnf" : "apt")
+        << "\n" << tool
         << " did not complete (exit " << removed.exitCode
         << ").\nIt manages its own recovery; the messages above are "
         << "its own.\n";

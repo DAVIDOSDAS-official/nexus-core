@@ -66,6 +66,11 @@ ApplyResult applyWithDnf(const std::string& requested);
 // from repository metadata reached a root shell unquoted).
 ApplyResult layerWithRpmOstree(const std::vector<std::string>& names);
 
+// Takes layered packages off the image (0.1.93): `rpm-ostree uninstall`.
+// Staged like layering: the running system is unchanged until it starts
+// the new deployment.
+ApplyResult uninstallWithRpmOstree(const std::vector<std::string>& names);
+
 // Whether this machine is image-based: /usr read-only and rpm-ostree
 // present to layer onto it.
 bool isImageBased();

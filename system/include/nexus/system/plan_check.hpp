@@ -121,6 +121,20 @@ PlanCheck checkRemovalWithDnf(
     const std::vector<std::string>& names,
     const std::set<std::string>& planned
 );
+// On the image (0.1.93): `rpm-ostree uninstall --dry-run` prints the
+// layer that would remain ("Installing N packages:", the Asus, 14 Nov),
+// not what goes. What goes is worked out: the packages installed now,
+// less the image's own (rpm-ostree keeps the base's package database at
+// baseDb), less what would remain. A name that was never requested is
+// refused by rpm-ostree itself ("not currently requested"); its message
+// is shown. Packages the remaining layer would add are put in
+// changes.install, which decideRemoval refuses.
+PlanCheck checkRemovalWithRpmOstree(
+    const std::vector<std::string>& names,
+    const std::set<std::string>& planned,
+    const std::string& baseDb = "/usr/lib/sysimage/rpm-ostree-base-db"
+);
+
 PlanCheck checkRemovalWithApt(
     const std::vector<std::string>& names,
     const std::set<std::string>& planned

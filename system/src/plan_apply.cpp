@@ -167,6 +167,41 @@ ApplyResult applyWithApt(const std::string& requested) {
 
 namespace nexus::system {
 
+ApplyResult uninstallWithRpmOstree(const std::vector<std::string>& names) {
+    ApplyResult result;
+
+    std::string quoted;
+    for (const auto& name : names) {
+        if (!isPackageName(name)) {
+            result.outcome = ApplyOutcome::Refused;
+            result.exitCode = 2;
+            result.output.push_back("Not a package name, nothing done: " + name);
+            return result;
+        }
+        quoted += " " + shellQuote(name);
+    }
+    if (quoted.empty()) {
+        result.outcome = ApplyOutcome::Refused;
+        result.exitCode = 2;
+        result.output.push_back("No packages given.");
+        return result;
+    }
+
+    // Every name was checked and shell-quoted above.
+    const std::string command =
+        "rpm-ostree uninstall" + quoted;
+
+    const ProcessResult ran = runCommand(command, true);
+    result.exitCode = ran.exitCode;
+    result.output.push_back(ran.text);
+    if (!ran.ran) {
+        result.outcome = ApplyOutcome::Unavailable;
+        return result;
+    }
+    result.outcome = ran.exitCode == 0 ? ApplyOutcome::Staged : ApplyOutcome::Failed;
+    return result;
+}
+
 bool isImageBased() {
     return isImageBasedAt("");
 }

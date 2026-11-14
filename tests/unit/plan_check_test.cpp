@@ -346,3 +346,86 @@ TEST(PlanCheckTest, ARemovalThatInstallsIsRefused) {
     check.theirs = {"target"};
     EXPECT_FALSE(nexus::system::decideRemoval({"target"}, check, false).allowed);
 }
+
+// 0.1.93: removing on the image. rpm-ostree's dry run lists the layer
+// that would REMAIN (the Asus, 14 Nov); what goes is installed − base −
+// remaining.
+namespace {
+const char* kUninstallDryRun =
+    "Checking out tree f9ef3fc... done\n"
+    "Resolving dependencies... done\n"
+    "Installing 2 packages:\n"
+    "  gcc-16.2.1-3.fc44.x86_64 (@commandline)\n"
+    "  git-2.56.1-1.fc44.x86_64 (@commandline)\n"
+    "Exiting because of '--dry-run' option\n";
+
+// rpm: the base database when --dbpath is given, the running system
+// otherwise.
+std::string fakeRpm(const std::string& base, const std::string& installed) {
+    return "case \"$*\" in *--dbpath*) printf '" + base + "';; *) printf '" +
+           installed + "';; esac\n";
+}
+
+struct BaseDb {
+    std::filesystem::path path = std::filesystem::temp_directory_path() /
+        ("nexus-test-basedb-" + std::to_string(::getpid()));
+    BaseDb() { std::filesystem::create_directories(path); }
+    ~BaseDb() { std::error_code e; std::filesystem::remove_all(path, e); }
+};
+}
+
+TEST(PlanCheckTest, OnTheImageWhatGoesIsWhatIsLayeredAndNotKept) {
+    BaseDb base;
+    FakeTools tools;
+    tools.add("rpm-ostree", std::string("cat <<'EOF'\n") + kUninstallDryRun + "EOF\n");
+    tools.add("rpm", fakeRpm("bash\\nglibc\\n", "bash\\nglibc\\nnmap\\nnmap-ncat\\ngcc\\ngit\\n"));
+
+    const auto check = nexus::system::checkRemovalWithRpmOstree(
+        {"nmap"}, {"nmap"}, base.path.string());
+    EXPECT_EQ(check.changes.remove, (std::set<std::string>{"nmap", "nmap-ncat"}));
+    EXPECT_EQ(check.refreshed, (std::set<std::string>{"gcc", "git"}));
+    EXPECT_EQ(check.agreement, PlanAgreement::Differs);
+    EXPECT_EQ(check.onlyTheirs, (std::vector<std::string>{"nmap-ncat"}));
+
+    // The count confirmed is rpm-ostree's, and more than was named is
+    // never taken under -y.
+    const auto asked = nexus::system::decideRemoval({"nmap"}, check, false);
+    EXPECT_TRUE(asked.allowed);
+    EXPECT_EQ(asked.willChange.size(), 2u);
+    EXPECT_FALSE(nexus::system::decideRemoval({"nmap"}, check, true).allowed);
+}
+
+TEST(PlanCheckTest, OnTheImageANameNeverLayeredIsRefusedInRpmOstreesWords) {
+    BaseDb base;
+    FakeTools tools;
+    tools.add("rpm-ostree",
+              "echo \"error: Package/capability 'vlc' is not currently requested\" >&2\nexit 1\n");
+    tools.add("rpm", fakeRpm("bash\\n", "bash\\nvlc\\n"));
+    const auto check = nexus::system::checkRemovalWithRpmOstree(
+        {"vlc"}, {"vlc"}, base.path.string());
+    EXPECT_EQ(check.agreement, PlanAgreement::Refused);
+    ASSERT_FALSE(check.refusal.empty());
+    EXPECT_NE(check.refusal.front().find("not currently requested"), std::string::npos);
+}
+
+TEST(PlanCheckTest, OnTheImageWithoutTheBaseListNothingIsGuessed) {
+    FakeTools tools;
+    tools.add("rpm-ostree", std::string("cat <<'EOF'\n") + kUninstallDryRun + "EOF\n");
+    tools.add("rpm", fakeRpm("", "bash\\nnmap\\ngcc\\ngit\\n"));
+    const auto check = nexus::system::checkRemovalWithRpmOstree(
+        {"nmap"}, {"nmap"}, "/nonexistent/nexus-base-db");
+    EXPECT_EQ(check.agreement, PlanAgreement::Refused);
+    EXPECT_FALSE(nexus::system::decideRemoval({"nmap"}, check, false).allowed);
+}
+
+TEST(PlanCheckTest, OnTheImageARemovalThatWouldAddPackagesIsRefused) {
+    BaseDb base;
+    FakeTools tools;
+    tools.add("rpm-ostree", std::string("cat <<'EOF'\n") + kUninstallDryRun + "EOF\n");
+    // git is not installed now: the remaining layer would bring it in.
+    tools.add("rpm", fakeRpm("bash\\n", "bash\\nnmap\\ngcc\\n"));
+    const auto check = nexus::system::checkRemovalWithRpmOstree(
+        {"nmap"}, {"nmap"}, base.path.string());
+    EXPECT_EQ(check.changes.install, (std::set<std::string>{"git"}));
+    EXPECT_FALSE(nexus::system::decideRemoval({"nmap"}, check, false).allowed);
+}

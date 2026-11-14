@@ -1049,6 +1049,26 @@ still fails. Checked as root with a loop touching /etc during the whole
 run (passes, every command lists the file), and the self-test still
 catches all 12 rule-breakers.
 
+**Patch 121 (0.1.93): `nexus remove` on the image.**
+On the Asus (14 Nov): `rpm-ostree uninstall --dry-run nmap` prints the
+layer that would REMAIN ("Installing 134 packages: ... (@commandline)"),
+not what goes; a name never layered gets "error: Package/capability
+'vlc' is not currently requested", exit 1.
+- checkRemovalWithRpmOstree: what goes = installed now (rpm -qa) − the
+  image's own packages (rpm -qa --dbpath
+  /usr/lib/sysimage/rpm-ostree-base-db) − what would remain. Every name
+  that goes is shown; the count typed against ("remove") is this one;
+  more than was named is refused under -y; a removal whose remaining
+  layer would add packages is refused; a name never layered is refused
+  in rpm-ostree's own words, with a line on what can be removed.
+  Without the base list nothing is guessed: refused.
+- Applied with `rpm-ostree uninstall` (staged: takes effect at the next
+  start, the previous state stays in the boot menu).
+- Not verified: that /usr/lib/sysimage/rpm-ostree-base-db exists on the
+  Nexus image (rpm-ostree keeps it for client-side layering; if it does
+  not, `nexus remove` on the image refuses and says so).
+- 4 tests. 736 tests.
+
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
 hint for a mistyped package (java-lastest -> java-latest-openjdk);

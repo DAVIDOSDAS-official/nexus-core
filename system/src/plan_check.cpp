@@ -527,6 +527,74 @@ PlanCheck checkRemovalWithDnf(
     return compareRemoval(check, planned);
 }
 
+namespace {
+
+std::set<std::string> rpmNames(const std::string& extra) {
+    std::set<std::string> names;
+    const DryRun query = dryRun("rpm -qa" + extra + " --qf '%{NAME}\\n'");
+    std::istringstream lines(query.output);
+    std::string name;
+    while (std::getline(lines, name)) {
+        if (!name.empty() && isPackageName(name)) names.insert(name);
+    }
+    return names;
+}
+
+}
+
+PlanCheck checkRemovalWithRpmOstree(
+    const std::vector<std::string>& names,
+    const std::set<std::string>& planned,
+    const std::string& baseDb
+) {
+    PlanCheck check;
+    if (!commandExists("rpm-ostree") || !commandExists("rpm") || names.empty()) return check;
+    for (const auto& name : names) {
+        if (!isPackageName(name)) return check;
+    }
+
+    const DryRun run = dryRun("rpm-ostree uninstall --dry-run" + quotedList(names));
+    if (!run.ran) return check;
+    if (run.code != 0) {
+        noPlan(check, run);
+        return check;
+    }
+    const PackageChanges plan = parseRpmOstreeDryRun(run.output);
+    const std::set<std::string>& remaining = plan.install;
+
+    // What the image itself carries, from the copy of its package
+    // database rpm-ostree keeps. Without it, nothing tells a layered
+    // package from one of the image's: refuse rather than guess.
+    std::error_code error;
+    const std::set<std::string> base = std::filesystem::is_directory(baseDb, error)
+        ? rpmNames(" --dbpath " + shellQuote(baseDb))
+        : std::set<std::string>{};
+    const std::set<std::string> installed = rpmNames("");
+    if (base.empty() || installed.empty()) {
+        check.refusal.push_back("The image's own package list (" + baseDb +
+                                ") could not be read, so what the removal takes cannot be worked out.");
+        check.agreement = PlanAgreement::Refused;
+        return check;
+    }
+
+    for (const auto& name : installed) {
+        if (base.count(name)) continue;               // the image's own
+        if (remaining.count(name)) check.refreshed.insert(name);
+        else check.changes.remove.insert(name);       // layered, and going
+    }
+    for (const auto& name : remaining) {
+        if (!installed.count(name)) check.changes.install.insert(name);
+    }
+    check.changes.upgrade = plan.upgrade;
+    check.changes.downgrade = plan.downgrade;
+    if (check.changes.remove.empty()) {
+        check.refusal.push_back("rpm-ostree's plan removes nothing that is installed now.");
+        check.agreement = PlanAgreement::Refused;
+        return check;
+    }
+    return compareRemoval(check, planned);
+}
+
 PlanCheck checkRemovalWithApt(
     const std::vector<std::string>& names,
     const std::set<std::string>& planned
