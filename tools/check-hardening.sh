@@ -51,10 +51,12 @@
 #                     touched, so it cannot jump over the guard page.
 #                     Read from the disassembly of every function, not
 #                     from one probe instruction (whose spelling differs
-#                     between compiler versions: 0.1.90). Frames sized
-#                     at run time (alloca, arrays of variable length)
-#                     are counted but not judged. A program with no
-#                     frame over a page passes, and says so
+#                     between compiler versions: 0.1.90). A frame sized
+#                     at run time (alloca, an array of variable length)
+#                     must be taken a page at a time too (0.1.94). A
+#                     program with neither has nothing to judge, so it
+#                     is not reported as verified, and fails when the
+#                     item is expected
 #
 # "at least one" is the limit of what a finished program can show for
 # the per-function protections: it proves the flag reached the build,
@@ -205,19 +207,30 @@ for program in "${programs[@]}"; do
                         t = substr($0, RSTART, RLENGTH); sub(/.*\$0xffffffff/, "", t); sub(/,.*/, "", t)
                         step = 4294967296 - hex(t)
                     } else if ($0 ~ /sub[q]?[ \t]+%r[a-z0-9]+,%rsp/) {
-                        dynamic++
+                        dyn[fn] = 1
                     }
-                    if (step == 4096) paged++
+                    if (step == 4096) { paged++; pagedfn[fn] = 1 }
                     if (step > 4096 && !(fn in seen)) { seen[fn] = 1; bad++; if (bad <= 3) worst = worst " " fn " (" step " bytes)" }
                 }
-                END { printf "%d %d %d%s\n", bad + 0, paged + 0, dynamic + 0, worst }')"
+                END {
+                    # A frame sized at run time (alloca, an array of variable
+                    # length) is probed a page at a time when the protection is
+                    # on: the same function then holds a one-page step. Without
+                    # it, the stack pointer just drops by the size (0.1.94,
+                    # round-5 audit L1: such a program used to pass).
+                    for (f in dyn) { dynamic++; if (!(f in pagedfn)) { bad++; if (bad <= 3) worst = worst " " f " (sized at run time, no page steps)" } }
+                    printf "%d %d %d%s\n", bad + 0, paged + 0, dynamic + 0, worst
+                }')"
             read -r stack_bad stack_paged stack_dynamic stack_worst <<< "${stack}"
             if [ "${stack_bad:-1}" -gt 0 ]; then
-                note stack-clash no "stack clash protection (${stack_bad} function(s) step the stack more than a page at once:${stack_worst:- unknown})"
+                note stack-clash no "stack clash protection (${stack_bad} function(s) can move the stack more than a page at once:${stack_worst:- unknown})"
             elif [ "${stack_paged}" -gt 0 ]; then
-                note stack-clash yes "stack clash protection (no step over a page; ${stack_paged} large frame(s) taken a page at a time; ${stack_dynamic} run-time sized, not judged)"
+                note stack-clash yes "stack clash protection (no step over a page; ${stack_paged} page step(s) in large frames; ${stack_dynamic} run-time sized frame(s), each probed)"
             else
-                note stack-clash yes "stack clash protection (no frame over a page in this program; ${stack_dynamic} run-time sized, not judged)"
+                # Nothing over a page and nothing sized at run time: there is
+                # nothing for the protection to do, and nothing in the file
+                # shows whether it was on. Not "verified" (round-5 audit L1).
+                note stack-clash no "stack clash protection (nothing to judge: no frame over a page, none sized at run time)"
             fi
         elif expected stack-clash; then
             missing="${missing}, stack clash probes (objdump is not installed, so not checked)"

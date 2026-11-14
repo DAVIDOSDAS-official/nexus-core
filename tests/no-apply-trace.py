@@ -66,6 +66,10 @@ ALWAYS_A_CHANGE = {
     "sethostname", "setdomainname", "settimeofday", "clock_settime", "clock_adjtime",
     "adjtimex", "swapon", "swapoff", "kexec_load", "kexec_file_load", "pivot_root",
     "chroot", "mknod", "mknodat", "acct", "quotactl",
+    # io_uring does its reads and writes without system calls strace can
+    # follow; nothing nexus runs needs it, so any use is a finding
+    # (round-5 audit L2).
+    "io_uring_setup", "io_uring_enter", "io_uring_register",
 }
 # adjtimex and clock_adjtime are also how a program READS the clock's
 # state; only a call that sets something counts (modes != 0).

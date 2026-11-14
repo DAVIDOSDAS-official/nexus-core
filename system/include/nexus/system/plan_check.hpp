@@ -27,6 +27,12 @@ struct PackageChanges {
     std::set<std::string> remove;      // removed, dependents, unused
     std::set<std::string> replaced;    // obsoleted by something new
 
+    // install + upgrade + reinstall, as packageKey(name, arch): "glibc"
+    // for this machine's own architecture (or noarch), "glibc.i686" for
+    // another (0.1.94, round-5 audit M1: by name alone a new 32-bit
+    // library looked installed because the 64-bit one was).
+    std::set<std::string> installKeys;
+
     // What a person approving "install X" would not expect.
     bool beyondInstalling() const {
         return !downgrade.empty() || !remove.empty() || !replaced.empty();
@@ -48,6 +54,12 @@ PackageChanges parseRpmOstreeDryRun(const std::string& text);
 
 // "vlc-1:3.0.24-1.fc44.x86_64" -> "vlc"; "bar.x86_64" -> "bar".
 std::string packageNameFromNevra(const std::string& nevra);
+
+// "glibc" for this machine's architecture or noarch, "glibc.i686" else.
+std::string packageKey(const std::string& name, const std::string& arch);
+
+// "vlc-1:3.0.24-1.fc44.x86_64 (updates)" -> packageKey("vlc", "x86_64").
+std::string packageKeyFromNevra(const std::string& nevra);
 
 struct PlanCheck {
     PlanAgreement agreement = PlanAgreement::Unavailable;
@@ -107,9 +119,14 @@ PlanCheck checkPlanWithDnf(
 // takes weak dependencies dnf's check leaves out. Its list, less what
 // the running system already has, is what will be new. theirs = that
 // list; onlyTheirs = new packages nobody approved.
+//
+// 0.1.94 (round-5 audit): compared by packageKey, so other
+// architectures are seen; an answer from rpm-ostree with no list in it
+// is refused, not read as "nothing to add" (on the Asus rpm-ostree
+// lists the whole layer even when nothing changes).
 PlanCheck checkPlanWithRpmOstree(
     const std::string& requested,
-    const std::set<std::string>& approved
+    const std::set<std::string>& approvedKeys
 );
 
 // What dnf / apt would remove for `names`, asked before anything is
@@ -138,6 +155,24 @@ PlanCheck checkRemovalWithRpmOstree(
 PlanCheck checkRemovalWithApt(
     const std::vector<std::string>& names,
     const std::set<std::string>& planned
+);
+
+// What is installed now, to compare before and after a change (0.1.94,
+// round-5 audit M3: after the prompt the package manager resolves
+// again, and nothing compared what it then did with what was
+// confirmed). rpm: packageKey of every package; apt: package names.
+std::set<std::string> installedPackageKeys(bool rpm);
+
+struct InstalledDelta {
+    std::set<std::string> added;
+    std::set<std::string> removed;
+    std::set<std::string> unconfirmed;   // added, but not in what was confirmed
+};
+
+InstalledDelta compareInstalled(
+    const std::set<std::string>& before,
+    const std::set<std::string>& after,
+    const std::set<std::string>& confirmed
 );
 
 // The rule for going ahead, apart from the screen and the prompt, so it

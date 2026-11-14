@@ -168,10 +168,28 @@ esac
 # -fstack-protector-all: these tiny programs have no buffer, and the
 # stack protector is always required.
 if [ "$(uname -m)" = x86_64 ]; then
-    # A program with no frame over a page: nothing to probe, passes.
+    # A program with no frame over a page and none sized at run time:
+    # nothing in it shows whether the protection was on, so it is not
+    # "verified" (0.1.94, round-5 audit L1): expected, it fails; not
+    # expected, it passes and says "nothing to judge".
     printf 'int main(int c, char**) { return c - 1; }\n' > "${WORK}/small.cpp"
     "${CXX}" -O2 ${PIE} -fstack-protector-all ${CLASH} ${RELRO} ${NOW} ${NX} "${WORK}/small.cpp" \
-        -o "${WORK}/small" 2> "${WORK}/small.log" && verdict small 0 --expect=stack-clash
+        -o "${WORK}/small" 2> "${WORK}/small.log" && {
+        verdict small 1 --expect=stack-clash
+        verdict small 0
+    }
+    # A frame sized at run time: with the protection it is probed a page
+    # at a time and passes; without it (the auditor's program) it fails.
+    cat > "${WORK}/vla.cpp" <<'CPP'
+#include <cstring>
+#include <cstdio>
+extern "C" int vla(int n) { char buf[n]; std::memset(buf, 1, n); buf[n - 1] = 0; return std::puts(buf); }
+int main(int c, char**) { return vla(c * 100); }
+CPP
+    "${CXX}" -O2 ${PIE} -fstack-protector-all ${CLASH} ${RELRO} ${NOW} ${NX} "${WORK}/vla.cpp" \
+        -o "${WORK}/vla-on" 2> "${WORK}/vla.log" && verdict vla-on 0 --expect=stack-clash
+    "${CXX}" -O2 ${PIE} -fstack-protector-all -fno-stack-clash-protection ${RELRO} ${NOW} ${NX} \
+        "${WORK}/vla.cpp" -o "${WORK}/vla-off" 2>> "${WORK}/vla.log" && verdict vla-off 1 --expect=stack-clash
     # Pages taken one at a time, each touched with a plain store instead
     # of "or": passes. The same frame taken in one jump: fails.
     cat > "${WORK}/steps.S" <<'ASM'

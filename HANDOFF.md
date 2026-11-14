@@ -1069,6 +1069,34 @@ not what goes; a name never layered gets "error: Package/capability
   not, `nexus remove` on the image refuses and says so).
 - 4 tests. 736 tests.
 
+**Patch 122 (0.1.94): round-5 audit (of 0.1.92), all five findings.**
+Asus, 14 Nov: `rpm -q --qf '%{NAME}.%{ARCH}' glibc` = glibc.x86_64
+only; `rpm-ostree install --dry-run steam` has 195 .i686 lines;
+`install --dry-run --idempotent gcc` (already layered) prints the whole
+layer ("Installing 137 packages"), no "no change" message.
+- R5-M1: packages are compared by name AND architecture (packageKey:
+  "glibc" native/noarch, "glibc.i686" other). dnf rows keep their Arch
+  column (installKeys); rpm-ostree NEVRAs too; "installed now" is
+  `rpm -q --qf '%{NAME}.%{ARCH}'`. Also in the image removal check.
+- R5-M2: an rpm-ostree answer (exit 0) with no list in it is refused,
+  not read as "adds nothing".
+- R5-M3: dnf/apt installs: the installed set before and after is held
+  against the confirmed list; anything else added, or removed, is
+  printed and the record says "not as confirmed"; the record keeps what
+  was really added. Layering (staged) is noted as not compared until
+  the next start -- still open there.
+- R5-L1: the hardening checker judges frames sized at run time (a
+  function with `sub %reg,%rsp` must hold one-page steps); "nothing to
+  judge" is no longer "verified" and fails when expected. Self-test:
+  a VLA program with/without -fstack-clash-protection; both new cases
+  fail on the 0.1.93 checker.
+- R5-L2: io_uring system calls are traced and are a finding; a changed
+  file the trace does not name is excused only if it does not change
+  again when the command is run a second time.
+- `nexus server backup|remove|logs <bad name>` says why the name is not
+  one (it printed only the usage; the Asus: "my_test", a file path).
+- 741 tests.
+
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
 hint for a mistyped package (java-lastest -> java-latest-openjdk);

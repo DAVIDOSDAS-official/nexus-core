@@ -3,6 +3,7 @@
 #include <nexus/system/process.hpp>
 
 #include <algorithm>
+#include <sys/utsname.h>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -119,6 +120,14 @@ bool isArchitecture(const std::string& word) {
     return known.count(word) > 0;
 }
 
+std::string nativeArchitecture() {
+    static const std::string machine = [] {
+        struct utsname info {};
+        return ::uname(&info) == 0 ? std::string(info.machine) : std::string("x86_64");
+    }();
+    return machine;
+}
+
 std::string stripArchitecture(const std::string& name) {
     const std::size_t dot = name.rfind('.');
     if (dot != std::string::npos && isArchitecture(name.substr(dot + 1))) {
@@ -163,6 +172,21 @@ std::vector<std::string> PackageChanges::describeBeyondInstalling() const {
     for (const auto& name : replaced) lines.push_back("replace " + name);
     for (const auto& name : downgrade) lines.push_back("downgrade " + name);
     return lines;
+}
+
+std::string packageKey(const std::string& name, const std::string& arch) {
+    if (arch.empty() || arch == "noarch" || arch == nativeArchitecture()) return name;
+    return name + "." + arch;
+}
+
+std::string packageKeyFromNevra(const std::string& nevra) {
+    std::string text = nevra;
+    const std::size_t space = text.find(' ');
+    if (space != std::string::npos) text = text.substr(0, space);
+    const std::size_t dot = text.rfind('.');
+    const std::string arch =
+        dot != std::string::npos && isArchitecture(text.substr(dot + 1)) ? text.substr(dot + 1) : "";
+    return packageKey(packageNameFromNevra(text), arch);
 }
 
 std::string packageNameFromNevra(const std::string& nevra) {
@@ -222,6 +246,12 @@ PackageChanges parseDnfTransaction(const std::string& text) {
             continue;
         }
         section->insert(first);
+        if (section == &changes.install || section == &changes.upgrade ||
+            section == &changes.reinstall) {
+            std::string arch;
+            columns >> arch;
+            changes.installKeys.insert(packageKey(first, isArchitecture(arch) ? arch : ""));
+        }
     }
 
     dropSelfReplacements(changes);
@@ -267,7 +297,13 @@ PackageChanges parseRpmOstreeDryRun(const std::string& text) {
 
         std::istringstream columns(line);
         std::string nevra;
-        if (columns >> nevra) section->insert(packageNameFromNevra(nevra));
+        if (columns >> nevra) {
+            section->insert(packageNameFromNevra(nevra));
+            if (section == &changes.install || section == &changes.upgrade ||
+                section == &changes.reinstall) {
+                changes.installKeys.insert(packageKeyFromNevra(nevra));
+            }
+        }
     }
 
     dropSelfReplacements(changes);
@@ -438,7 +474,7 @@ PlanCheck compareRemoval(PlanCheck check, const std::set<std::string>& planned) 
 
 PlanCheck checkPlanWithRpmOstree(
     const std::string& requested,
-    const std::set<std::string>& approved
+    const std::set<std::string>& approvedKeys
 ) {
     PlanCheck check;
     if (!commandExists("rpm-ostree") || !isPackageName(requested)) {
@@ -453,48 +489,60 @@ PlanCheck checkPlanWithRpmOstree(
     if (!run.ran) return check;
 
     check.changes = parseRpmOstreeDryRun(run.output);
-    const bool anything = !check.changes.install.empty() ||
-                          !check.changes.upgrade.empty() ||
+    const bool anything = !check.changes.installKeys.empty() ||
                           !check.changes.downgrade.empty() ||
                           !check.changes.remove.empty() ||
                           !check.changes.replaced.empty();
-    if (run.code != 0 && !anything) {
+    if (run.code != 0) {
         noPlan(check, run);
-        return check;
-    }
-    if (run.code != 0) {   // a plan, then a failure: not a plan to trust
-        noPlan(check, run);
-        if (check.agreement == PlanAgreement::Unavailable) {
+        if (anything && check.agreement == PlanAgreement::Unavailable) {
             check.refusal.push_back("rpm-ostree stopped (exit " +
                                     std::to_string(run.code) + ") after listing its plan.");
             check.agreement = PlanAgreement::Refused;
         }
         return check;
     }
+    // 0.1.94 (round-5 audit M2): rpm-ostree answers even "nothing to
+    // do" with the whole layer (the Asus, 14 Nov: `install --dry-run
+    // --idempotent gcc`, already layered, listed 137). An answer with no
+    // list in it is one this check cannot read; reading it as "adds
+    // nothing" would let an unseen plan through.
+    if (!anything) {
+        check.refusal.push_back("rpm-ostree answered, but no list of packages could be read "
+                                "from its answer; nothing is layered on an unread plan.");
+        check.agreement = PlanAgreement::Refused;
+        return check;
+    }
 
     // rpm-ostree lists the whole layer again, packages layered earlier
     // included (the Asus, 13 November: 193 names for VLC, most of them
     // already installed). What the running system has is not new.
+    // Compared by name AND architecture (round-5 audit M1).
     std::set<std::string> present;
-    if (!check.changes.install.empty() && commandExists("rpm")) {
-        std::vector<std::string> names(check.changes.install.begin(),
-                                       check.changes.install.end());
-        const DryRun query = dryRun("rpm -q --qf '%{NAME}\\n'" + quotedList(names));
+    if (commandExists("rpm")) {
+        std::set<std::string> names;
+        for (const auto& key : check.changes.installKeys) names.insert(stripArchitecture(key));
+        const DryRun query = dryRun("rpm -q --qf '%{NAME}.%{ARCH}\\n'" +
+                                    quotedList(std::vector<std::string>(names.begin(), names.end())));
         std::istringstream lines(query.output);
-        std::string name;
-        while (std::getline(lines, name)) {
-            if (check.changes.install.count(name)) present.insert(name);
+        std::string line;
+        while (std::getline(lines, line)) {
+            const std::size_t dot = line.rfind('.');
+            const std::string key = (dot != std::string::npos && isArchitecture(line.substr(dot + 1)))
+                ? packageKey(line.substr(0, dot), line.substr(dot + 1))
+                : line;
+            if (check.changes.installKeys.count(key)) present.insert(key);
         }
     }
-    for (const auto& name : check.changes.install) {
-        (present.count(name) ? check.refreshed : check.theirs).insert(name);
+    for (const auto& key : check.changes.installKeys) {
+        (present.count(key) ? check.refreshed : check.theirs).insert(key);
     }
 
-    for (const auto& name : check.theirs) {
-        if (!approved.count(name)) check.onlyTheirs.push_back(name);
+    for (const auto& key : check.theirs) {
+        if (!approvedKeys.count(key)) check.onlyTheirs.push_back(key);
     }
-    for (const auto& name : approved) {
-        if (!check.theirs.count(name) && !present.count(name)) check.onlyOurs.push_back(name);
+    for (const auto& key : approvedKeys) {
+        if (!check.theirs.count(key) && !present.count(key)) check.onlyOurs.push_back(key);
     }
     check.agreement = (check.onlyTheirs.empty() && !check.changes.beyondInstalling())
         ? PlanAgreement::Agrees
@@ -529,17 +577,55 @@ PlanCheck checkRemovalWithDnf(
 
 namespace {
 
+// Every installed package as packageKey (name, plus the architecture
+// when it is not this machine's): glibc.i686 next to glibc is a
+// package of its own (round-5 audit M1).
 std::set<std::string> rpmNames(const std::string& extra) {
     std::set<std::string> names;
-    const DryRun query = dryRun("rpm -qa" + extra + " --qf '%{NAME}\\n'");
+    const DryRun query = dryRun("rpm -qa" + extra + " --qf '%{NAME}.%{ARCH}\\n'");
     std::istringstream lines(query.output);
-    std::string name;
-    while (std::getline(lines, name)) {
-        if (!name.empty() && isPackageName(name)) names.insert(name);
+    std::string line;
+    while (std::getline(lines, line)) {
+        const std::size_t dot = line.rfind('.');
+        const std::string key = (dot != std::string::npos && isArchitecture(line.substr(dot + 1)))
+            ? packageKey(line.substr(0, dot), line.substr(dot + 1))
+            : line;
+        if (!key.empty() && isPackageName(stripArchitecture(key))) names.insert(key);
     }
     return names;
 }
 
+}
+
+std::set<std::string> installedPackageKeys(bool rpm) {
+    if (rpm) return commandExists("rpm") ? rpmNames("") : std::set<std::string>{};
+    std::set<std::string> names;
+    if (!commandExists("dpkg-query")) return names;
+    const DryRun query = dryRun("dpkg-query -W -f '${db:Status-Abbrev} ${Package}\\n'");
+    std::istringstream lines(query.output);
+    std::string status, name;
+    while (lines >> status >> name) {
+        if (status == "ii" && isPackageName(name)) names.insert(name);
+    }
+    return names;
+}
+
+InstalledDelta compareInstalled(
+    const std::set<std::string>& before,
+    const std::set<std::string>& after,
+    const std::set<std::string>& confirmed
+) {
+    InstalledDelta delta;
+    for (const auto& key : after) {
+        if (!before.count(key)) {
+            delta.added.insert(key);
+            if (!confirmed.count(key)) delta.unconfirmed.insert(key);
+        }
+    }
+    for (const auto& key : before) {
+        if (!after.count(key)) delta.removed.insert(key);
+    }
+    return delta;
 }
 
 PlanCheck checkRemovalWithRpmOstree(
@@ -560,7 +646,7 @@ PlanCheck checkRemovalWithRpmOstree(
         return check;
     }
     const PackageChanges plan = parseRpmOstreeDryRun(run.output);
-    const std::set<std::string>& remaining = plan.install;
+    const std::set<std::string>& remaining = plan.installKeys;
 
     // What the image itself carries, from the copy of its package
     // database rpm-ostree keeps. Without it, nothing tells a layered

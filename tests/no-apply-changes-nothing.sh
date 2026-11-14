@@ -245,7 +245,7 @@ elif command -v strace > /dev/null 2>&1; then
 fi
 [ "${NEXUS_TEST_NO_TRACE:-0}" = 1 ] && { TRACE=0; TRACE_WHY="tracing was turned off (NEXUS_TEST_NO_TRACE=1)"; }
 
-CALLS_TRACED='execve,execveat,open,openat,?openat2,creat,unlink,unlinkat,rmdir,mkdir,mkdirat,rename,renameat,renameat2,link,linkat,symlink,symlinkat,chmod,fchmod,fchmodat,?fchmodat2,chown,lchown,fchown,fchownat,truncate,setxattr,lsetxattr,removexattr,lremovexattr,mknod,mknodat,mount,umount2,reboot,init_module,finit_module,delete_module,sethostname,setdomainname,settimeofday,clock_settime,?clock_adjtime,adjtimex,swapon,swapoff,kexec_load,?kexec_file_load,pivot_root,chroot,acct,quotactl'
+CALLS_TRACED='?io_uring_setup,?io_uring_enter,?io_uring_register,execve,execveat,open,openat,?openat2,creat,unlink,unlinkat,rmdir,mkdir,mkdirat,rename,renameat,renameat2,link,linkat,symlink,symlinkat,chmod,fchmod,fchmodat,?fchmodat2,chown,lchown,fchown,fchownat,truncate,setxattr,lsetxattr,removexattr,lremovexattr,mknod,mknodat,mount,umount2,reboot,init_module,finit_module,delete_module,sethostname,setdomainname,settimeofday,clock_settime,?clock_adjtime,adjtimex,swapon,swapoff,kexec_load,?kexec_file_load,pivot_root,chroot,acct,quotactl'
 
 # How long one command may take, in seconds. A build with the
 # sanitizers on is many times slower (NEXUS_TEST_COMMAND_TIMEOUT=300
@@ -330,7 +330,29 @@ run_one() {
             fi
         done <<< "${changed}"
         [ -z "${inside}" ] || add_problem "changed on disk: ${inside}"
-        [ -z "${outside}" ] || printf 'nexus %s: %s\n' "${*:-}" "${outside}" >> "${SEEN_ELSEWHERE}"
+        if [ -n "${outside}" ]; then
+            # Not named by the trace is not proof of innocence: a write
+            # strace cannot see (io_uring is refused below), or work a
+            # system service does when nexus asks it, looks the same
+            # (round-5 audit L2). So the command is run a second time:
+            # a file that changes again is counted against nexus; a
+            # daemon's own timer (cupsd's) does not line up twice.
+            mark
+            (cd "${CWD}" && env -i PATH="${STUBS}:/usr/sbin:/usr/bin:/sbin:/bin" HOME="${FAKEHOME}" \
+                LANG=C.UTF-8 TERM=dumb \
+                timeout "${LIMIT}" "${program}" "$@" > /dev/null 2>&1 < /dev/null)
+            again="$(changed_since_mark)"
+            repeated=""; once=""
+            for path in ${outside}; do
+                if printf '%s\n' "${again}" | grep -qxF -- "${path}"; then
+                    repeated="${repeated}${path} "
+                else
+                    once="${once}${path} "
+                fi
+            done
+            [ -z "${repeated}" ] || add_problem "changed again when the command ran a second time, though no process of nexus's wrote it (a service working for nexus?): ${repeated}"
+            [ -z "${once}" ] || printf 'nexus %s: %s\n' "${*:-}" "${once}" >> "${SEEN_ELSEWHERE}"
+        fi
     elif [ -n "${changed}" ]; then
         # Without strace nothing tells nexus's changes from anyone
         # else's: every change counts.
@@ -559,8 +581,8 @@ if [ "${TRACE}" -eq 1 ]; then
     echo "    No mount, reboot, kernel-module, clock, hostname or swap system call."
     echo "    No stand-in was asked to change anything."
     if [ -s "${SEEN_ELSEWHERE}" ]; then
-        echo "    Changed while a command ran, but not by anything it started (strace"
-        echo "    saw no process of nexus's touch these; another program on the machine did):"
+        echo "    Changed while a command ran, not by anything it started (strace saw no"
+        echo "    process of nexus's touch these), and not again on a second run:"
         sort -u "${SEEN_ELSEWHERE}" | sed 's/^/        /'
     fi
     if [ -s "${SEEN_UNNAMED}" ]; then

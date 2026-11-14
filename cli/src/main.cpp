@@ -1361,9 +1361,9 @@ int commandInstall(
 
     if (layering && (check.agreement == nexus::system::PlanAgreement::Agrees ||
                      check.agreement == nexus::system::PlanAgreement::Differs)) {
-        const std::set<std::string>& approved =
-            check.agreement == nexus::system::PlanAgreement::Agrees ? expected : check.theirs;
-        layer = nexus::system::checkPlanWithRpmOstree(requested, approved);
+        // dnf's own rows, by name and architecture (round-5 audit M1):
+        // what was checked is what rpm-ostree's list is held against.
+        layer = nexus::system::checkPlanWithRpmOstree(requested, check.changes.installKeys);
 
         switch (layer.agreement) {
             case nexus::system::PlanAgreement::Agrees:
@@ -1634,6 +1634,14 @@ int commandInstall(
     // rather than changing the running one, so what it records is
     // "staged" -- true until the machine reboots, and false to call
     // it anything else.
+    // What is installed before, to hold the result against what was
+    // confirmed (0.1.94, round-5 audit M3). Layering is staged: the
+    // running system does not change, so there is nothing to compare
+    // until the next start, and the record says so.
+    const std::set<std::string> before = useRpmOstree
+        ? std::set<std::string>{}
+        : nexus::system::installedPackageKeys(useRpm);
+
     const auto applied =
         useRpmOstree
             ? nexus::system::layerWithRpmOstree({requested})
@@ -1650,6 +1658,29 @@ int commandInstall(
     record.succeeded =
         applied.outcome == nexus::system::ApplyOutcome::Applied;
 
+    bool differsFromConfirmed = false;
+    if (applied.outcome == nexus::system::ApplyOutcome::Applied && !before.empty()) {
+        // dnf's rows by name and architecture; apt's by name.
+        std::set<std::string> confirmed = decision.willChange;
+        confirmed.insert(check.changes.installKeys.begin(), check.changes.installKeys.end());
+        const auto delta = nexus::system::compareInstalled(
+            before, nexus::system::installedPackageKeys(useRpm), confirmed);
+
+        // The record holds what happened, not what was asked.
+        record.packages = delta.added;
+        if (!delta.unconfirmed.empty() || !delta.removed.empty()) {
+            differsFromConfirmed = true;
+            record.outcome += ", not as confirmed";
+            std::cout << "\nWhat " << manager << " did is not exactly what was confirmed:\n";
+            for (const auto& key : delta.unconfirmed) std::cout << "    + " << key << "  (not in the confirmed list)\n";
+            for (const auto& key : delta.removed) std::cout << "    - " << key << "  (removed)\n";
+            std::cout << "This is in the history (nexus history).\n";
+        }
+    } else if (applied.outcome == nexus::system::ApplyOutcome::Staged) {
+        record.outcome += " (rpm-ostree's confirmed list; not compared with the machine "
+                          "until it starts the new deployment)";
+    }
+
     if (!nexus::system::finishTransaction(log, marker, record)) {
         std::cerr
             << "\nWarning: could not write the transaction record to "
@@ -1658,7 +1689,8 @@ int commandInstall(
 
     switch (applied.outcome) {
         case nexus::system::ApplyOutcome::Applied:
-            std::cout << "\nDone.\n";
+            std::cout << (differsFromConfirmed ? "\nDone, with the differences above.\n"
+                                               : "\nDone: what was installed is what was confirmed.\n");
             return 0;
 
         case nexus::system::ApplyOutcome::Staged:
@@ -5801,8 +5833,17 @@ int commandServer(
 
     // ------------------------------------------------------------ logs
     if (action == "logs") {
-        if (words.size() != 2 || !nexus::system::validServerName(words[1])) {
+        if (words.size() != 2) {
             serverUsage();
+            return 2;
+        }
+        // A name, not a path or a typo: say what was wrong instead of
+        // printing the usage (0.1.94; the Asus, 14 Nov: "my_test" and a
+        // file path both got only the usage text).
+        if (!nexus::system::validServerName(words[1])) {
+            std::cout << "\"" << nexus::system::printable(words[1])
+                      << "\" is not a server name: names use a-z, 0-9 and -,"
+                         " up to 30 characters.\n`nexus server` lists the servers here.\n";
             return 2;
         }
         return std::system(("journalctl -u " + nexus::system::serverUnit(words[1]) +
@@ -5865,8 +5906,17 @@ int commandServer(
 
     // ------------------------------------------------- remove / backup
     if (action == "remove" || action == "backup") {
-        if (words.size() != 2 || !nexus::system::validServerName(words[1])) {
+        if (words.size() != 2) {
             serverUsage();
+            return 2;
+        }
+        // A name, not a path or a typo: say what was wrong instead of
+        // printing the usage (0.1.94; the Asus, 14 Nov: "my_test" and a
+        // file path both got only the usage text).
+        if (!nexus::system::validServerName(words[1])) {
+            std::cout << "\"" << nexus::system::printable(words[1])
+                      << "\" is not a server name: names use a-z, 0-9 and -,"
+                         " up to 30 characters.\n`nexus server` lists the servers here.\n";
             return 2;
         }
         const std::string name = words[1];

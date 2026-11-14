@@ -7,7 +7,8 @@
 #     kmod as itself is not classified;
 #   - O_TMPFILE in /tmp is not a change (noted), but in /etc it is, and
 #     linkat that would keep such a file is;
-#   - a finding names the program that did it.
+#   - a finding names the program that did it;
+#   - io_uring, whose writes strace cannot see, is a finding (0.1.94).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 command -v python3 > /dev/null || { echo "SKIPPED: python3 is not installed"; exit 77; }
@@ -20,6 +21,7 @@ cat > "${WORK}/log" <<'EOF'
 100 openat(AT_FDCWD</>, "/tmp", O_RDWR|O_EXCL|O_TMPFILE, 0600) = 3</tmp/#123 (deleted)>
 100 openat(AT_FDCWD</>, "/etc", O_RDWR|O_TMPFILE, 0600) = -1 EACCES (Permission denied)
 100 linkat(3</tmp/#123>, "", AT_FDCWD</>, "/tmp/kept", AT_EMPTY_PATH) = 0
+100 io_uring_setup(8, {flags=0, sq_thread_cpu=0, sq_thread_idle=0}) = 5
 EOF
 out="$(python3 -I "${HERE}/no-apply-trace.py" "${WORK}/log" --nexus /nonexistent \
     --stubs "${WORK}/stubs" --summary 2>&1)"
@@ -32,6 +34,7 @@ want "not classified: /usr/bin/kmod load"
 want "opened for writing (O_RDWR|O_TMPFILE): /etc [by modinfo]"
 want "linkat: /tmp/kept [by modinfo]"
 want "unnamed=/tmp [by modinfo]"
+want "system call io_uring_setup("
 never "classified: /usr/bin/kmod ntsync"
 never "(O_RDWR|O_TMPFILE): /tmp "
 [ "${code}" -eq 1 ] || { echo "exit ${code}, should be 1"; failed=1; }

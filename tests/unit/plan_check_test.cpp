@@ -429,3 +429,76 @@ TEST(PlanCheckTest, OnTheImageARemovalThatWouldAddPackagesIsRefused) {
     EXPECT_EQ(check.changes.install, (std::set<std::string>{"git"}));
     EXPECT_FALSE(nexus::system::decideRemoval({"nmap"}, check, false).allowed);
 }
+
+// 0.1.94, round-5 audit M1/M2.
+TEST(PlanCheckTest, AThirtyTwoBitLibraryIsNotHiddenByItsSixtyFourBitTwin) {
+    FakeTools tools;
+    tools.add("rpm-ostree",
+        "cat <<'EOF'\n"
+        "Resolving dependencies... done\n"
+        "Installing 2 packages:\n"
+        "  steam-1.0.0.85-1.fc44.x86_64 (rpmfusion-nonfree)\n"
+        "  glibc-2.43-9.fc44.i686 (updates)\n"
+        "Exiting because of '--dry-run' option\n"
+        "EOF\n");
+    // The Asus: rpm answers by name across architectures, and only the
+    // 64-bit glibc is installed.
+    tools.add("rpm", "echo glibc.x86_64\nexit 1\n");
+    const auto check = nexus::system::checkPlanWithRpmOstree("steam", {"steam"});
+    EXPECT_EQ(check.theirs, (std::set<std::string>{"steam", "glibc.i686"}));
+    EXPECT_EQ(check.onlyTheirs, (std::vector<std::string>{"glibc.i686"}));
+    EXPECT_EQ(check.agreement, PlanAgreement::Differs);
+}
+
+TEST(PlanCheckTest, DnfRowsKeepTheirArchitecture) {
+    const auto c = nexus::system::parseDnfTransaction(
+        "Installing:\n"
+        " steam   x86_64  1.0.0.85-1.fc44  rpmfusion-nonfree  1 MiB\n"
+        "Installing dependencies:\n"
+        " glibc   i686    2.43-9.fc44      updates            5 MiB\n"
+        " libfoo  noarch  1-1.fc44         fedora             1 KiB\n");
+    EXPECT_EQ(c.installKeys, (std::set<std::string>{"steam", "glibc.i686", "libfoo"}));
+}
+
+TEST(PlanCheckTest, AnRpmOstreeAnswerWithNoListIsRefusedNotAgreed) {
+    FakeTools tools;
+    tools.add("rpm-ostree",
+        "echo 'Resolving dependencies... done'\n"
+        "echo 'Something in a layout nobody has seen yet'\nexit 0\n");
+    tools.add("rpm", "exit 1\n");
+    const auto check = nexus::system::checkPlanWithRpmOstree("vlc", {"vlc"});
+    EXPECT_EQ(check.agreement, PlanAgreement::Refused);
+
+    PlanCheck dnf;
+    dnf.agreement = PlanAgreement::Agrees;
+    dnf.theirs = {"vlc"};
+    EXPECT_FALSE(nexus::system::decideInstall("vlc", {"vlc"}, dnf, &check, true).allowed);
+}
+
+TEST(PlanCheckTest, OnTheImageA32BitLayeredPackageIsShownAsGoing) {
+    BaseDb base;
+    FakeTools tools;
+    tools.add("rpm-ostree", "printf 'Resolving dependencies... done\\nInstalling 1 packages:\\n"
+                            "  gcc-16.2.1-3.fc44.x86_64 (@commandline)\\n'\n");
+    tools.add("rpm", fakeRpm("glibc.x86_64\\n",
+                             "glibc.x86_64\\nglibc.i686\\nsteam.x86_64\\ngcc.x86_64\\n"));
+    const auto check = nexus::system::checkRemovalWithRpmOstree(
+        {"steam"}, {"steam"}, base.path.string());
+    EXPECT_EQ(check.changes.remove, (std::set<std::string>{"steam", "glibc.i686"}));
+}
+
+// 0.1.94, round-5 audit M3: what happened is held against what was
+// confirmed, and the record keeps what happened.
+TEST(PlanCheckTest, WhatWasInstalledIsHeldAgainstWhatWasConfirmed) {
+    const auto delta = nexus::system::compareInstalled(
+        {"bash", "oldlib"},
+        {"bash", "vlc", "libvlc", "glibc.i686"},
+        {"vlc", "libvlc"});
+    EXPECT_EQ(delta.added, (std::set<std::string>{"vlc", "libvlc", "glibc.i686"}));
+    EXPECT_EQ(delta.unconfirmed, (std::set<std::string>{"glibc.i686"}));
+    EXPECT_EQ(delta.removed, (std::set<std::string>{"oldlib"}));
+
+    const auto clean = nexus::system::compareInstalled({"bash"}, {"bash", "vlc"}, {"vlc"});
+    EXPECT_TRUE(clean.unconfirmed.empty());
+    EXPECT_TRUE(clean.removed.empty());
+}
