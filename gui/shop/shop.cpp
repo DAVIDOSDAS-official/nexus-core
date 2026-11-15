@@ -656,8 +656,49 @@ void Shop::install(const QString& appId) {
     if (!nexus::system::isFlatpakId(appId.toStdString())) {
         return;
     }
+    // --yes: the dialog showed what the app asks to reach, read from
+    // Flathub by readPermissions, and its Install button stays off until
+    // it has (0.1.97, round-4 audit L4). nexus reads it again itself and
+    // installs nothing if it cannot.
     runJob(QStringLiteral("Installing ") + appId, nexusProgram(),
-           {"app", "install", appId, "--apply"});
+           {"app", "install", appId, "--apply", "--yes"});
+}
+
+void Shop::readPermissions(const QString& appId) {
+    if (!nexus::system::isFlatpakId(appId.toStdString())) {
+        emit permissionsRead(appId, {}, false);
+        return;
+    }
+    auto* reader = new QProcess(this);
+    reader->setProcessChannelMode(QProcess::SeparateChannels);
+    connect(reader, &QProcess::finished, this,
+            [this, reader, appId](int, QProcess::ExitStatus) {
+        QVariantList items;
+        bool read = false;
+        const QStringList lines =
+            QString::fromUtf8(reader->readAllStandardOutput()).split(QLatin1Char('\n'));
+        for (const QString& line : lines) {
+            const QStringList fields = line.split(QLatin1Char('\t'));
+            if (fields.size() == 2 && fields[0] == QLatin1String("state")) {
+                read = fields[1] == QLatin1String("read");
+            } else if (fields.size() == 3 && fields[0] == QLatin1String("perm")) {
+                QVariantMap item;
+                item["text"] = fields[2];
+                item["broad"] = fields[1] == QLatin1String("broad");
+                items << item;
+            }
+        }
+        reader->deleteLater();
+        emit permissionsRead(appId, items, read);
+    });
+    connect(reader, &QProcess::errorOccurred, this,
+            [this, reader, appId](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            reader->deleteLater();
+            emit permissionsRead(appId, {}, false);
+        }
+    });
+    reader->start(nexusProgram(), {QStringLiteral("app"), QStringLiteral("permissions"), appId});
 }
 
 void Shop::remove(const QString& appId) {

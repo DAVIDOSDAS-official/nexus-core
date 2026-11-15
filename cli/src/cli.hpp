@@ -334,7 +334,8 @@ int commandSetup(
 // app.cpp
 int commandApp(
     const std::vector<std::string>& words,
-    bool apply
+    bool apply,
+    bool assumeYes
 );
 
 // ---------------------------------------------------------------------

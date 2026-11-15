@@ -1297,6 +1297,35 @@ layer ("Installing 137 packages"), no "no change" message.
   Asus after the update: `nexus doctor`, `nexus`, `nexus history`,
   `nexus security`, `nexus update` read as they did on 0.1.95.
 
+**Patch 125 (0.1.97): Flatpak permissions before installing -- round-4 audit L4.**
+`flatpak install --noninteractive` grants every permission an app's
+metadata asks for, and neither `nexus app install` nor the Shop said
+what they were.
+- flatpak_permissions.{hpp,cpp}: Flathub's metadata
+  (`flatpak remote-info --system --show-metadata flathub <id>`, read
+  only) in plain words, broad first. Broad (marked !): host / host-os /
+  host-etc, the whole home folder (also read-only), autostart / systemd
+  / shell start files, absolute paths outside home written to, every
+  device, session or system bus, SSH or GPG agent, talking to
+  org.freedesktop.Flatpak (commands outside the sandbox), the keyring,
+  the permission store, any system service.
+- `nexus app install` shows the list in its preview. With --apply it is
+  read again (Flathub is set up first only when it was missing);
+  unreadable = not installed; a broad one needs a typed "yes" in a
+  terminal, or --yes elsewhere -- asked before anything is changed.
+  The history records what it was allowed beyond the usual.
+- `nexus app permissions <id>`: lines for the Shop. The Shop's install
+  dialog reads them without blocking the window ("IT CAN REACH", broad
+  ones in the warning colour, the button turns red), and Install stays
+  off until they are read; it then passes --yes.
+- 4 unit tests, a fuzz target. 763 tests. The Shop dialog was checked
+  offscreen with a stand-in flatpak (screenshot); not on the Asus.
+- Not covered: `nexus setup` installs its own curated Flatpaks without
+  this list (the media add-on's apps). Next to do if wanted.
+- Not verified: the real `flatpak remote-info --show-metadata` output
+  on the Asus (check: `flatpak remote-info --system --show-metadata
+  flathub org.videolan.VLC`).
+
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
 hint for a mistyped package (java-lastest -> java-latest-openjdk);

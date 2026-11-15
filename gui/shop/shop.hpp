@@ -73,6 +73,10 @@ public:
     Q_INVOKABLE void clearJob();
     Q_INVOKABLE void launch(const QString& appId) const;
 
+    // What a Flathub app asks to reach (0.1.97, round-4 audit L4), read
+    // by `nexus app permissions <id>`; the answer comes as
+    // permissionsRead, so the window never waits on the network.
+    Q_INVOKABLE void readPermissions(const QString& appId);
     Q_INVOKABLE void copyText(const QString& text) const;
     Q_INVOKABLE void openLink(const QString& url) const;
 
@@ -80,6 +84,8 @@ signals:
     void changed();
     void updatesChanged();
     void jobChanged();
+    // items: [{text, broad}], read: whether Flathub's metadata was read.
+    void permissionsRead(const QString& appId, const QVariantList& items, bool read);
 
 private:
     struct Loaded {

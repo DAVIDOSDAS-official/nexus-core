@@ -53,6 +53,7 @@
 #include <nexus/system/source_build.hpp>
 #include <nexus/system/specs.hpp>
 #include <nexus/system/update.hpp>
+#include <nexus/system/flatpak_permissions.hpp>
 #include <nexus/system/version.hpp>
 #include <nexus/system/vpn_check.hpp>
 #include <nexus/system/xml.hpp>
@@ -117,6 +118,7 @@ int main(int argc, char** argv) {
 {"judgeUpdateSigning", [](S s){ ns::judgeUpdateSigning("ostree-image-signed:docker://ghcr.io/davidosdas-official/nexus-core:kde", s, true); ns::judgeUpdateSigning(s, s, true); }, {R"({"default":[{"type":"reject"}],"transports":{"docker":{"ghcr.io/davidosdas-official":[{"type":"sigstoreSigned","keyPath":"/etc/pki/containers/nexus-core.pub"}]}}})"}},
 {"parseImageRef", [](S s){ ns::parseImageRef(s); }, {"ostree-image-signed:docker://ghcr.io/a/b:kde", "ostree-unverified-registry:ghcr.io/a/b@sha256:ab"}},
 {"parseUpdateLines", [](S s){ ns::parseUpdateLines(s); }, {"system\tupdate\t0.1.86\t2026-11-01\napp\torg.a.B\t1.0\nstate\tbusy\n"}},
+{"parseFlatpakPermissions", [](S s){ ns::parseFlatpakPermissions(s); }, {"[Application]\nname=a.b.C\n[Context]\nfilesystems=home;xdg-download:ro;\ndevices=all;\n[Session Bus Policy]\norg.freedesktop.Flatpak=talk\n"}},
 {"parseFlatpakUpdates", [](S s){ ns::parseFlatpakUpdates(s); }, {"org.example.App\t1.0\norg.example.B\n"}},
 {"parseProtonSummary", [](S s){ ns::parseProtonSummary(s); }, {R"({"tier":"gold","confidence":"strong","score":0.7,"total":120,"trendingTier":"platinum","bestReportedTier":"platinum"})"}},
 {"parseSteamSearch", [](S s){ ns::parseSteamSearch(s); }, {R"({"total":1,"items":[{"type":"app","name":"X","id":730,"platforms":{"linux":true}}]})"}},

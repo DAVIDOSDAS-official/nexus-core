@@ -47,6 +47,7 @@ add_executable(component_test
     unit/gamecheck_test.cpp
     unit/language_test.cpp
     unit/update_test.cpp
+    unit/flatpak_permissions_test.cpp
     unit/catalogue_test.cpp
     unit/dualboot_test.cpp
     unit/server_test.cpp

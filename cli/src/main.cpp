@@ -470,7 +470,7 @@ int main(int argc, char** argv) {
         return commandApp(
             std::vector<std::string>(positional.begin() + 1,
                                      positional.end()),
-            apply);
+            apply, assumeYes);
     }
 
     if (command == "server") {

@@ -40,10 +40,24 @@ ApplicationWindow {
                    "Hand the work to Flatpak, which checks Flathub's signature",
                    "Write it in History"],
             wont: ["change the system image", "need a restart", "ask for your password"],
-            command: "nexus app install " + appId + " --apply",
+            command: "nexus app install " + appId + " --apply --yes",
             actionText: "Install",
+            permissionsState: "reading",
             onAccept: function() { shop.install(appId) }
         })
+        pendingPermissions = appId
+        shop.readPermissions(appId)
+    }
+    // The app whose permissions the open dialog waits for; an answer
+    // for another one (a dialog closed and opened again) is dropped.
+    property string pendingPermissions: ""
+    Connections {
+        target: shop
+        function onPermissionsRead(appId, items, read) {
+            if (appId !== pendingPermissions) return
+            pendingPermissions = ""
+            confirm.setPermissions(items, read)
+        }
     }
     function confirmRemove(appId, name) {
         confirm.ask({
