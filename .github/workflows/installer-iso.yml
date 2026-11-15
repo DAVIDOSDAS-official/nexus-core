@@ -30,14 +30,17 @@ on:
         options: [kde, minimal]
         default: kde
 
-permissions:
-  contents: read
-  packages: read
-  id-token: write       # the attestation's signature
-  attestations: write   # storing it with the repository
+# Per job, not for the whole workflow (0.1.99, round-4 audit L7):
+# a job added later starts with nothing.
+permissions: {}
 
 jobs:
   iso:
+    permissions:
+      contents: read
+      packages: read
+      id-token: write       # the attestation's signature
+      attestations: write   # storing it with the repository
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:

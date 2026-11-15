@@ -118,3 +118,13 @@ TEST(FlatpakTest, TheUnitIsFoundWhateverSeparatesIt) {
     // A bare number is bytes.
     EXPECT_EQ(parseHumanSize("206358937"), 206358937u);
 }
+
+// Round-4 audit L6 (0.1.99): sizes no disk holds are not cast (that is
+// undefined behaviour); they read as unknown.
+TEST(FlatpakTest, AnAbsurdSizeIsUnknownNotUndefined) {
+    EXPECT_EQ(parseHumanSize("1e300 GB"), 0u);
+    EXPECT_EQ(parseHumanSize("999999999999 GB"), 0u);
+    EXPECT_EQ(parseHumanSize("inf MB"), 0u);
+    EXPECT_EQ(parseHumanSize("nan kB"), 0u);
+    EXPECT_EQ(parseHumanSize("1000000 GB"), 1000000000000000ull);
+}

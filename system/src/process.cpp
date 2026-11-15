@@ -31,19 +31,35 @@ namespace {
 // The length of an invisible or direction-changing character starting
 // at text[i], or 0. These print as nothing, or turn the text after them
 // around, so a name can look like another ("Trojan Source"):
+//   U+00AD            soft hyphen                 C2 AD
 //   U+061C            Arabic letter mark          D8 9C
+//   U+115F, U+1160    Hangul fillers              E1 85 9F..A0
+//   U+180E            Mongolian vowel separator   E1 A0 8E
 //   U+200B..U+200F    zero-width, LRM, RLM        E2 80 8B..8F
+//   U+2028, U+2029    line and paragraph sep.     E2 80 A8..A9
 //   U+202A..U+202E    embeddings and overrides    E2 80 AA..AE
 //   U+2060..U+2064    word joiner, invisible ops  E2 81 A0..A4
 //   U+2066..U+2069    isolates                    E2 81 A6..A9
+//   U+3164            Hangul filler               E3 85 A4
 //   U+FEFF            zero-width no-break space   EF BB BF
+//   U+FFA0            halfwidth Hangul filler     EF BE A0
+//   U+E0000..U+E007F  tag characters              F3 A0 80 80..F3 A0 81 BF
+// (0.1.99: the soft hyphen, separators, fillers, U+180E and the tag
+// characters were round-4 audit L3.) U+FE0F, the emoji variation
+// selector, stays: it changes how an emoji looks, not what text says.
 std::size_t invisibleAt(const std::string& text, std::size_t i) {
     auto at = [&](std::size_t k) -> unsigned {
         return k < text.size() ? static_cast<unsigned char>(text[k]) : 0u;
     };
-    const unsigned a = at(i), b = at(i + 1), c = at(i + 2);
+    const unsigned a = at(i), b = at(i + 1), c = at(i + 2), d = at(i + 3);
+    if (a == 0xC2 && b == 0xAD) return 2;
     if (a == 0xD8 && b == 0x9C) return 2;
-    if (a == 0xE2 && b == 0x80 && ((c >= 0x8B && c <= 0x8F) || (c >= 0xAA && c <= 0xAE))) return 3;
+    if (a == 0xE1 && b == 0x85 && (c == 0x9F || c == 0xA0)) return 3;
+    if (a == 0xE1 && b == 0xA0 && c == 0x8E) return 3;
+    if (a == 0xE3 && b == 0x85 && c == 0xA4) return 3;
+    if (a == 0xEF && b == 0xBE && c == 0xA0) return 3;
+    if (a == 0xF3 && b == 0xA0 && (c == 0x80 || c == 0x81) && d >= 0x80 && d <= 0xBF) return 4;
+    if (a == 0xE2 && b == 0x80 && ((c >= 0x8B && c <= 0x8F) || (c >= 0xA8 && c <= 0xAE))) return 3;
     if (a == 0xE2 && b == 0x81 && ((c >= 0xA0 && c <= 0xA4) || (c >= 0xA6 && c <= 0xA9))) return 3;
     if (a == 0xEF && b == 0xBB && c == 0xBF) return 3;
     return 0;

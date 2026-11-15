@@ -2,7 +2,6 @@
 
 #include <string>
 #include <vector>
-#include <vector>
 
 namespace nexus::system {
 

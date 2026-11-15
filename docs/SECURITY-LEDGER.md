@@ -1,0 +1,213 @@
+# Nexus-CORE security ledger
+
+Every finding from every review, and what became of it. Last updated:
+0.1.99, 15 November 2026.
+
+**The rule:** an item leaves "open" only with evidence: a test that
+fails if the fix is undone, a later review that re-ran the attack, or a
+check on a real machine. An item may also be **accepted**, but only with
+a written reason. Nothing is dropped from this file. When a patch
+changes a status, it changes this file too.
+
+Status words:
+
+| Status | Meaning |
+|---|---|
+| **Closed** | Fixed. The evidence column says how it is known. |
+| **Partly** | Some of it is fixed; what is left is said. |
+| **Open** | Not fixed. |
+| **Accepted** | Deliberately left as it is, for the reason given. |
+| **Test needed** | Code is in place; it still has to be tried on real hardware or in a VM. |
+| **Confirm** | Depends on a setting outside the repository (GitHub, the Asus); the maintainer has to look. |
+
+Sources:
+
+| Source | Version reviewed | Date |
+|---|---|---|
+| Round 1, adversarial security audit | 0.1.82 | 11 Nov 2026 |
+| Round 2, adversarial security audit | 0.1.84 | 11 Nov 2026 |
+| Round 3, security and privacy audit | 0.1.85 | 11 Nov 2026 |
+| Round 4, red-team audit | 0.1.89 | 12 Nov 2026 |
+| Round 5, red-team audit | 0.1.92 | 14 Nov 2026 |
+| Full code review | 0.1.93 | 14 Nov 2026 |
+| Fable's notes with patches 123/124 | 0.1.96 | 15 Nov 2026 |
+| ChatGPT's production-readiness list | 0.1.97 | 15 Nov 2026 |
+
+The reviews were done by AI models working from the source, with
+proof-of-concept code run in their own sandboxes. They are not
+independent human audits, and this file does not call them that.
+
+---
+
+## 1. What is open, in order
+
+| # | Item | Why it matters | What closes it |
+|---|---|---|---|
+| 1 | **L1 / Rekor:** signatures are not in a public transparency log (`--tlog-upload=false` in `image/publish.sh`, `image/promote.sh`) | A stolen key plus password could sign an image with no public trace. Rekor makes such a signature visible; it does not stop it. | Step 1: sign with the log on. Step 2: machines require the log entry (`rekorPublicKeyPath` in the signature policy), only after every image in use has one, and only once Fedora 44's containers library is confirmed to support it. Plus someone, or a scheduled job, watching the log for signatures the maintainer did not make. |
+| 2 | **R4-H1:** the signing key's protection is a GitHub setting | If the `release` environment lost its reviewer rule, or old repository secrets remain, a workflow could reach the key. | Confirm: Settings → Secrets → no repository-level `COSIGN_*`. Code: a first step in `sign` that stops unless the environment has a required reviewer; a lint in `tests.yml` that fails if any other job names `COSIGN_*`. |
+| 3 | **R3:** root boot units run without systemd sandboxing | Defence in depth: if one gets a bug, nothing limits what it can touch. | `ProtectSystem=`, `ProtectHome=`, `PrivateTmp=`, `NoNewPrivileges=` per unit, tuned from `systemd-analyze security <unit>` on the Asus, each unit tested to still do its job. |
+| 4 | **Shell execution:** 109 `runCommand` calls run through `sh -c`; 2 use `runProgram` (no shell) | One forgotten `shellQuote` is an injection. Today's guard is the quoting linter with exact counts per name (N8) and package-name checks (M4). | Move the calls to `runProgram` in batches, root paths first; the linter then forbids `runCommand` in moved files. |
+| 5 | **R5-M3:** after the yes, rpm-ostree works out the packages again | What runs may differ from what was confirmed. Since 0.1.94 the result is compared and the history says "not as confirmed"; it is detected, not prevented. | Layer the exact versions confirmed (name-version-release) instead of names. On the Asus on 15 Nov the 56 packages added were exactly the 56 confirmed. |
+| 6 | **L6 / base image by tag:** `FROM quay.io/fedora/fedora-bootc:44` | The digest is recorded after the build, not fixed before it. | Look the digest up once when the build starts, build every stage from `@sha256:…`, record it. |
+| 7 | **L8:** server containers run rootful with default capabilities | A hole in a served app is a hole in a root container. | Rootless or user-namespaced quadlets, dropped capabilities, read-only where possible. |
+| 8 | **R4-L2:** "Starts by itself: ok" looks at two places only | Something that starts at login from a `.socket`, `.path`, drop-in, `autostart-scripts`, `plasma-workspace/env` or a shell rc file is not seen. | Look in all of them, and say what was not looked at. |
+| 9 | **I3:** the Shop's History mixes the user's own log with root's | Any user can write "applied" lines into their own log, and they show as machine history. | Label each row with the log it came from; root's log alone counts as the machine's. |
+| 10 | **Dual boot:** USB disks are still scanned | A USB stick's boot files can end up in the boot menu. | Skip removable disks unless asked for by name. |
+| 11 | **Firewall:** `firewall-cmd --reload` in suggested commands drops runtime-only rules | A rule added for this session only disappears. | Suggest `--permanent` plus the same change at runtime, without `--reload`. |
+| 12 | **Fedora 45:** the image is on Fedora 44 | Fedora 45 came out on 3 November 2026; Fedora 44 gets updates until about a month after Fedora 46 (around June 2027). | Move to 45 before spring 2027, tested on the Asus. |
+
+Tests that need hardware or a VM, not code:
+
+| # | Test | Where |
+|---|---|---|
+| T1 | Installer on many disk layouts, including interrupted runs | VM with throwaway virtual disks only, never a real disk |
+| T2 | Dual boot with other distributions, EFI layouts, USB disks | VM first, then a spare machine |
+| T3 | Power cut during an update and during layering | VM (kill the VM mid-way); rpm-ostree keeps the old deployment by design, this checks it |
+| T4 | Network and DNS traffic of a fresh install, watched from outside | Asus, with a capture on the router or a second machine |
+| T5 | First boot and the Shop by someone who has never used a terminal | Asus, a real person |
+| T6 | Patch 123 checks 4/5 on the next update | Asus |
+| T7 | `about:policies` and `ls -l /etc/firefox/policies/` (P1) | Asus |
+| T8 | N7 boot check: no false "bad boot" on a normal start | Asus (has passed in daily use; not a deliberate test) |
+| T9 | Server website from the phone (M3 of the server tests) | Blocked: the VPN on the Asus and phone stops it |
+| T10 | Server backup interrupted with Ctrl-C | Asus |
+
+---
+
+## 2. Round 1 (0.1.82)
+
+| ID | Finding | Status | Evidence |
+|---|---|---|---|
+| H1 | Signing key and password were plain repository secrets | **Partly** → R4-H1 | 0.1.86: signing moved to its own `sign` job with `environment: release` (`weekly-image.yml`); every run waits for the maintainer's approval. What is left is R4-H1. |
+| M1 | WireGuard private key readable through `/proc/<pid>/cmdline` | **Closed** 0.1.84 | `runProgram({"wg","pubkey"}, key)`: key on stdin, no shell. Round 2: watcher caught 0 of 20 (was 20 of 20). |
+| M2 | Other systems' EFI folder names written unescaped into GRUB | **Closed** 0.1.84 | Name whitelist and quoted `chainloader`. Test `Dualboot.AHostileLoaderNameNeverReachesGrub`; round 2 ran the old PoC and `grub-script-check`. |
+| M3 | Root first-boot `chown` through user symlinks | **Closed** 0.1.84 | Per-user work runs as the user (`runuser`), no `chown`. Round 2 re-ran it. |
+| M4 | Package names from repo metadata into a root shell | **Closed** 0.1.84 | `isPackageName` before any shell, names quoted. Test `PlanApplyTest.LayeringRefusesWhatIsNotAPackageName`; round 2 re-ran the PoC. |
+| M5 | Advice for unsigned origins could not fix them | **Closed** 0.1.84 | `nexus rebase` moves unverified Nexus origins to signed ones. Test `RollbackTest.UnverifiedNexusOriginsMoveToSigned`. |
+| M6 | ISO builder image `:latest`, privileged, unpinned | **Closed** 0.1.85 | `bootc-image-builder` and `skopeo` pinned by digest (round 3). |
+| L1 | Update freeze undetectable; no Rekor | **Partly** | Going *back* is refused since 0.1.95 (tests `UpdateRollbackTest.*`). A frozen tag (no new build) still looks up to date, and there is no Rekor: open item 1. |
+| L2 | Secure Boot status overstated | **Closed** 0.1.84 | Exact GUIDs, `MokSBStateRT`. Tests `SecureBootTest.*` (11). |
+| L3 | Dual boot mounts other disks with default options | **Partly** | `nosuid,nodev,noexec`, 4 MiB read cap (0.1.84); no log replay (N4, 0.1.85). USB disks: open item 10. |
+| L4 | Shop shows catalogue text as rich text | **Closed** 0.1.84 | `Text.PlainText` everywhere, https screenshots only. Test `CatalogueTest.DescriptionIsPlainTextWithListItems`. |
+| L5 | Debian version compare hangs on a NUL byte | **Closed** 0.1.84 | Test `VersionTest.ANulByteDoesNotHang`; 20 min fuzzing in round 2. |
+| L6 | Build inputs trusted by tag | **Partly** | Builder images by digest (M6); GitHub actions by full commit (`tools/pin-actions.py`). Base image by tag: open item 6. |
+| L7 | Installer shrink could damage a hibernated system | **Closed** 0.1.85 | `noload`, `needs_recovery`, swap-partition and swap-file check (N6). Residual: a swap file at a path only the other system's fstab names; it fails safe when unreadable. |
+| L8 | Servers run as rootful containers | **Open** | Open item 7. |
+| I1 | Boot check fooled by `pgrep -f` | **Closed** 0.1.85 | See N7. |
+| I2 | `github.actor` in `run:`; checkout kept credentials | **Closed** 0.1.84 | `env:` for the login; `persist-credentials: false` everywhere (round 2). |
+| I3 | History mixes the user-writable log with root's | **Open** | Open item 9. |
+| I4 | Uninitialised status in `ResolutionPlan` | **Closed** 0.1.84 | Defaults to Failed (round 2). |
+| I5 | `nexus gaming` turns off split-lock mitigation silently | **Closed** 0.1.84 | The output explains the trade-off. |
+| I6 | `rd.luks.options=tries=0` | **Accepted** | Harmless: Argon2id makes guessing slow either way (round 1's own words). |
+| I7 | `nexus-boot-entry` removes other systems' stale NVRAM entries without `--apply` | **Closed** | Listed in `SECURITY.md` under the things that run by themselves: it removes only entries whose partition no longer holds that loader. |
+
+## 3. Round 2 (0.1.84)
+
+All checked fixed by round 3 (re-run PoCs for N1, N3, N5).
+
+| ID | Finding | Status | Evidence |
+|---|---|---|---|
+| N1 | Unsigned image's version label shown unfiltered | **Closed** 0.1.85 | Label must match `^[0-9][0-9A-Za-z.+~-]{0,31}$`. Test `UpdateTest.AHostileLabelIsNotShown`. |
+| N2 | Server backups world-readable | **Closed** 0.1.85 | Folder 0700, archives 0600, `umask(077)` around `tar`. |
+| N3 | Escape sequences from other disks, Steam, repos printed to root terminals | **Closed** 0.1.85 | `printable()`. Test `ProcessTest.PrintableRemovesEveryControlCharacter`. |
+| N4 | btrfs log replayed on a "read-only" mount | **Closed** 0.1.85 | `rescue=nologreplay`; `norecovery` for f2fs, bcachefs. |
+| N5 | A FIFO in a home folder hangs first boot | **Closed** 0.1.85 | Plain-file check plus `timeout 10 runuser`; round 3: returns in 13 ms. |
+| N6 | Hibernation into a swap file not seen | **Closed** 0.1.85 | See L7. |
+| N7 | Boot check satisfied by any process named plasmashell | **Closed** 0.1.85 | Needs `display-manager.service` active and `sddm-greeter` owned by `sddm` or a logind graphical session. T8. |
+| N8 | Quoting checker allow-list by name only | **Closed** 0.1.85 | Keyed by (file, name) with exact counts. Since 0.1.98 an allowance larger than its use also fails. |
+
+## 4. Round 3 (0.1.85)
+
+Round 4 confirmed every item below is in the code and checked on each image build.
+
+| ID | Finding | Status | Evidence |
+|---|---|---|---|
+| P1 | Firefox runs with Fedora's telemetry, studies and ad measurement | **Closed** 0.1.86, T7 | `/etc/firefox/policies/policies.json` in the image; `tools/check-network-hygiene.py` checks it in every test run. |
+| P2 | Random hostname sent in DHCP to every network | **Closed** 0.1.86 | `image/network/30-nexus-privacy.conf`: `dhcp-send-hostname=false`, checked in the built image by `image/check-add-ons.sh`; on the Asus: false. |
+| P3 | Fedora Count Me on | **Closed** 0.1.86 | Timer off, `countme=0`; on the Asus `rpm-ostree-countme.timer` is not found. |
+| P4 | No IPv6 temporary addresses | **Closed** 0.1.86 | `ip6-privacy=2` in the same file, checked in the built image by `image/check-add-ons.sh`. |
+| P5 | Daily update check with no off switch | **Closed** 0.1.86 | `nexus update notify off --apply`. Test `UpdateTest.NotifySwitchWritesAndRemovesTheFlag`. |
+| P6 | gamecheck's `curl` followed redirects to http | **Closed** 0.1.86 | `--proto =https --proto-redir =https`; `tools/check-network-hygiene.py` fails on any `curl` without them. |
+| R1 | Flatpak version strings unfiltered | **Closed** 0.1.86 | Test `UpdateTest.FlatpakVersionIsPrintable`. |
+| R2 | Direction-changing and zero-width characters | **Closed** 0.1.86, widened 0.1.99 | Tests `ProcessTest.PrintableReplacesBidiControls`, `…ZeroWidthCharacters`, `…TheRestOfTheInvisibleCharacters`. |
+| R3 | Root boot units unsandboxed | **Open** | Open item 3. |
+
+## 5. Round 4 (0.1.89)
+
+| ID | Finding | Status | Evidence |
+|---|---|---|---|
+| R4-H1 | Key protection rests on GitHub settings | **Confirm** + **Open** | Open item 2. In use: every signing run waits for the maintainer's approval. |
+| R4-M1 | `nexus remove` had no package-manager check | **Closed** 0.1.91 | dnf/apt dry run first; the count typed is dnf's. Tests `PlanCheckTest.ARemovalTakesWhatDnfSaysNotWhatNexusPlanned`, `…ARemovalThatInstallsIsRefused`; round 5: fixed. On the image (0.1.93): `PlanCheckTest.OnTheImageWhatGoesIsWhatIsLayeredAndNotKept`. |
+| R4-M2 | Install check blind to removals, downgrades, replacements | **Closed** 0.1.91, 0.1.98 | Every section read. Test `PlanCheckTest.EveryKindOfChangeInADnf5TableIsRead`; unknown headings since 0.1.98 (R5-L3). dnf5 format checked on the Asus. |
+| R4-M3 | dnf checks, rpm-ostree runs | **Partly** → R5-M3 | rpm-ostree asked first since 0.1.91–0.1.92; Asus 0.1.92: 56 packages, 44 not in dnf's list, shown. |
+| R4-M4 | `nexus setup` approved once, installed with `--yes` | **Closed** 0.1.91 | Each item asks with its own list. Round 5: fixed. Flatpaks too since 0.1.98. |
+| R4-M5 | Old signed images stay valid; going back possible | **Closed** 0.1.95–0.1.96 | Version and build-time floor; the confirmed build digest is checked after staging, else `cleanup --pending`. Tests `UpdateRollbackTest.*` (11), `UpdateStagedTest.*` (5); `tests/update-trust-check.sh`. Asus checks 1–3 passed; T6. |
+| R4-L1 | doctor, summary and security said "signed" differently | **Closed** 0.1.95 | One function for all three (Fable, patch 123). |
+| R4-L2 | "Starts by itself" looks in two places | **Open** | Open item 8. |
+| R4-L3 | More invisible characters pass `printable()` | **Closed** 0.1.99 | Soft hyphen, U+2028/2029, Hangul fillers, U+180E, tag characters. Test `ProcessTest.PrintableReplacesTheRestOfTheInvisibleCharacters`. |
+| R4-L4 | Flatpak permissions granted without being shown | **Closed** 0.1.97, 0.1.98 | Shown before install in `nexus install`, the Shop and `nexus setup`; broad ones need a typed yes. Tests `FlatpakPermissionsTest.*`, fuzz target. Asus: VLC and GeoGebra lists read correctly. |
+| R4-L5 | Transaction log readable by every account | **Closed** 0.1.91 | 0640, group wheel; only ever narrowed. Test `TransactionLogTest.FinishingKeepsPermissionsAndLeavesNoScraps`; round 5: fixed. |
+| R4-L6 | Float-to-integer overflow on absurd sizes and uptimes | **Closed** 0.1.99 | Clamped before the cast. Tests `FlatpakTest.AnAbsurdSizeIsUnknownNotUndefined`, `SpecsTest.AnAbsurdUptimeIsZeroNotUndefined`. |
+| R4-L7 | Write permissions at workflow level | **Closed** 0.1.99 | `permissions: {}` at the top of `fedora-version-check.yml`, `security-watch.yml`, `installer-iso.yml`; each job names its own. |
+| R4-L8 | Network checker scanned `shop/`, the Shop lives in `gui/shop/` | **Closed** 0.1.99 | `tools/check-network-hygiene.py` scans `gui`. |
+| R4-L9 | Version shown came from an unchecked inspect; the upgrade pulled whatever the tag said later | **Closed** 0.1.95 | The confirmed digest is pinned and compared with what was staged (see R4-M5). |
+
+## 6. Round 5 (0.1.92)
+
+| ID | Finding | Status | Evidence |
+|---|---|---|---|
+| R5-M1 | New 32-bit packages hidden as "layered earlier" | **Closed** 0.1.94 | Name and architecture throughout. Tests `PlanCheckTest.DnfRowsKeepTheirArchitecture`, `…OnTheImageA32BitLayeredPackageIsShownAsGoing`. |
+| R5-M2 | An unrecognised rpm-ostree answer read as "nothing to add, agrees" | **Closed** 0.1.94 | Refused. Test `PlanCheckTest.AnRpmOstreeAnswerWithNoListIsRefusedNotAgreed`. |
+| R5-M3 | Re-resolved after the prompt; nothing compared afterwards | **Partly** | Since 0.1.94 the installed set is compared and the history says "not as confirmed". Prevention: open item 5. |
+| R5-L1 | Hardening checker passed a program with only variable-size frames | **Closed** 0.1.94 | Those frames are judged; "nothing to judge" is not "verified". `tests/check-hardening-selftest.sh`. |
+| R5-L2 | No-apply test excused files the trace did not name | **Closed** 0.1.94 | Excused only if the change does not repeat on a second run; io_uring traced. `tests/no-apply-trace-rules.sh`. |
+| R5-L3 | Unknown dnf headings skipped; replacements matched by name only | **Closed** 0.1.98 | Tests `PlanCheckTest.ARowUnderAnUnknownHeadingIsAskedAboutNotSkipped`, `…AnUnknownHeadingInAnInstallPlanNeedsATypedYes`, `…AReplacedLibraryOfAnotherArchitectureIsNotTheUpgradesOwn`. |
+| R5-L4 | "May move to newer versions" named nothing | **Closed** 0.1.98 | Versions compared, each move listed, going back needs a typed yes. Test `PlanCheckTest.PackagesLayeredEarlierAreListedWithTheirVersions`. Asus: "137 keep their version". |
+| R5-L5 | Enter was yes even when the list was longer than the plan | **Closed** 0.1.98 | `[y/N]` then. Test `PlanCheckTest.EnterIsNoWhenTheListIsLongerThanNexussOwnPlan`. Asus: prompt shown. |
+
+## 7. Full code review (0.1.93)
+
+| Point | Status | Evidence or reason |
+|---|---|---|
+| Bus factor of one; no outside verification | **Accepted** | True of a one-person project. Answered by publishing everything (code, reviews, this file) so others can check, not by claims. |
+| No Rekor | **Open** | Open item 1. |
+| Fedora 44 base ageing | **Open** | Open item 12. |
+| `main.cpp` monolith | **Closed** 0.1.96 | Split into `cli/src/*.cpp` (patch 124); every command's output proven identical with `tools/compare-outputs.sh`. |
+| Duplicate `#include <vector>` in `plan_apply.hpp` | **Closed** 0.1.99 | Removed. |
+| `NEXUS_SHOP_*` variables in the release Shop | **Accepted** | They change which catalogue folders the Shop reads, whether it animates or refreshes, and (only with `NEXUS_SHOP_SCREENSHOT` set) open a page, save one screenshot and quit. `NEXUS_SHOP_CONFIRM` only opens the confirm dialog; it installs nothing. Same account, no privilege. They make the Shop testable without a screen. |
+| Grep-based checks in shell scripts | **Partly** | Quoting linter (N8); `shellcheck` clean in round 4. Same direction as open item 4. |
+
+## 8. Fable's notes (0.1.96)
+
+| # | Note | Status | Evidence or reason |
+|---|---|---|---|
+| 1 | Linter allowed `unit` 3 times, used once | **Closed** 0.1.98 | Allowance 1; an unused allowance now fails. |
+| 2 | `dev.cpp` ignored `std::system` three times | **Closed** 0.1.98 | Failures are said; no compiler warning. |
+| 3 | Comment at the top of `install.cpp` described other code | **Closed** 0.1.98 | Moved to the code it describes. |
+| 4 | Two globals visible in `cli.hpp` | **Accepted** | Set once by `main()` before any command runs; read-only after. Worth tidying, not a risk. |
+| 5 | `ostree-remote-image:` refs called "not signature-checked" | **Accepted** | Those are checked by ostree's own keys; no Nexus image uses them. Wording only. |
+| 6 | `HANDOFF.md` head said 0.1.85 | **Closed** 0.1.98 | Updated. |
+| 7 | Fuzz seed for `parseSystemUpdate` was JSON | **Closed** 0.1.95 | Text seed added in patch 123. |
+
+## 9. ChatGPT's production-readiness list (15 Nov 2026)
+
+| Priority given | Item | Where it is in this file |
+|---|---|---|
+| Critical | Rekor | Open item 1. Rated **High** here: it detects a stolen-key signature, it does not prevent one; key custody (R4-H1) matters more. |
+| Critical | Independent systemd sandboxing review | Open item 3 (R3). |
+| High | Destructive-disk tests of the installer | T1, VM only. |
+| High | Permission analysis on every install path | Flatpak: closed (R4-L4). rpm packages have no permission model to analyse. Server containers: open item 7. |
+| High | Every external image and dependency by digest | Actions and builder images: closed. Base image: open item 6. |
+| High | Dual boot across distributions, EFI layouts, USB disks | Open item 10 and T2. |
+| Medium | Interrupted updates, power failures | T3. |
+| Medium | Network and DNS behaviour verified independently | T4. |
+| Medium | First boot and Shop without terminal knowledge | T5. |
+| — | Shell execution to argument vectors | Open item 4. |
+| — | Items must close with evidence, not vanish | This file. |
+
+## 10. Other items carried between rounds
+
+| Item | Status | Evidence |
+|---|---|---|
+| `runProgram`: deadlock with over 64 KiB of input; process-wide SIGPIPE swap | **Closed** | Output read while input is written (`poll`); SIGPIPE blocked per thread (`system/src/process.cpp`). Round 4: holds up under the sanitizers. |
+| `firewall-cmd --reload` in suggestions | **Open** | Open item 11. |
+| USB disks in dual boot | **Open** | Open item 10. |

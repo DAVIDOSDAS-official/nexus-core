@@ -20,12 +20,15 @@ on:
     - cron: "0 6 1 * *"
   workflow_dispatch:
 
-permissions:
-  contents: read
-  issues: write
+# Per job, not for the whole workflow (0.1.99, round-4 audit L7):
+# a job added later starts with nothing.
+permissions: {}
 
 jobs:
   check:
+    permissions:
+      contents: read
+      issues: write
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5

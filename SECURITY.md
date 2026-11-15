@@ -3,6 +3,10 @@
 Nexus-CORE is a preview made by one person. Security problems are
 taken seriously and fixed first.
 
+Every finding from every review so far, fixed or not, is listed with
+its evidence in [docs/SECURITY-LEDGER.md](docs/SECURITY-LEDGER.md),
+including what is still open.
+
 ## Reporting a problem
 
 **Please do not open a public issue for a security problem.** Report

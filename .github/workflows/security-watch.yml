@@ -19,12 +19,15 @@ on:
     - cron: "0 5,17 * * *"
   workflow_dispatch:
 
-permissions:
-  contents: read
-  actions: write   # to start weekly-image.yml
+# Per job, not for the whole workflow (0.1.99, round-4 audit L7):
+# a job added later starts with nothing.
+permissions: {}
 
 jobs:
   firefox:
+    permissions:
+      contents: read
+      actions: write   # to start weekly-image.yml
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:

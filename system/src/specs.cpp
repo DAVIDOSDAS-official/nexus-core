@@ -78,7 +78,9 @@ long parseUptimeSeconds(const std::string& uptime) {
     // /proc/uptime: "<seconds up>.<hundredths> <idle> ..."
     std::istringstream in(uptime);
     double seconds = 0;
-    if (in >> seconds && seconds >= 0) {
+    // Under a thousand years; anything else is not an uptime, and
+    // casting it would be undefined behaviour (round-4 audit L6).
+    if (in >> seconds && seconds >= 0 && seconds < 3.2e10) {
         return static_cast<long>(seconds);
     }
     return 0;

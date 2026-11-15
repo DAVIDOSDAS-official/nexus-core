@@ -3,7 +3,7 @@
 Updated 15 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.98** (patches 1–127). **770 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
+**Version 0.1.99** (patches 1–128). **773 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -1364,6 +1364,30 @@ permissions; small items.** 770 tests.
   packages layered earlier, and the prompt is [y/N] (rpm-ostree's list
   is longer than dnf's); `nexus setup gaming` lists what Steam, Heroic,
   Lutris and ProtonUp-Qt can reach.
+  Checked on the Asus 15 Nov: the version line ("137 keep their
+  version") and the [y/N] prompt; the 56 packages rpm-ostree added were
+  exactly the 56 confirmed. Setup's permission list checked with
+  `nexus setup school` (GeoGebra: "your whole home folder" marked !);
+  gaming showed none because its four Flatpaks are installed.
+
+**Patch 128 (0.1.99): security ledger; round-4 L3, L6, L7, L8.** 773
+tests.
+- `docs/SECURITY-LEDGER.md`: every finding of rounds 1-5, the code
+  review, Fable's notes and ChatGPT's list, each Closed / Partly / Open
+  / Accepted / Test needed / Confirm, with its evidence (test name,
+  patch, re-run by a later round, or the Asus) or the reason. Section 1
+  is the open list in order. Linked from SECURITY.md. Rule: a patch
+  that changes a status changes the ledger in the same patch.
+- R4-L3: printable() also replaces the soft hyphen, U+2028/2029, the
+  Hangul fillers, U+180E and the tag characters; the emoji selector
+  stays.
+- R4-L6: sizes over 1 EB and uptimes over a thousand years (and inf,
+  nan) are clamped before the integer cast.
+- R4-L7: `permissions: {}` at the top of fedora-version-check,
+  security-watch and installer-iso; each job names its own (one job
+  each, so nothing behaves differently).
+- R4-L8: the network checker scans `gui/` (it looked for `shop/`).
+- Duplicate `#include <vector>` in plan_apply.hpp removed.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

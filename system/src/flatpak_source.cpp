@@ -44,7 +44,10 @@ std::uint64_t parseHumanSize(const std::string& text) {
 
     const double amount = std::strtod(text.c_str(), nullptr);
 
-    if (amount <= 0) {
+    // Not a number, or more than any disk holds (1 EB): a size this
+    // large is a broken or hostile catalogue, and casting it to an
+    // integer is undefined behaviour (0.1.99, round-4 audit L6).
+    if (!(amount > 0) || amount > 1e18) {
         return 0;
     }
 
@@ -69,30 +72,25 @@ std::uint64_t parseHumanSize(const std::string& text) {
         start -= 1;
     }
 
-    if (start >= text.size()) {
-        return static_cast<std::uint64_t>(amount);
-    }
-
-    const std::string unit = text.substr(start);
+    const std::string unit = start >= text.size() ? "" : text.substr(start);
 
     // flatpak uses decimal units, and prints kB rather than KB.
-    if (unit == "B") {
-        return static_cast<std::uint64_t>(amount);
-    }
-
+    double bytes = amount;
     if (unit == "kB" || unit == "KB") {
-        return static_cast<std::uint64_t>(amount * 1000);
+        bytes = amount * 1000;
+    } else if (unit == "MB") {
+        bytes = amount * 1000 * 1000;
+    } else if (unit == "GB") {
+        bytes = amount * 1000 * 1000 * 1000;
     }
 
-    if (unit == "MB") {
-        return static_cast<std::uint64_t>(amount * 1000 * 1000);
+    // Checked after the unit too: "999999999999 GB" passes the first
+    // check and still overflows (round-4 audit L6).
+    if (bytes > 1e18) {
+        return 0;
     }
 
-    if (unit == "GB") {
-        return static_cast<std::uint64_t>(amount * 1000 * 1000 * 1000);
-    }
-
-    return static_cast<std::uint64_t>(amount);
+    return static_cast<std::uint64_t>(bytes);
 }
 
 std::string formatSize(std::uint64_t bytes) {

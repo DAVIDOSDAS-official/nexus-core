@@ -23,7 +23,9 @@ import sys
 ROOT = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else '.')
 
 # Where shipped code lives.
-SOURCES = ['cli', 'system', 'hardware', 'core', 'shop', 'image']
+# 'gui', not 'shop': the Shop lives in gui/shop/ (0.1.99, round-4 audit L8;
+# a curl added there would have gone unseen).
+SOURCES = ['cli', 'system', 'hardware', 'core', 'gui', 'image']
 SKIP_PARTS = {'generated', 'artwork', '__pycache__', 'wallpaper'}
 SUFFIXES = {'.cpp', '.hpp', '.h', '.sh', '.py', '.qml', '.service', ''}
 

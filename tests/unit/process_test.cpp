@@ -518,3 +518,24 @@ TEST(ProcessTest, PrintableReplacesZeroWidthCharacters) {
     // Cut short at the end: no reading past the text.
     EXPECT_EQ(printable("x\xe2\x80"), "x\xe2\x80");
 }
+
+// Round-4 audit L3 (0.1.99): more characters that print as nothing or
+// break a line where none shows. The emoji variation selector stays.
+TEST(ProcessTest, PrintableReplacesTheRestOfTheInvisibleCharacters) {
+    using nexus::system::printable;
+    EXPECT_EQ(printable("Ste\xc2\xad" "am"), "Ste?am");                    // U+00AD soft hyphen
+    EXPECT_EQ(printable("a\xe2\x80\xa8" "b\xe2\x80\xa9"), "a?b?");         // U+2028, U+2029
+    EXPECT_EQ(printable("\xe3\x85\xa4" "x"), "?x");                         // U+3164
+    EXPECT_EQ(printable("\xe1\x85\x9f\xe1\x85\xa0" "x"), "??x");           // U+115F, U+1160
+    EXPECT_EQ(printable("\xef\xbe\xa0" "x"), "?x");                         // U+FFA0
+    EXPECT_EQ(printable("a\xe1\xa0\x8e" "b"), "a?b");                       // U+180E
+    EXPECT_EQ(printable("x\xf3\xa0\x80\x81\xf3\xa0\x81\xbf"), "x??");       // U+E0001, U+E007F
+    // Kept: the emoji selector, a real Hangul syllable, an ordinary
+    // character next to the tag range (U+E0100, a variation selector
+    // of its own block), and a cut-short sequence at the end.
+    EXPECT_EQ(printable("\xe2\x9d\xa4\xef\xb8\x8f"), "\xe2\x9d\xa4\xef\xb8\x8f");
+    EXPECT_EQ(printable("\xed\x95\x9c"), "\xed\x95\x9c");
+    EXPECT_EQ(printable("\xf3\xa0\x84\x80"), "\xf3\xa0\x84\x80");
+    EXPECT_EQ(printable("x\xf3\xa0\x80"), "x\xf3\xa0\x80");
+    EXPECT_EQ(printable("\xc2\xa0"), "\xc2\xa0");                           // no-break space stays
+}

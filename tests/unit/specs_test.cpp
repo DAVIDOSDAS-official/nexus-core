@@ -123,3 +123,11 @@ TEST(SpecsTest, JsonHasEveryFieldAndEscapes) {
     SpecsInfo off;
     EXPECT_NE(specsJson(off).find("\"ntsync\": false"), std::string::npos);
 }
+
+// Round-4 audit L6 (0.1.99).
+TEST(SpecsTest, AnAbsurdUptimeIsZeroNotUndefined) {
+    EXPECT_EQ(parseUptimeSeconds("1e300 0\n"), 0);
+    EXPECT_EQ(parseUptimeSeconds("inf 0\n"), 0);
+    EXPECT_EQ(parseUptimeSeconds("nan 0\n"), 0);
+    EXPECT_EQ(parseUptimeSeconds("31000000000 0\n"), 31000000000L);
+}
