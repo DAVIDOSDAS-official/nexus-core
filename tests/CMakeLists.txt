@@ -108,6 +108,14 @@ add_test(NAME ServerBackup
          COMMAND bash ${PROJECT_SOURCE_DIR}/tests/server-backup-check.sh $<TARGET_FILE:nexus>)
 set_tests_properties(ServerBackup PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 RUN_SERIAL TRUE)
 
+# `nexus update` against a registry that offers an older signed build,
+# or whose tag moves between the check and the download (0.1.95,
+# round-4 audit M5 and L9). Root and a throwaway machine, like
+# ServerBackup: it makes /run/ostree-booted for the time it runs.
+add_test(NAME UpdateTrust
+         COMMAND bash ${PROJECT_SOURCE_DIR}/tests/update-trust-check.sh $<TARGET_FILE:nexus>)
+set_tests_properties(UpdateTrust PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300 RUN_SERIAL TRUE)
+
 # The nexus that was just built is hardened the way CMakeLists.txt asks:
 # read from the program, not from the flags (0.1.87; 0.1.88 for the
 # protections beyond the first five). What is expected is what this

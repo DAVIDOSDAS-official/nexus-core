@@ -64,15 +64,16 @@ jobs:
       - name: Tests
         run: ctest --test-dir build --output-on-failure
 
-      # Two tests need root: `nexus server backup` does, and previews
-      # go further as root (dual boot looks at the disks). The runner is
+      # Three tests need root: `nexus server backup` and `nexus update
+      # --apply` do, and previews go further as root (dual boot looks
+      # at the disks). The runner is
       # a machine of its own that is deleted after the job; the tests
       # still only ever talk to stand-ins for systemctl, tar and the
       # rest, and remove what they made.
       - name: The tests that need root
         run: |
           sudo NEXUS_TEST_ALLOW_ROOT=1 ctest --test-dir build --output-on-failure \
-              -R '^(ServerBackup|NoApplyChangesNothing|NoApplySelfTest)$'
+              -R '^(ServerBackup|UpdateTrust|NoApplyChangesNothing|NoApplySelfTest)$'
 
   sanitizers:
     runs-on: ubuntu-24.04

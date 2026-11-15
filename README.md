@@ -88,7 +88,9 @@ before touching anything. Dual boot with Windows is not supported.
   one, once. Each one starts through its own signed loader, so Secure
   Boot stays on.
 - **Encrypted by default**, with signed images: an installed machine
-  refuses an update that Nexus-CORE did not sign.
+  refuses an update that Nexus-CORE did not sign, and one that is older
+  than the build it runs (an old build's signature stays good; going
+  back is something you do on purpose, with `nexus rollback`).
 - **`nexus doctor`** checks clock, memory, storage, services, updates
   and encryption, and says what to do about anything wrong.
 - **`nexus gamecheck <game>`**: will it run, what its anti-cheat
@@ -242,7 +244,7 @@ ctest --test-dir build
 
 Needs a C++20 compiler and CMake 3.20, Qt 6 for the Shop, and
 GoogleTest for the tests (`-DNEXUS_BUILD_TESTS=OFF` to skip).
-About 720 automated tests (`ctest --test-dir build`). Among them: every
+About 760 automated tests (`ctest --test-dir build`). Among them: every
 command that can change the system is run without `--apply` and must
 change nothing -- with `strace` installed that means every program it
 starts and every file it writes, anywhere; without it the test does a

@@ -1097,6 +1097,121 @@ layer ("Installing 137 packages"), no "no change" message.
   one (it printed only the usage; the Asus: "my_test", a file path).
 - 741 tests.
 
+**Patch 123 (0.1.95): update trust -- round-4 audit M5, L9 and L1.**
+- **M5, an old signed build is not an update.** Every image signed
+  with the Nexus key verifies, however old, so whoever answers the
+  machine's registry requests (or a mirror that is behind) could offer
+  an outdated build as "the update". `nexus update` now holds the
+  registry's build against the one running, before anything is shown,
+  announced or downloaded (judgeOffer, update.{hpp,cpp}): refused when
+  its nexus.version label is lower than the tool's own version, when
+  its Created time is before the running build's, or when it has no
+  readable Created at all. Both values are in the image configuration,
+  whose digest is in the signed manifest. The running build's time is
+  rpm-ostree's timestamp of the booted deployment; BUILD_ID in
+  /usr/lib/os-release (identity.sh) is the fallback, and where the two
+  disagree by more than a day the earlier one counts (a weaker floor,
+  never a refused real update). A refused build is never "available":
+  the row is "Not taken" with the reason, the daily notification says
+  nothing, `--lines` prints `system refused` (the Shop shows the
+  reason and counts no update), and `--apply` never calls rpm-ostree
+  for it. Not judged, on purpose: `nexus rollback`, `nexus rebase`,
+  `rpm-ostree rollback`, the boot menu and the boot check's own
+  rollback -- going back when a person (or a failed start) asks.
+- **Found while reading for M5:** rpm-ostree has this protection
+  itself. A Bazzite report (universal-blue.discourse.group, "After
+  Kernel Panic - System Update Failed", 2 Feb 2025, the tag had been
+  reverted): `rpm-ostree upgrade` on an ostree-image-signed origin
+  stops with "Upgrade target revision ... is chronologically older than
+  current revision ...; use --allow-downgrade to permit". So the audit's
+  "it will be accepted" is probably wrong for the install step on
+  Fedora, and Nexus never passes --allow-downgrade. NOT confirmed on
+  Fedora 44 or the Asus; 123 does not rely on it. What was certainly
+  wrong and is fixed: `nexus update` and the notification called the
+  old build "New: Nexus x.y.z".
+- **L9, what is shown is what is installed.** The preview names the
+  build ("build 1a2b3c4d5e6f: --apply installs exactly this one, or
+  nothing"). rpm-ostree cannot be told "this digest, and keep following
+  the tag": its man page gives `upgrade` no such option, `deploy` takes
+  a version or commit, and rebasing to a digest pins the origin, which
+  stops updates. So the upgrade still
+  follows the tag and the result is checked on rpm-ostree's own status
+  afterwards (judgeStaged): the deployment that starts next must be the
+  confirmed digest and must not be older than the booted one. Anything
+  else is removed with `rpm-ostree cleanup --pending`, read back, and
+  the command ends 1; if it cannot be removed the person is told to do
+  it before restarting. The record keeps the build ("Nexus 0.1.96;
+  system build 1a2b3c4d5e6f") and what happened ("failed: rpm-ostree
+  staged another build than the one confirmed (...); it was removed").
+  The pending deployment is found by its place in the list (above the
+  booted one), not by a "Staged:" line.
+- **L1, one answer to "are updates signature-checked?"**
+  judgeUpdateSigning (update.hpp) + updateSigningOf (main.cpp): signed:
+  prefix AND the policy requires the Nexus key AND the key file exists.
+  The summary, `nexus history` and `nexus specs` went by the prefix
+  alone, `nexus security` by all three, and `nexus doctor` said "new
+  signed images" without looking. Now doctor warns where the audit
+  does (not signature-checked -> `sudo nexus rebase signed --apply`;
+  policy without the key -> merge-policy), and the rows say "signed"
+  only when it is enforced. `nexus security` prints what it did.
+- Limits. (1) A machine that was rolled back on purpose is held
+  against the older build it now runs, not the newest it ever ran: no
+  high-water mark is kept. (2) Within one Created second nothing is
+  ordered. (3) A release must never be withdrawn by publishing a lower
+  version: machines on the higher one refuse it. Publish the fix as a
+  higher version. (4) L9 is check-after, not pin-before: in the race
+  (or attack) case a download is wasted, and an unconfirmed build is
+  staged for the seconds until it is removed; a restart in exactly
+  those seconds would start it (signed, but not the one confirmed).
+  (5) If skopeo
+  ever changes the names Digest / Created / Labels, updates are
+  refused until fixed, not waved through; `sudo rpm-ostree upgrade` is
+  the way round. (6) The key holder is still trusted completely: this
+  is about old builds, not a stolen key (SECURITY.md).
+- Tests: 17 unit tests (UpdateRollbackTest, UpdateStagedTest,
+  UpdateSigningTest), three parsers added to the fuzzer, and
+  tests/update-trust-check.sh (ctest UpdateTrust; root in a throwaway
+  machine like ServerBackup, added to tests.yml's root step): 16 cases
+  with a stand-in rpm-ostree and skopeo. On 0.1.94's binary 13 of the
+  16 fail (old build shown as "New", notified, upgraded to; a moved tag
+  ends "Done"); the same inputs through 0.1.94's compareWithRegistry
+  are pinned in AnOlderBuildOnTheRegistryIsNotAnUpdate. 759 tests.
+- Not verified here (no Fedora, no registry) -- on the Asus, all
+  read-only except the last:
+  0. Before anything else, on 0.1.94 and up to date: `nexus update`
+     says "System  up to date". That line needs skopeo's Digest of the
+     tag and rpm-ostree's Digest of the booted deployment to be the
+     same value, and the new check after --apply needs exactly that.
+     If they ever differed, every update through nexus would be
+     removed again as "another build" (`sudo rpm-ostree upgrade`
+     would still work): do not release 0.1.95 in that case.
+  1. `rpm-ostree status | grep -c Staged` right after an update is
+     staged: 0 means plain status prints no "Staged:" line and the
+     "Ready ... waits for a restart" row has never shown (the new
+     check does not need the line; the old row does).
+  2. The booted timestamp is the image's build time:
+     `rpm-ostree status | grep -A3 '^●' | grep Version` and
+     `skopeo inspect --no-tags docker://ghcr.io/davidosdas-official/nexus-core@<booted Digest> | grep Created`
+     must show the same second.
+  3. `grep BUILD_ID /usr/lib/os-release`: the same day as (2), or the
+     day before.
+  4. `nexus update` on an up-to-date machine, then after the next
+     weekly build: "New ... build <12 hex>", and the same 12 characters
+     in `rpm-ostree status` after `sudo nexus update --apply`
+     ("Staged: build ..., the one shown above").
+  5. `nexus` and `nexus specs` say signed; `nexus security` says
+     "every update must be signed with the Nexus key"; the Updates row
+     of `nexus doctor` is ok, not a warning.
+  6. The refusal itself needs an older build at the tag, which only a
+     second repository or a test tag can give: not tested on hardware.
+- GitHub: tests.yml's root step now also runs UpdateTrust (it makes
+  /run/ostree-booted on the runner while it runs). Not run there yet.
+- The Shop: no change to its code. It compiles and links here against
+  the changed update.hpp (Qt 6.4.2, Ubuntu); not run, no display. By
+  its QML a `system refused` line shows the system card with the
+  reason under it, offers nothing and counts no update. Look at it
+  once on the Asus if the case can be made to happen.
+
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
 hint for a mistyped package (java-lastest -> java-latest-openjdk);

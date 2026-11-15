@@ -2379,8 +2379,8 @@ PackageOrigin packageOrigin(const std::string& name) {
     return PackageOrigin::Unknown;
 }
 
-std::string osReleaseValue(const std::string& name) {
-    std::ifstream in("/etc/os-release");
+std::string osReleaseValueIn(const std::string& file, const std::string& name) {
+    std::ifstream in(file);
     std::string line;
     while (std::getline(in, line)) {
         if (line.rfind(name + "=", 0) == 0) {
@@ -2395,13 +2395,46 @@ std::string osReleaseValue(const std::string& name) {
     return {};
 }
 
+std::string osReleaseValue(const std::string& name) {
+    return osReleaseValueIn("/etc/os-release", name);
+}
+
+// Is this machine's update signature-checked? Asked in one place
+// (0.1.95, round-4 audit L1): the summary and `nexus specs` went by the
+// origin's prefix alone, `nexus security` by the prefix, the policy and
+// the key, and `nexus doctor` said "signed" without looking. The rule
+// itself is nexus::system::judgeUpdateSigning (update.hpp); this reads
+// what it needs from the machine.
+nexus::system::UpdateSigning updateSigningOf(const std::string& origin) {
+    std::ifstream policy(nexus::system::kContainersPolicy);
+    std::stringstream text;
+    text << policy.rdbuf();
+    std::error_code ec;
+    return nexus::system::judgeUpdateSigning(
+        origin, text.str(),
+        std::filesystem::exists(nexus::system::kNexusPublicKey, ec));
+}
+
+// The same answer in the few words a row has room for.
+std::string signingWords(nexus::system::UpdateSigning signing) {
+    switch (signing) {
+        case nexus::system::UpdateSigning::Enforced:
+        case nexus::system::UpdateSigning::OtherSigned:
+            return "signed";
+        case nexus::system::UpdateSigning::PolicyMissing:
+            return "signed: is set, but the Nexus key is not required";
+        case nexus::system::UpdateSigning::NotChecked:
+        case nexus::system::UpdateSigning::NotAnImage:
+            break;
+    }
+    return "not signature-checked";
+}
+
 // "ostree-image-signed:docker://ghcr.io/x/nexus-core:minimal" ->
-// "ghcr.io/x/nexus-core:minimal, signed"
+// "ghcr.io/x/nexus-core:minimal (signed)"
 std::string describeImage(const std::string& image) {
     std::string shown = image;
-    bool signedImage = false;
     if (shown.rfind("ostree-image-signed:", 0) == 0) {
-        signedImage = true;
         shown = shown.substr(std::string("ostree-image-signed:").size());
     } else if (shown.rfind("ostree-unverified-registry:", 0) == 0) {
         shown = shown.substr(std::string("ostree-unverified-registry:").size());
@@ -2409,7 +2442,7 @@ std::string describeImage(const std::string& image) {
     if (shown.rfind("docker://", 0) == 0) {
         shown = shown.substr(9);
     }
-    return shown + (signedImage ? " (signed)" : " (not signature-checked)");
+    return shown + " (" + signingWords(updateSigningOf(image)) + ")";
 }
 
 std::string dayOf(const std::string& iso) {
@@ -5487,18 +5520,17 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
         const auto deployments = readDeployments();
         for (const auto& d : deployments) {
             if (!d.booted) continue;
-            if (d.image.rfind("ostree-image-signed:", 0) == 0) {
-                // The prefix asks for a check; the policy says against
-                // which key (0.1.76). Without the rule, signed: checks
-                // nothing of Nexus's own.
-                std::ifstream pol("/etc/containers/policy.json");
-                std::stringstream pb; pb << pol.rdbuf();
-                const char* key = "/etc/pki/containers/nexus-core.pub";
-                const bool isNexus = d.image.find("ghcr.io/davidosdas-official/") != std::string::npos;
-                if (!isNexus)
+            // The prefix asks for a check; the policy says against
+            // which key (0.1.76). Without the rule, signed: checks
+            // nothing of Nexus's own. Decided in updateSigningOf, the
+            // same answer the summary, doctor and specs give (0.1.95,
+            // round-4 audit L1).
+            const nexus::system::UpdateSigning signing = updateSigningOf(d.image);
+            if (signing != nexus::system::UpdateSigning::NotChecked &&
+                signing != nexus::system::UpdateSigning::NotAnImage) {
+                if (signing == nexus::system::UpdateSigning::OtherSigned)
                     line(" ok ", "System image", "signature checked at every update (not a Nexus image).");
-                else if (nexus::system::policyRequiresKey(pb.str(), "ghcr.io/davidosdas-official", key) &&
-                         fs::exists(key)) {
+                else if (signing == nexus::system::UpdateSigning::Enforced) {
                     // containers-policy.json(5): a policy.json in the
                     // home of whoever pulls is read instead of /etc's
                     // (0.1.80). Updates are pulled as root, so root's.
@@ -6578,6 +6610,43 @@ int commandDualboot(
     return std::system("systemctl reboot") == 0 ? 0 : 1;
 }
 
+// What this machine knows about the build it runs, for holding an
+// offered update against (0.1.95, round-4 audit M5). Nothing here is
+// asked of the registry. BUILD_ID is read from /usr/lib/os-release,
+// which belongs to the image; /etc/os-release is a link to it that a
+// person can replace.
+nexus::system::RunningBuild runningBuild(const nexus::system::SystemUpdate& system) {
+    nexus::system::RunningBuild running;
+    running.version = NEXUS_VERSION;
+    running.built = system.built;
+    running.buildId = osReleaseValueIn("/usr/lib/os-release", "BUILD_ID");
+    return running;
+}
+
+// A sentence under a row's label: wrapped at 78 columns, each line
+// after the first indented to where the row's text starts.
+std::string wrappedUnderLabel(const std::string& text) {
+    const std::string indent(13, ' ');
+    std::string out;
+    std::size_t column = indent.size();
+    std::istringstream words(text);
+    std::string word;
+    bool first = true;
+    while (words >> word) {
+        if (!first && column + 1 + word.size() > 78) {
+            out += "\n" + indent;
+            column = indent.size();
+        } else if (!first) {
+            out += " ";
+            ++column;
+        }
+        out += word;
+        column += word.size();
+        first = false;
+    }
+    return out;
+}
+
 // nexus update: what is new for this machine, and taking it.
 // See system/include/nexus/system/update.hpp for how updates work here.
 int commandUpdate(
@@ -6705,7 +6774,11 @@ int commandUpdate(
                     "skopeo inspect --no-tags " + shellQuote("docker://" + system.origin) +
                     " 2>/dev/null", false).text);
             reached = remote.ok;
-            nexus::system::compareWithRegistry(system, remote);
+            // Judged before it is called new: an older build than the
+            // one running is not an update, whatever its signature
+            // (0.1.95, round-4 audit M5).
+            nexus::system::compareWithRegistry(system, remote,
+                                               runningBuild(system));
             // The weekly build makes a new image even when Nexus itself
             // did not change: same version, newer Fedora packages.
             if (system.available && system.version == NEXUS_VERSION) {
@@ -6738,12 +6811,24 @@ int commandUpdate(
             if (system.staged) {
                 std::cout << "staged\t" << system.stagedVersion << "\n";
             }
-            std::cout << "system\t"
-                      << (system.available ? "new"
-                          : reached ? "current" : "unreachable")
-                      << "\t" << system.version << "\t"
-                      << (system.date.empty() ? "" : dayOf(system.date))
-                      << "\t" << system.diff << "\n";
+            if (system.refused) {
+                // A state of its own (0.1.95): not "new", so the Shop
+                // neither counts nor offers it, and not "current",
+                // which would hide that something was turned away. The
+                // reason goes where the Shop shows a line of text.
+                std::cout << "system\trefused\t" << system.refusedVersion
+                          << "\t"
+                          << (system.refusedDate.empty()
+                                  ? "" : dayOf(system.refusedDate))
+                          << "\t" << system.refusedWhy << "\n";
+            } else {
+                std::cout << "system\t"
+                          << (system.available ? "new"
+                              : reached ? "current" : "unreachable")
+                          << "\t" << system.version << "\t"
+                          << (system.date.empty() ? "" : dayOf(system.date))
+                          << "\t" << system.diff << "\n";
+            }
         } else {
             std::cout << "system\tnot-image\t\t\t\n";
         }
@@ -6855,6 +6940,23 @@ int commandUpdate(
             if (!system.diff.empty()) {
                 std::cout << "             " << system.diff << "\n";
             }
+            // Which build, exactly: the version and date above are
+            // read from the registry's newest build at this moment,
+            // and --apply holds what rpm-ostree stages against this
+            // digest (0.1.95, round-4 audit L9).
+            if (nexus::system::validDigest(system.offeredDigest)) {
+                std::cout << "             build "
+                          << shortDigest(system.offeredDigest)
+                          << ": --apply installs exactly this one, or nothing\n";
+            }
+        } else if (system.refused) {
+            std::cout << "Not taken    "
+                      << wrappedUnderLabel(system.refusedWhy) << "\n"
+                      << "             An update never goes backwards: an old build's signature stays\n"
+                         "             good, so a mirror that is behind, or someone answering in the\n"
+                         "             registry's place, could offer one. Nothing was downloaded.\n"
+                         "             Going back on purpose is yours to do: nexus rollback, or the\n"
+                         "             boot menu.\n";
         } else if (!system.staged) {
             std::cout << (reached
                 ? "System       up to date (checked just now)\n"
@@ -6931,14 +7033,30 @@ int commandUpdate(
         }
     }
 
+    // The build that was shown and confirmed, if the registry named
+    // one (0.1.95, round-4 audit L9). The record carries it: "Nexus
+    // 0.1.96" alone does not say which of that version's weekly builds.
+    const std::string confirmed =
+        image && system.available &&
+        nexus::system::validDigest(system.offeredDigest)
+            ? system.offeredDigest : std::string();
+
     nexus::system::TransactionRecord record;
     record.when = nexus::system::currentTimestamp();
     record.request = "update";
     record.resolved = summary;
+    if (!confirmed.empty()) {
+        record.resolved += "; system build " + shortDigest(confirmed);
+    }
     const std::string log = nexus::system::defaultTransactionLog();
     const std::string marker = nexus::system::beginTransaction(log, record);
 
     bool ok = true;
+    // Why the system part did not end as confirmed, for the record and
+    // the last lines; empty when it did. leftStaged: something this run
+    // did not confirm still waits for a restart.
+    std::string systemNote;
+    bool leftStaged = false;
 
     if (image && system.available) {
         std::cout << "\nSystem: handing over to rpm-ostree.\n";
@@ -6954,6 +7072,112 @@ int commandUpdate(
             nexus::system::inPlainLocale("rpm-ostree upgrade").c_str());
         std::cout << "\n";
         ok = ok && status == 0;
+
+        // What rpm-ostree staged, held against what was shown and
+        // confirmed (0.1.95, round-4 audit L9 and M5). The upgrade
+        // follows the tag, and the tag can point somewhere else by the
+        // time the download starts -- a new weekly build released in
+        // that minute, or someone answering in the registry's place.
+        // rpm-ostree cannot be told "this digest, and keep following
+        // the tag", so the check is made afterwards, on its own status:
+        // the deployment that would start next must be the confirmed
+        // digest and must not be older than the running build. If it
+        // is anything else it is removed again; it has not started and
+        // never will.
+        if (status == 0) {
+            const auto after = nexus::system::parseSystemUpdate(
+                nexus::system::runCommand("rpm-ostree status 2>/dev/null",
+                                          false).text);
+            // Removes what this run staged; true only when rpm-ostree's
+            // status, read again, no longer lists it.
+            auto discard = [](const std::string& digest) {
+                std::cout << std::flush;
+                if (std::system(nexus::system::inPlainLocale(
+                        "rpm-ostree cleanup --pending").c_str()) != 0) {
+                    // Its own message is above; what counts is what
+                    // the status says next.
+                    std::cout << "(rpm-ostree cleanup reported a problem.)\n";
+                }
+                const auto now = nexus::system::parseSystemUpdate(
+                    nexus::system::runCommand(
+                        "rpm-ostree status 2>/dev/null", false).text);
+                return !now.digest.empty() && now.pendingDigest != digest;
+            };
+            auto removeUnconfirmed = [&](const std::string& what) {
+                std::cout << what
+                          << "\nWhat was not confirmed is not kept: removing it "
+                             "(rpm-ostree cleanup --pending).\n\n";
+                if (discard(after.pendingDigest)) {
+                    std::cout << "\nRemoved. See what is offered now: nexus update\n";
+                    return true;
+                }
+                std::cout << "\nIt could NOT be removed, and would start at the next "
+                             "restart.\nBefore restarting, remove it yourself:\n"
+                             "    sudo rpm-ostree cleanup --pending\n";
+                return false;
+            };
+
+            if (after.digest.empty()) {
+                // No status, no check: say so rather than "Done".
+                ok = false;
+                leftStaged = true;
+                systemNote = "staged, but rpm-ostree's status could not be "
+                             "read back to check it";
+                std::cout << "rpm-ostree finished, but its status could not be read "
+                             "back, so what it staged\nwas not checked against what "
+                             "was shown. Look before restarting:\n"
+                             "    rpm-ostree status\n";
+            } else {
+                switch (nexus::system::judgeStaged(confirmed, system, after)) {
+                    case nexus::system::StagedResult::AsConfirmed:
+                        if (!confirmed.empty()) {
+                            std::cout << "Staged: build " << shortDigest(confirmed)
+                                      << ", the one shown above.\n";
+                        } else {
+                            // The registry named no digest to confirm
+                            // (skopeo missing): say which build it is.
+                            std::cout << "Staged: build "
+                                      << shortDigest(after.pendingDigest) << ".\n";
+                        }
+                        break;
+                    case nexus::system::StagedResult::NothingNew:
+                        ok = false;
+                        systemNote = "nothing was staged";
+                        std::cout << "rpm-ostree staged nothing new: the registry no "
+                                     "longer offers the build shown\nabove. See what "
+                                     "is offered now: nexus update\n";
+                        break;
+                    case nexus::system::StagedResult::Different:
+                        ok = false;
+                        systemNote = removeUnconfirmed(
+                            "rpm-ostree staged another build than the one shown "
+                            "above:\n    shown and confirmed   " + confirmed +
+                            "\n    staged                " + after.pendingDigest +
+                            "\nThe registry's answer changed between the check and "
+                            "the download.")
+                            ? "rpm-ostree staged another build than the one "
+                              "confirmed (" + shortDigest(after.pendingDigest) +
+                              "); it was removed"
+                            : "another build than the one confirmed (" +
+                              shortDigest(after.pendingDigest) + ") is still staged";
+                        leftStaged = systemNote.find("still staged") != std::string::npos;
+                        break;
+                    case nexus::system::StagedResult::Older:
+                        ok = false;
+                        systemNote = removeUnconfirmed(
+                            "rpm-ostree staged a build made " +
+                            dayOf(after.pendingBuilt) + ", before the one running "
+                            "here (" + dayOf(after.built) + ").\nAn update never "
+                            "goes backwards.")
+                            ? "rpm-ostree staged an older build (" +
+                              shortDigest(after.pendingDigest) + "); it was removed"
+                            : "an older build (" + shortDigest(after.pendingDigest) +
+                              ") is still staged";
+                        leftStaged = systemNote.find("still staged") != std::string::npos;
+                        break;
+                }
+            }
+        }
     }
 
     if (!apps.empty()) {
@@ -6968,10 +7192,25 @@ int commandUpdate(
 
     record.outcome = ok ? (image && system.available ? "staged" : "applied")
                         : "failed";
+    // The record says what really happened (0.1.95).
+    if (!systemNote.empty()) {
+        record.outcome += ": " + systemNote;
+    }
     record.succeeded = ok;
+    record.exitCode = ok ? 0 : 1;
     nexus::system::finishTransaction(log, marker, record);
 
     if (!ok) {
+        if (!systemNote.empty()) {
+            std::cout << "\nThe system update did not go through as confirmed:\n    "
+                      << systemNote << ".\n"
+                      << (leftStaged
+                              ? "Look before restarting: rpm-ostree status\n"
+                              : "The running system is unchanged, and nothing "
+                                "waits for a restart that was not\nthere before.\n")
+                      << "This is in the history (nexus history).\n";
+            return 1;
+        }
         std::cout << "\nSomething did not complete; the messages above are "
                      "the tools' own.\nThe running system is unchanged.\n";
         return 1;
@@ -7742,11 +7981,45 @@ int commandDoctor(
             // and it writes the update to `nexus history`. Suggesting
             // `bootc upgrade` sent people around Nexus, so the update
             // never showed in history (seen on the Asus, 2 November).
-            updates.detail =
-                layered ? "Image-based, with packages added on top;"
-                          " updating keeps them."
-                        : "Image-based; updates are new signed images.";
-            updates.suggestion = "nexus update   (take it: sudo nexus update --apply)";
+            //
+            // "Signed" is said only where it is checked (0.1.95,
+            // round-4 audit L1): this line said "new signed images" on
+            // every machine, also one that follows its image without a
+            // signature check, while `nexus security` on the same
+            // machine warned about exactly that. One answer now
+            // (updateSigningOf), and a warning here too.
+            std::string origin;
+            for (const auto& d : readDeployments()) {
+                if (d.booted) {
+                    origin = d.image;
+                    break;
+                }
+            }
+            const nexus::system::UpdateSigning signing = updateSigningOf(origin);
+            if (signing == nexus::system::UpdateSigning::PolicyMissing) {
+                updates.health = nexus::Health::Warning;
+                updates.detail =
+                    "Image-based, but updates are not checked against the "
+                    "Nexus key: signed: is set and the policy does not "
+                    "require the key.";
+                updates.suggestion = "sudo python3 /usr/libexec/nexus/merge-policy";
+            } else if (signing == nexus::system::UpdateSigning::NotChecked) {
+                updates.health = nexus::Health::Warning;
+                updates.detail =
+                    "Image-based, but updates are not signature-checked.";
+                updates.suggestion = "sudo nexus rebase signed --apply";
+            } else {
+                const bool checked =
+                    signing == nexus::system::UpdateSigning::Enforced ||
+                    signing == nexus::system::UpdateSigning::OtherSigned;
+                updates.detail =
+                    layered ? "Image-based, with packages added on top;"
+                              " updating keeps them."
+                            : checked
+                                ? "Image-based; updates are new signed images."
+                                : "Image-based; updates are new images.";
+                updates.suggestion = "nexus update   (take it: sudo nexus update --apply)";
+            }
         }
 
         findings.push_back(std::move(updates));
@@ -8214,10 +8487,9 @@ nexus::system::SpecsInfo collectSpecs(const std::string& sysfsRoot) {
     const auto deployments = readDeployments();
     for (const auto& d : deployments) {
         if (d.booted) {
-            info.signature =
-                d.image.rfind("ostree-image-signed:", 0) == 0
-                    ? "signed"
-                    : "not signature-checked";
+            // The same answer as the summary and the audit (0.1.95,
+            // round-4 audit L1; this went by the prefix alone).
+            info.signature = signingWords(updateSigningOf(d.image));
             info.lastUpdate = dayOf(d.date);
             break;
         }
@@ -8742,7 +9014,8 @@ UPDATING
   than by changing packages one at a time, so the change arrives at
   a reboot and the previous one stays in the boot menu if it does not
   work. nexus update hands the work to rpm-ostree upgrade, which keeps
-  what you added on top of the image.
+  what you added on top of the image. It never takes a build older
+  than the one running, and what it stages is the build it showed.
 
       sudo rpm-ostree rollback         make the previous one the default
 

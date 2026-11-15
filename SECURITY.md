@@ -23,6 +23,9 @@ Anything that lets someone do more than they should, for example:
 
 - an update or image that is accepted without a valid Nexus-CORE
   signature;
+- `nexus update` taking a build older than the one running (a signed
+  build stays signed for ever; only `nexus rollback`, `nexus rebase`
+  and the boot menu go back, and only when a person asks);
 - `nexus` changing the system without `--apply`, or doing more than
   its "What Nexus will do" list says (the services below are the only
   things that change it on their own);
