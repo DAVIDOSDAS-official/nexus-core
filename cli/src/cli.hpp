@@ -86,6 +86,7 @@ using nexus::system::pinnedImage;  // pins.hpp (0.1.81)
 #include <nexus/system/plan_apply.hpp>
 #include <nexus/system/transaction_log.hpp>
 #include <nexus/system/plan_check.hpp>
+#include <nexus/system/flatpak_permissions.hpp>
 #include <nexus/system/protection.hpp>
 #include <nexus/system/rpm_version.hpp>
 #include <nexus/system/rpm_repo.hpp>
@@ -178,6 +179,9 @@ std::string describeImage(const std::string& image);
 std::string dayOf(const std::string& iso);
 std::string readWholeFile(const std::string& path);
 bool confirmed(bool assumeYes);
+// rpm-ostree's layer, packages layered earlier: how many keep their
+// version, which move and to what (0.1.98, round-5 audit L4).
+void printLayerMoves(const nexus::system::PlanCheck& layer, const std::string& indent);
 std::string firstLine(const std::string& text);
 std::string shortDigest(const std::string& d);
 
@@ -337,6 +341,11 @@ int commandApp(
     bool apply,
     bool assumeYes
 );
+// What a Flathub app asks to reach, read from Flathub (read-only), and
+// the lines that show it; each printed line starts with `indent`.
+nexus::system::AppPermissions readAppPermissions(const std::string& id);
+void printAppPermissions(const nexus::system::AppPermissions& permissions,
+                         const std::string& indent = "  ");
 
 // ---------------------------------------------------------------------
 // language.cpp

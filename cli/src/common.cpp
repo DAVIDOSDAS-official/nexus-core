@@ -357,6 +357,27 @@ bool confirmed(bool assumeYes) {
            answer == "yes";
 }
 
+void printLayerMoves(const nexus::system::PlanCheck& layer, const std::string& indent) {
+    if (layer.refreshed.empty()) return;
+    std::size_t newer = 0;
+    std::size_t older = 0;
+    for (const auto& [key, move] : layer.moved) (move.older ? older : newer) += 1;
+    const std::size_t same = layer.refreshed.size() - layer.moved.size() - layer.unread.size();
+    std::cout << indent << "(and recomputes " << layer.refreshed.size()
+              << " package(s) layered earlier: " << same << " keep their version";
+    if (newer) std::cout << ", " << newer << " move to a newer one";
+    if (older) std::cout << ", " << older << " to an OLDER one";
+    if (!layer.unread.empty()) std::cout << ", " << layer.unread.size() << " not read";
+    std::cout << (layer.moved.empty() && layer.unread.empty() ? ")\n" : ":)\n");
+    for (const auto& [key, move] : layer.moved) {
+        std::cout << indent << "    " << key << "  " << move.from << " -> " << move.to
+                  << (move.older ? "  OLDER" : "") << "\n";
+    }
+    for (const auto& key : layer.unread) {
+        std::cout << indent << "    " << key << "  version not read\n";
+    }
+}
+
 std::string firstLine(const std::string& text) {
     const auto end = text.find('\n');
     return end == std::string::npos ? text : text.substr(0, end);

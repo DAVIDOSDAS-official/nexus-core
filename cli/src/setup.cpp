@@ -324,6 +324,20 @@ int commandSetup(
                 << "\n            " << flatpakFor[index]
                 << "  (Flatpak, from Flathub)\n";
 
+            // What it may reach, in the plan that is approved (0.1.98:
+            // setup installed Flatpaks without showing it, the gap
+            // 0.1.97 closed for `nexus install` and the Shop). Indented
+            // past the twelve spaces image/check-add-ons.sh reads.
+            if (nexus::system::commandExists("flatpak")) {
+                const auto permissions = readAppPermissions(flatpakFor[index]);
+                if (permissions.read) {
+                    printAppPermissions(permissions, "              ");
+                } else {
+                    std::cout << "              Can reach  not read from Flathub yet; "
+                                 "read and shown before it is installed\n";
+                }
+            }
+
             wantedFlatpaks.push_back(flatpakFor[index]);
             continue;
         }
@@ -498,34 +512,20 @@ int commandSetup(
     for (const std::string& application : wantedFlatpaks) {
         std::cout << "\n=== " << application << " (Flatpak) ===\n";
 
-        if (!nexus::system::commandExists("flatpak")) {
-            std::cout << "flatpak is not installed on this system.\n";
-            failed.push_back(application);
-            continue;
-        }
+        // Through `nexus app install` (0.1.98): it reads what the app
+        // may reach, refuses to install on a list nobody saw, asks for a
+        // typed yes when the app wants more than the usual, and writes
+        // the install to history -- which setup's own Flatpak step did
+        // not. -y is not passed on to that question: the first-boot
+        // picker runs with --yes, and an app reaching your whole home
+        // or every device is asked about on the screen it runs on (no
+        // screen: not installed, and said so).
+        const int status = commandApp({"install", application}, true, false);
 
-        const std::string remote =
-            std::filesystem::exists("/usr/share/nexus/flathub.flatpakrepo")
-                ? "/usr/share/nexus/flathub.flatpakrepo"
-                : "https://dl.flathub.org/repo/flathub.flatpakrepo";
-
-        nexus::system::runCommand(
-            "flatpak remote-add --system --if-not-exists flathub " +
-            shellQuote(remote));
-
-        // Not captured: the first Flatpak brings its runtime, a
-        // download of a gigabyte or more, and minutes with nothing on
-        // screen look like a hang.
-        std::cout << std::flush;
-
-        const int status = std::system(nexus::system::inPlainLocale(
-            "flatpak install --system --noninteractive flathub " +
-            shellQuote(application)).c_str());
-
+        // Why not, if not, is said above by nexus app install.
         if (status == 0) {
             done += 1;
         } else {
-            std::cout << "\nflatpak did not complete.\n";
             failed.push_back(application);
         }
     }

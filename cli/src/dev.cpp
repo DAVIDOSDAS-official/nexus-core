@@ -218,14 +218,21 @@ int commandDev(
                     const std::string inner =
                         "p=$(command -v " + shellQuote(c) + ") && distrobox-export --bin \"$p\" "
                         "--export-path \"$HOME/.local/bin\" >/dev/null";
-                    std::system(("distrobox enter " + box + " -- sh -c " + shellQuote(inner)).c_str());
+                    // Said, not ignored (0.1.98): a command left out of
+                    // ~/.local/bin is a "command not found" later.
+                    if (std::system(("distrobox enter " + box + " -- sh -c " + shellQuote(inner)).c_str()) != 0) {
+                        std::cout << "Could not make " << c << " available outside the box"
+                                     " (it is there inside: distrobox enter " << box << ").\n";
+                    }
                 }
             }
             std::cout << "\n";
             for (const auto& l : todo) {
                 std::cout << l.display << ": " << std::flush;
-                std::system(("distrobox enter " + box + " -- sh -c " +
-                             shellQuote(l.versionCommand + " 2>&1 | head -1")).c_str());
+                if (std::system(("distrobox enter " + box + " -- sh -c " +
+                                 shellQuote(l.versionCommand + " 2>&1 | head -1")).c_str()) != 0) {
+                    std::cout << "(its version could not be read)\n";
+                }
             }
             std::cout << "\nReady. Open a new terminal if a command is not found yet.\n"
                          "The commands worth knowing:  nexus dev help " << todo.front().key << "\n";
@@ -262,7 +269,9 @@ int commandDev(
             if (!exported(c)) continue;
             const std::string inner = "p=$(command -v " + shellQuote(c) + ") && distrobox-export --bin \"$p\" "
                                       "--export-path \"$HOME/.local/bin\" --delete >/dev/null";
-            std::system(("distrobox enter " + box + " -- sh -c " + shellQuote(inner)).c_str());
+            if (std::system(("distrobox enter " + box + " -- sh -c " + shellQuote(inner)).c_str()) != 0) {
+                std::cout << "Could not take " << c << " out of ~/.local/bin; remove it there by hand.\n";
+            }
         }
     }
     std::string pk;

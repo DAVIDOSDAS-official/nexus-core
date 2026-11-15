@@ -54,6 +54,7 @@
 #include <nexus/system/specs.hpp>
 #include <nexus/system/update.hpp>
 #include <nexus/system/flatpak_permissions.hpp>
+#include <nexus/system/plan_check.hpp>
 #include <nexus/system/version.hpp>
 #include <nexus/system/vpn_check.hpp>
 #include <nexus/system/xml.hpp>
@@ -119,6 +120,7 @@ int main(int argc, char** argv) {
 {"parseImageRef", [](S s){ ns::parseImageRef(s); }, {"ostree-image-signed:docker://ghcr.io/a/b:kde", "ostree-unverified-registry:ghcr.io/a/b@sha256:ab"}},
 {"parseUpdateLines", [](S s){ ns::parseUpdateLines(s); }, {"system\tupdate\t0.1.86\t2026-11-01\napp\torg.a.B\t1.0\nstate\tbusy\n"}},
 {"parseFlatpakPermissions", [](S s){ ns::parseFlatpakPermissions(s); }, {"[Application]\nname=a.b.C\n[Context]\nfilesystems=home;xdg-download:ro;\ndevices=all;\n[Session Bus Policy]\norg.freedesktop.Flatpak=talk\n"}},
+{"planParsers", [](S s){ auto d = ns::parseDnfTransaction(s); d.describeBeyondInstalling(); ns::parseAptSimulation(s); auto r = ns::parseRpmOstreeDryRun(s); r.describeBeyondInstalling(); ns::packageNameFromNevra(s); ns::packageKeyFromNevra(s); ns::evrFromNevra(s); }, {"Updating and loading repositories:\n repo 100%\nInstalling:\n a x86_64 1-1 f 1 M\n   replacing b i686 1-1 @System 1 M\nOdd heading:\n c x86_64 1-1 f 1 M\nTransaction Summary:\n Installing: 1 package\n", "Inst a [1] (2 f)\nRemv b [1]\n", "Resolving dependencies... done\nInstalling 2 packages:\n  vlc-1:3.0.24-1.fc44.x86_64 (updates)\n  daala-libs-0^2025git-1.fc44.x86_64 (fedora)\nSwapping 1 package:\n  x-1-1.noarch (f)\n"}},
 {"parseFlatpakUpdates", [](S s){ ns::parseFlatpakUpdates(s); }, {"org.example.App\t1.0\norg.example.B\n"}},
 {"parseProtonSummary", [](S s){ ns::parseProtonSummary(s); }, {R"({"tier":"gold","confidence":"strong","score":0.7,"total":120,"trendingTier":"platinum","bestReportedTier":"platinum"})"}},
 {"parseSteamSearch", [](S s){ ns::parseSteamSearch(s); }, {R"({"total":1,"items":[{"type":"app","name":"X","id":730,"platforms":{"linux":true}}]})"}},

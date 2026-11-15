@@ -1,9 +1,9 @@
 # Nexus-CORE — status
 
-Updated 1 November 2026. Paste this at the start of a new session; it is
+Updated 15 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.85** (patches 1–111). **679 automated tests**, all passing.
+**Version 0.1.98** (patches 1–127). **770 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -1332,6 +1332,38 @@ also talks to KDE's password store by name (org.kde.kwalletd,
 org.kde.kwalletd5), which was not marked. It is now "your saved
 passwords (KWallet)", broad. Test: VlcAsFlathubServesIt, with that
 metadata as served.
+
+**Patch 127 (0.1.98): round-5 audit L3, L4, L5; setup shows Flatpak
+permissions; small items.** 770 tests.
+- L3: a dnf row under a heading Nexus does not know, inside the
+  transaction table, is an "unknown change" (shown, typed yes, refused
+  under -y) instead of skipped; repositories loading, "Skipping
+  packages", "Changing reason" and the summary are not changes. Same for
+  an unknown "<Verb> N packages:" list from rpm-ostree. Replacements are
+  matched by name AND architecture: "replacing glibc.i686" under an
+  upgrade of glibc.x86_64 now shows as a replacement (dnf 4 and 5 forms).
+- L4: packages layered earlier that rpm-ostree lists again are compared
+  by version (rpm -q '%{NAME}.%{ARCH} %{EVR}' against its NEVRA, rpm's
+  own order via compareRpmVersions): "137 layered earlier: 130 keep
+  their version, 6 move to a newer one, 1 to an OLDER one", each move
+  listed old -> new. Going back is a downgrade: typed yes. Same on
+  `nexus remove` on the image.
+- L5: when the list to confirm is longer than Nexus's own plan, the
+  prompt is [y/N] and Enter is no.
+- `nexus setup` lists each Flatpak's permissions in the plan and installs
+  it through `nexus app install`: unread = not installed, broad = typed
+  yes on the screen it runs on (setup's -y and the first-boot picker's
+  --yes are not passed to that question), and it is now in history.
+- dev.cpp says when exporting a command or reading a version fails
+  (the three ignored std::system results; no compiler warning left).
+- Shell-quoting linter: `unit` allowance 3 -> 1, and an allowance
+  larger than its use now fails the check.
+- The plan-check comment moved from the top of install.cpp to the call
+  it describes. New fuzz target planParsers (1.4M runs, ASan/UBSan clean).
+- To check on the Asus: `nexus install vlc` shows the version line for
+  packages layered earlier, and the prompt is [y/N] (rpm-ostree's list
+  is longer than dnf's); `nexus setup gaming` lists what Steam, Heroic,
+  Lutris and ProtonUp-Qt can reach.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

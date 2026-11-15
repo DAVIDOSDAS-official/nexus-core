@@ -502,3 +502,153 @@ TEST(PlanCheckTest, WhatWasInstalledIsHeldAgainstWhatWasConfirmed) {
     EXPECT_TRUE(clean.unconfirmed.empty());
     EXPECT_TRUE(clean.removed.empty());
 }
+
+// ---------------------------------------------------------------------
+// 0.1.98: round-5 audit L3, L4, L5.
+
+TEST(PlanCheckTest, TheVersionComesOutOfAFullPackageName) {
+    EXPECT_EQ(nexus::system::evrFromNevra("vlc-1:3.0.24-1.fc44.x86_64 (updates)"),
+              "1:3.0.24-1.fc44");
+    EXPECT_EQ(nexus::system::evrFromNevra("daala-libs-0^20250205git24f889a-1.fc44.x86_64"),
+              "0^20250205git24f889a-1.fc44");
+}
+
+namespace {
+// dnf 5, with a heading this reader has never seen inside the table,
+// repositories loaded before it, and a skipped package.
+const char* kDnf5Unknown =
+    "Updating and loading repositories:\n"
+    " Fedora 44 - x86_64 - Updates          100% |   1.0 KiB/s |  10.0 KiB |  00m01s\n"
+    "Repositories loaded.\n"
+    "Package           Arch    Version        Repository  Size\n"
+    "Installing:\n"
+    " newtool          x86_64  2.0-1.fc44     updates     1 MiB\n"
+    "Swapping vendor:\n"
+    " libquux          x86_64  3.0-1.fc44     elsewhere   1 MiB\n"
+    "Skipping packages with conflicts:\n"
+    " otherthing       x86_64  1.0-1.fc44     updates     1 MiB\n"
+    "Changing reason:\n"
+    " libbaz           x86_64  1.0-1.fc44     @System     1 MiB\n"
+    "\n"
+    "Transaction Summary:\n"
+    " Installing:         1 package\n";
+
+// glibc's 64-bit build upgraded and its 32-bit build replaced, in one
+// plan: only the first is the upgrade's own old version.
+const char* kDnf5Multilib =
+    "Package           Arch    Version        Repository  Size\n"
+    "Upgrading:\n"
+    " glibc            x86_64  2.43-6.fc44    updates     1 MiB\n"
+    "   replacing glibc x86_64 2.43-5.fc44    @System     1 MiB\n"
+    "   replacing glibc i686   2.43-5.fc44    @System     1 MiB\n";
+}
+
+TEST(PlanCheckTest, ARowUnderAnUnknownHeadingIsAskedAboutNotSkipped) {
+    const PackageChanges c = nexus::system::parseDnfTransaction(kDnf5Unknown);
+    EXPECT_EQ(c.install, (std::set<std::string>{"newtool"}));
+    EXPECT_EQ(c.unknown, (std::set<std::string>{"Swapping vendor: libquux"}));
+    EXPECT_TRUE(c.beyondInstalling());
+    EXPECT_EQ(c.describeBeyondInstalling(),
+              (std::vector<std::string>{"unknown change, Swapping vendor: libquux"}));
+
+    // Before the table, after it, skipped and re-marked rows: not changes.
+    const PackageChanges plain = nexus::system::parseDnfTransaction(
+        "Updating and loading repositories:\n"
+        " Fedora 44 - x86_64   100% | 1 KiB/s\n"
+        "Installing:\n"
+        " newtool x86_64 2.0-1.fc44 updates 1 MiB\n"
+        "Skipping packages with conflicts:\n"
+        " other x86_64 1.0-1 updates 1 MiB\n"
+        "Transaction Summary:\n"
+        " Installing: 1 package\n");
+    EXPECT_TRUE(plain.unknown.empty());
+    EXPECT_FALSE(plain.beyondInstalling());
+}
+
+TEST(PlanCheckTest, AnUnknownHeadingInAnInstallPlanNeedsATypedYes) {
+    FakeTools tools;
+    tools.add("dnf", std::string("cat <<'EOF'\n") + kDnf5Unknown + "EOF\nexit 1\n");
+    const auto check = checkPlanWithDnf("newtool", std::set<std::string>{"newtool"});
+    EXPECT_EQ(check.agreement, PlanAgreement::Differs);
+    const auto asked = nexus::system::decideInstall("newtool", {"newtool"}, check, nullptr, false);
+    EXPECT_TRUE(asked.allowed);
+    EXPECT_TRUE(asked.typedConfirmation);
+    EXPECT_FALSE(nexus::system::decideInstall("newtool", {"newtool"}, check, nullptr, true).allowed);
+}
+
+TEST(PlanCheckTest, AReplacedLibraryOfAnotherArchitectureIsNotTheUpgradesOwn) {
+    const PackageChanges c = nexus::system::parseDnfTransaction(kDnf5Multilib);
+    EXPECT_EQ(c.replaced,
+              (std::set<std::string>{nexus::system::packageKey("glibc", "i686")}));
+    EXPECT_TRUE(c.beyondInstalling());
+
+    // dnf 4 writes the architecture on the name.
+    const PackageChanges four = nexus::system::parseDnfTransaction(
+        "Upgrading:\n"
+        " glibc   x86_64   2.43-6.fc44   updates   1 M\n"
+        "     replacing  glibc.x86_64 2.43-5.fc44\n"
+        "     replacing  glibc.i686 2.43-5.fc44\n");
+    EXPECT_EQ(four.replaced,
+              (std::set<std::string>{nexus::system::packageKey("glibc", "i686")}));
+}
+
+namespace {
+const char* kRpmOstreeLayer =
+    "Resolving dependencies... done\n"
+    "Installing 4 packages:\n"
+    "  gcc-16.2.1-3.fc44.x86_64 (updates)\n"
+    "  git-2.57.0-1.fc44.x86_64 (updates)\n"
+    "  make-1:4.4.1-10.fc44.x86_64 (fedora)\n"
+    "  vlc-1:3.0.24-1.fc44.x86_64 (updates)\n"
+    "Exiting because of '--dry-run' option\n";
+}
+
+TEST(PlanCheckTest, PackagesLayeredEarlierAreListedWithTheirVersions) {
+    FakeTools tools;
+    tools.add("rpm-ostree", std::string("cat <<'EOF'\n") + kRpmOstreeLayer + "EOF\n");
+    // gcc would go back a release, git forward a version, make stays.
+    tools.add("rpm", "printf 'gcc.x86_64 16.2.1-4.fc44\\ngit.x86_64 2.56.1-1.fc44\\n"
+                     "make.x86_64 1:4.4.1-10.fc44\\n'\nprintf 'package vlc is not installed\\n'\nexit 1\n");
+    const auto check = nexus::system::checkPlanWithRpmOstree("vlc", std::set<std::string>{"vlc"});
+
+    EXPECT_EQ(check.refreshed, (std::set<std::string>{"gcc", "git", "make"}));
+    ASSERT_EQ(check.moved.size(), 2u);
+    EXPECT_TRUE(check.moved.at("gcc").older);
+    EXPECT_EQ(check.moved.at("gcc").from, "16.2.1-4.fc44");
+    EXPECT_EQ(check.moved.at("gcc").to, "16.2.1-3.fc44");
+    EXPECT_FALSE(check.moved.at("git").older);
+    EXPECT_TRUE(check.unread.empty());
+
+    // Going back is a downgrade like any other: not "agrees", typed yes.
+    EXPECT_EQ(check.changes.downgrade, (std::set<std::string>{"gcc"}));
+    EXPECT_EQ(check.agreement, PlanAgreement::Differs);
+    PlanCheck dnf;
+    dnf.agreement = PlanAgreement::Agrees;
+    dnf.theirs = {"vlc"};
+    const auto asked = nexus::system::decideInstall("vlc", {"vlc"}, dnf, &check, false);
+    EXPECT_TRUE(asked.allowed);
+    EXPECT_TRUE(asked.typedConfirmation);
+}
+
+TEST(PlanCheckTest, EnterIsNoWhenTheListIsLongerThanNexussOwnPlan) {
+    using nexus::system::decideInstall;
+    PlanCheck dnf;
+    dnf.agreement = PlanAgreement::Agrees;
+    dnf.theirs = {"vlc", "vlc-libs"};
+    EXPECT_FALSE(decideInstall("vlc", {"vlc", "vlc-libs"}, dnf, nullptr, false).defaultNo);
+
+    // rpm-ostree takes more than was planned (the Asus: 44 more for VLC).
+    PlanCheck layer;
+    layer.agreement = PlanAgreement::Differs;
+    layer.theirs = {"vlc", "vlc-libs", "daala-libs"};
+    layer.onlyTheirs = {"daala-libs"};
+    const auto longer = decideInstall("vlc", {"vlc", "vlc-libs"}, dnf, &layer, false);
+    EXPECT_TRUE(longer.allowed);
+    EXPECT_TRUE(longer.defaultNo);
+
+    // dnf's own extra packages count the same way.
+    PlanCheck more;
+    more.agreement = PlanAgreement::Differs;
+    more.theirs = {"vlc", "vlc-libs", "extra"};
+    EXPECT_TRUE(decideInstall("vlc", {"vlc", "vlc-libs"}, more, nullptr, false).defaultNo);
+}

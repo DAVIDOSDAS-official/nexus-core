@@ -166,10 +166,8 @@ int commandRemove(
             break;
     }
 
-    if (imageBased && !removal.refreshed.empty() &&
-        removal.agreement != nexus::system::PlanAgreement::Refused) {
-        std::cout << "  (rpm-ostree also recomputes the " << removal.refreshed.size()
-                  << " package(s) layered earlier that stay; they may move to newer versions)\n";
+    if (imageBased && removal.agreement != nexus::system::PlanAgreement::Refused) {
+        printLayerMoves(removal, "  ");
     }
 
     if (!apply) {

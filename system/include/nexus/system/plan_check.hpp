@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -25,7 +26,18 @@ struct PackageChanges {
     std::set<std::string> reinstall;
     std::set<std::string> downgrade;
     std::set<std::string> remove;      // removed, dependents, unused
-    std::set<std::string> replaced;    // obsoleted by something new
+    std::set<std::string> replaced;    // obsoleted by something new, as packageKey
+
+    // Rows under a heading this reader does not know, as
+    // "<heading>: <name>" (0.1.98, round-5 audit L3). They used to be
+    // skipped, so a change dnf announced in words Nexus had not seen
+    // was a change nobody was shown. Not knowing what a change is, is
+    // a reason to ask, not to leave it out.
+    std::set<std::string> unknown;
+
+    // packageKey -> epoch:version-release, where the tool's list gives
+    // one (rpm-ostree's NEVRA lines).
+    std::map<std::string, std::string> versions;
 
     // install + upgrade + reinstall, as packageKey(name, arch): "glibc"
     // for this machine's own architecture (or noarch), "glibc.i686" for
@@ -35,7 +47,8 @@ struct PackageChanges {
 
     // What a person approving "install X" would not expect.
     bool beyondInstalling() const {
-        return !downgrade.empty() || !remove.empty() || !replaced.empty();
+        return !downgrade.empty() || !remove.empty() || !replaced.empty() ||
+               !unknown.empty();
     }
     // One line per change other than installing, e.g. "remove foo".
     std::vector<std::string> describeBeyondInstalling() const;
@@ -55,6 +68,9 @@ PackageChanges parseRpmOstreeDryRun(const std::string& text);
 // "vlc-1:3.0.24-1.fc44.x86_64" -> "vlc"; "bar.x86_64" -> "bar".
 std::string packageNameFromNevra(const std::string& nevra);
 
+// "vlc-1:3.0.24-1.fc44.x86_64" -> "1:3.0.24-1.fc44".
+std::string evrFromNevra(const std::string& nevra);
+
 // "glibc" for this machine's architecture or noarch, "glibc.i686" else.
 std::string packageKey(const std::string& name, const std::string& arch);
 
@@ -73,6 +89,19 @@ struct PlanCheck {
     // already has (layered earlier, recomputed and possibly moved to a
     // newer version). Not new to the machine.
     std::set<std::string> refreshed;
+
+    // Of those, the ones whose version would change, by packageKey
+    // (0.1.98, round-5 audit L4: "may move to newer versions" named
+    // nothing). A move to an OLDER version is also in
+    // changes.downgrade, and asked about like any downgrade.
+    struct VersionMove {
+        std::string from;
+        std::string to;
+        bool older = false;
+    };
+    std::map<std::string, VersionMove> moved;
+    // Refreshed packages whose versions could not both be read.
+    std::set<std::string> unread;
 
     std::vector<std::string> onlyOurs;
     std::vector<std::string> onlyTheirs;
@@ -185,6 +214,10 @@ struct ApplyDecision {
     // need a typed "yes", and are refused under -y.
     std::vector<std::string> alsoChanges;
     bool typedConfirmation = false;
+    // The list to confirm is longer than Nexus's own plan: Enter at the
+    // prompt means no (0.1.98, round-5 audit L5). On the Asus
+    // rpm-ostree's list for VLC had 44 packages dnf's did not.
+    bool defaultNo = false;
     std::string reason;   // when not allowed
 };
 

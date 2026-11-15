@@ -9,12 +9,10 @@
 
 namespace nexus_cli {
 
-namespace {
-
 // What the app asks to reach, from Flathub's own metadata for it
 // (0.1.97, round-4 audit L4). Read-only: remote-info downloads the
 // metadata and changes nothing.
-nexus::system::AppPermissions readPermissions(const std::string& id) {
+nexus::system::AppPermissions readAppPermissions(const std::string& id) {
     const auto shown = nexus::system::runCommand(
         "flatpak remote-info --system --show-metadata flathub " + shellQuote(id) +
             " 2>/dev/null",
@@ -23,30 +21,29 @@ nexus::system::AppPermissions readPermissions(const std::string& id) {
     return nexus::system::parseFlatpakPermissions(shown.text);
 }
 
-void printPermissions(const nexus::system::AppPermissions& permissions) {
+void printAppPermissions(const nexus::system::AppPermissions& permissions,
+                         const std::string& indent) {
     std::vector<std::string> usual;
     std::vector<std::string> broad;
     for (const auto& item : permissions.items) {
         (item.broad ? broad : usual).push_back(item.text);
     }
     if (usual.empty() && broad.empty()) {
-        std::cout << "  Can reach  nothing outside its sandbox\n";
+        std::cout << indent << "Can reach  nothing outside its sandbox\n";
         return;
     }
     if (!usual.empty()) {
-        std::cout << "  Can reach  ";
+        std::cout << indent << "Can reach  ";
         for (std::size_t i = 0; i < usual.size(); ++i) {
-            std::cout << (i ? "\n             " : "") << usual[i];
+            std::cout << (i ? "\n" + indent + "           " : "") << usual[i];
         }
         std::cout << "\n";
     }
     if (!broad.empty()) {
-        std::cout << "  Also asks  for more than an app usually needs:\n";
-        for (const auto& text : broad) std::cout << "             ! " << text << "\n";
+        std::cout << indent << "Also asks  for more than an app usually needs:\n";
+        for (const auto& text : broad) std::cout << indent << "           ! " << text << "\n";
     }
 }
-
-}  // namespace
 
 // nexus app install|remove <id>: one Flathub app, for Nexus Shop
 // and for anyone at a terminal.
@@ -86,7 +83,7 @@ int commandApp(
     //   perm<TAB>broad|usual<TAB>text      one per permission
     //   state<TAB>read|unread
     if (words[0] == "permissions") {
-        const auto permissions = readPermissions(id);
+        const auto permissions = readAppPermissions(id);
         std::cout << "state\t" << (permissions.read ? "read" : "unread") << "\n";
         for (const auto& item : permissions.items) {
             std::cout << "perm\t" << (item.broad ? "broad" : "usual") << "\t" << item.text << "\n";
@@ -117,9 +114,9 @@ int commandApp(
                      "(shared with other apps)\n";
         // Flatpak grants every permission the app asks for; they are
         // said before anything is installed (0.1.97, round-4 audit L4).
-        permissions = readPermissions(id);
+        permissions = readAppPermissions(id);
         if (permissions.read) {
-            printPermissions(permissions);
+            printAppPermissions(permissions);
         } else {
             std::cout << "  Can reach  could not be read from Flathub"
                       << (apply ? "" : " (with --apply Flathub is set up first and it is read then)")
@@ -155,8 +152,8 @@ int commandApp(
         if (!permissions.read) {
             nexus::system::runCommand(addRemote);
             remoteAdded = true;
-            permissions = readPermissions(id);
-            if (permissions.read) printPermissions(permissions);
+            permissions = readAppPermissions(id);
+            if (permissions.read) printAppPermissions(permissions);
         }
         // Not installed on permissions nobody saw (0.1.97).
         if (!permissions.read) {
@@ -173,8 +170,9 @@ int commandApp(
         if (permissions.anyBroad() && !assumeYes) {
             if (!::isatty(STDIN_FILENO)) {
                 std::cout << "\n" << id << " asks for more than an app usually needs "
-                             "(marked ! above).\nNot installed without a yes: read the "
-                             "list, then add --yes. Nothing has been changed.\n";
+                             "(marked ! above).\nNot installed without a yes. Read the "
+                             "list; to install it anyway:\n    nexus app install " << id
+                          << " --apply --yes\nNothing has been changed.\n";
                 return 1;
             }
             std::cout << "\n" << id << " asks for more than an app usually needs "

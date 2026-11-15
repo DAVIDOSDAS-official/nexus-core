@@ -1,6 +1,7 @@
 #include <nexus/system/plan_check.hpp>
 
 #include <nexus/system/process.hpp>
+#include <nexus/system/rpm_version.hpp>
 
 #include <algorithm>
 #include <sys/utsname.h>
@@ -152,16 +153,42 @@ std::set<std::string>* sectionFor(const std::string& heading,
 
 // A "replacing" line under an upgrade names the old version of the
 // same package (dnf 5); that is the upgrade itself, not a package
-// being taken away.
-void dropSelfReplacements(PackageChanges& changes) {
+// being taken away. Matched by packageKey, name AND architecture
+// (0.1.98, round-5 audit L3): "replacing glibc.i686" under an upgrade
+// of glibc.x86_64 is a 32-bit library going, and was dropped as the
+// upgrade's own old version.
+void dropSelfReplacements(PackageChanges& changes, const std::set<std::string>& sameKeys) {
     for (auto it = changes.replaced.begin(); it != changes.replaced.end();) {
-        if (changes.upgrade.count(*it) || changes.downgrade.count(*it) ||
-            changes.reinstall.count(*it) || changes.install.count(*it)) {
+        if (sameKeys.count(*it)) {
             it = changes.replaced.erase(it);
         } else {
             ++it;
         }
     }
+}
+
+// The key of a "replacing" row: dnf 5 gives the architecture as the
+// next column ("replacing foo x86_64 1-1"), dnf 4 on the name
+// ("replacing bar.x86_64 1-1").
+std::string replacedKey(const std::string& old, std::istringstream& rest) {
+    const std::size_t dot = old.rfind('.');
+    if (dot != std::string::npos && isArchitecture(old.substr(dot + 1))) {
+        return packageKey(old.substr(0, dot), old.substr(dot + 1));
+    }
+    std::string arch;
+    rest >> arch;
+    return packageKey(old, isArchitecture(arch) ? arch : "");
+}
+
+// Headings inside a transaction table that announce no change to a
+// package: dnf's "Skipping packages ..." (left out), dnf 5's "Changing
+// reason" (how a package is marked, not what it contains).
+bool harmlessHeading(const std::string& heading) {
+    return heading.rfind("Skipping", 0) == 0 || heading.rfind("Changing reason", 0) == 0;
+}
+
+bool isRule(const std::string& line) {
+    return line.find_first_not_of("=-") == std::string::npos;
 }
 
 }
@@ -171,8 +198,20 @@ std::vector<std::string> PackageChanges::describeBeyondInstalling() const {
     for (const auto& name : remove) lines.push_back("remove " + name);
     for (const auto& name : replaced) lines.push_back("replace " + name);
     for (const auto& name : downgrade) lines.push_back("downgrade " + name);
+    for (const auto& row : unknown) lines.push_back("unknown change, " + row);
     return lines;
 }
+
+std::string evrFromNevra(const std::string& nevra) {
+    std::string text = nevra;
+    const std::size_t space = text.find(' ');
+    if (space != std::string::npos) text = text.substr(0, space);
+    text = stripArchitecture(text);
+    const std::string name = packageNameFromNevra(text);
+    if (name.size() + 1 >= text.size()) return "";
+    return text.substr(name.size() + 1);
+}
+
 
 std::string packageKey(const std::string& name, const std::string& arch) {
     if (arch.empty() || arch == "noarch" || arch == nativeArchitecture()) return name;
@@ -224,6 +263,14 @@ PackageChanges parseDnfTransaction(const std::string& text) {
     std::istringstream input(text);
     std::string line;
     std::set<std::string>* section = nullptr;
+    std::set<std::string> sameKeys;   // install/upgrade/reinstall/downgrade rows
+
+    // Between the first heading this reader knows and "Transaction
+    // Summary". Outside it, indented rows are repositories being
+    // loaded, counts and the like; inside it, a heading not known is a
+    // change not understood (round-5 audit L3).
+    bool inTable = false;
+    std::string unknownHeading;
 
     while (std::getline(input, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
@@ -231,30 +278,46 @@ PackageChanges parseDnfTransaction(const std::string& text) {
 
         // Section headings start at column zero.
         if (line.front() != ' ') {
+            unknownHeading.clear();
             section = sectionFor(line, changes);
+            if (section != nullptr) {
+                inTable = true;
+            } else if (line.rfind("Transaction Summary", 0) == 0) {
+                inTable = false;
+            } else if (inTable && !isRule(line) && !harmlessHeading(line)) {
+                unknownHeading = line;
+                if (unknownHeading.back() == ':') unknownHeading.pop_back();
+            }
             continue;
         }
-        if (section == nullptr) continue;
 
         std::istringstream columns(line);
         std::string first;
         if (!(columns >> first) || first.empty()) continue;
 
-        if (first == "replacing" || first == "Replacing") {
-            std::string old;
-            if (columns >> old) changes.replaced.insert(stripArchitecture(old));
+        if (!unknownHeading.empty()) {
+            changes.unknown.insert(unknownHeading + ": " + first);
             continue;
         }
-        section->insert(first);
+        if (section == nullptr) continue;
+
+        if (first == "replacing" || first == "Replacing") {
+            std::string old;
+            if (columns >> old) changes.replaced.insert(replacedKey(old, columns));
+            continue;
+        }
+        std::string arch;
+        columns >> arch;
+        const std::string key = packageKey(first, isArchitecture(arch) ? arch : "");
+        section->insert(section == &changes.replaced ? key : first);
         if (section == &changes.install || section == &changes.upgrade ||
             section == &changes.reinstall) {
-            std::string arch;
-            columns >> arch;
-            changes.installKeys.insert(packageKey(first, isArchitecture(arch) ? arch : ""));
+            changes.installKeys.insert(key);
         }
+        if (section != &changes.remove && section != &changes.replaced) sameKeys.insert(key);
     }
 
-    dropSelfReplacements(changes);
+    dropSelfReplacements(changes, sameKeys);
     return changes;
 }
 
@@ -280,6 +343,8 @@ PackageChanges parseRpmOstreeDryRun(const std::string& text) {
     std::istringstream input(text);
     std::string line;
     std::set<std::string>* section = nullptr;
+    std::set<std::string> sameKeys;
+    std::string unknownHeading;
 
     while (std::getline(input, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
@@ -287,26 +352,37 @@ PackageChanges parseRpmOstreeDryRun(const std::string& text) {
 
         if (line.front() != ' ') {
             // "Installing 193 packages:", "Removing 1 package:" ...
-            section = (line.back() == ':' &&
-                       line.find(" package") != std::string::npos)
-                ? sectionFor(line, changes)
-                : nullptr;
+            const bool list = line.back() == ':' && line.find(" package") != std::string::npos;
+            section = list ? sectionFor(line, changes) : nullptr;
+            // A list of packages under a heading not known (round-5
+            // audit L3): shown and asked about, not skipped.
+            unknownHeading = (list && section == nullptr) ? line.substr(0, line.size() - 1) : "";
+            continue;
+        }
+
+        std::istringstream columns(line);
+        std::string nevra;
+        if (!(columns >> nevra)) continue;
+        if (!unknownHeading.empty()) {
+            changes.unknown.insert(unknownHeading + ": " + nevra);
             continue;
         }
         if (section == nullptr) continue;
 
-        std::istringstream columns(line);
-        std::string nevra;
-        if (columns >> nevra) {
-            section->insert(packageNameFromNevra(nevra));
-            if (section == &changes.install || section == &changes.upgrade ||
-                section == &changes.reinstall) {
-                changes.installKeys.insert(packageKeyFromNevra(nevra));
-            }
+        const std::string key = packageKeyFromNevra(nevra);
+        section->insert(section == &changes.replaced ? key : packageNameFromNevra(nevra));
+        if (section == &changes.install || section == &changes.upgrade ||
+            section == &changes.reinstall) {
+            changes.installKeys.insert(key);
+        }
+        if (section != &changes.remove && section != &changes.replaced) {
+            sameKeys.insert(key);
+            const std::string evr = evrFromNevra(nevra);
+            if (!evr.empty()) changes.versions[key] = evr;
         }
     }
 
-    dropSelfReplacements(changes);
+    dropSelfReplacements(changes, sameKeys);
     return changes;
 }
 
@@ -452,6 +528,53 @@ bool needsRootMessage(const std::vector<std::string>& lines) {
     return false;
 }
 
+// "glibc.x86_64 2.43-5.fc44" lines (rpm --qf '%{NAME}.%{ARCH} %{EVR}\n')
+// as packageKey -> version; the newest where one name is installed
+// more than once. A line with no version keeps the key, version "".
+std::map<std::string, std::string> keyVersions(const std::string& output) {
+    std::map<std::string, std::string> versions;
+    std::istringstream lines(output);
+    std::string line;
+    while (std::getline(lines, line)) {
+        std::istringstream words(line);
+        std::string nameArch, evr;
+        if (!(words >> nameArch)) continue;
+        words >> evr;
+        const std::size_t dot = nameArch.rfind('.');
+        const std::string key = (dot != std::string::npos && isArchitecture(nameArch.substr(dot + 1)))
+            ? packageKey(nameArch.substr(0, dot), nameArch.substr(dot + 1))
+            : nameArch;
+        if (key.empty() || !isPackageName(stripArchitecture(key))) continue;
+        auto found = versions.find(key);
+        if (found == versions.end()) {
+            versions[key] = evr;
+        } else if (!evr.empty() && (found->second.empty() || compareRpmVersions(evr, found->second) > 0)) {
+            found->second = evr;
+        }
+    }
+    return versions;
+}
+
+// For each package layered earlier that the new layer lists again:
+// does its version change, and which way (round-5 audit L4)?
+void noteMoves(PlanCheck& check,
+               const std::map<std::string, std::string>& installed,
+               const std::map<std::string, std::string>& planned) {
+    for (const auto& key : check.refreshed) {
+        const auto from = installed.find(key);
+        const auto to = planned.find(key);
+        if (from == installed.end() || to == planned.end() ||
+            from->second.empty() || to->second.empty()) {
+            check.unread.insert(key);
+            continue;
+        }
+        const int order = compareRpmVersions(to->second, from->second);
+        if (order == 0) continue;
+        check.moved[key] = PlanCheck::VersionMove{from->second, to->second, order < 0};
+        if (order < 0) check.changes.downgrade.insert(key);
+    }
+}
+
 PlanCheck compareRemoval(PlanCheck check, const std::set<std::string>& planned) {
     check.theirs = check.changes.remove;
     for (const auto& name : planned) {
@@ -463,7 +586,8 @@ PlanCheck compareRemoval(PlanCheck check, const std::set<std::string>& planned) 
     const bool alsoInstalls = !check.changes.install.empty() ||
                               !check.changes.upgrade.empty() ||
                               !check.changes.downgrade.empty() ||
-                              !check.changes.replaced.empty();
+                              !check.changes.replaced.empty() ||
+                              !check.changes.unknown.empty();
     check.agreement = (check.onlyOurs.empty() && check.onlyTheirs.empty() && !alsoInstalls)
         ? PlanAgreement::Agrees
         : PlanAgreement::Differs;
@@ -519,24 +643,25 @@ PlanCheck checkPlanWithRpmOstree(
     // already installed). What the running system has is not new.
     // Compared by name AND architecture (round-5 audit M1).
     std::set<std::string> present;
+    std::map<std::string, std::string> installedVersions;
     if (commandExists("rpm")) {
         std::set<std::string> names;
         for (const auto& key : check.changes.installKeys) names.insert(stripArchitecture(key));
-        const DryRun query = dryRun("rpm -q --qf '%{NAME}.%{ARCH}\\n'" +
+        // rpm writes "package X is not installed" to stdout too; only
+        // keys rpm-ostree listed are kept, so such lines fall away.
+        const DryRun query = dryRun("rpm -q --qf '%{NAME}.%{ARCH} %{EVR}\\n'" +
                                     quotedList(std::vector<std::string>(names.begin(), names.end())));
-        std::istringstream lines(query.output);
-        std::string line;
-        while (std::getline(lines, line)) {
-            const std::size_t dot = line.rfind('.');
-            const std::string key = (dot != std::string::npos && isArchitecture(line.substr(dot + 1)))
-                ? packageKey(line.substr(0, dot), line.substr(dot + 1))
-                : line;
-            if (check.changes.installKeys.count(key)) present.insert(key);
+        for (const auto& [key, evr] : keyVersions(query.output)) {
+            if (check.changes.installKeys.count(key)) {
+                present.insert(key);
+                installedVersions[key] = evr;
+            }
         }
     }
     for (const auto& key : check.changes.installKeys) {
         (present.count(key) ? check.refreshed : check.theirs).insert(key);
     }
+    noteMoves(check, installedVersions, check.changes.versions);
 
     for (const auto& key : check.theirs) {
         if (!approvedKeys.count(key)) check.onlyTheirs.push_back(key);
@@ -580,18 +705,13 @@ namespace {
 // Every installed package as packageKey (name, plus the architecture
 // when it is not this machine's): glibc.i686 next to glibc is a
 // package of its own (round-5 audit M1).
+std::map<std::string, std::string> rpmVersions(const std::string& extra) {
+    return keyVersions(dryRun("rpm -qa" + extra + " --qf '%{NAME}.%{ARCH} %{EVR}\\n'").output);
+}
+
 std::set<std::string> rpmNames(const std::string& extra) {
     std::set<std::string> names;
-    const DryRun query = dryRun("rpm -qa" + extra + " --qf '%{NAME}.%{ARCH}\\n'");
-    std::istringstream lines(query.output);
-    std::string line;
-    while (std::getline(lines, line)) {
-        const std::size_t dot = line.rfind('.');
-        const std::string key = (dot != std::string::npos && isArchitecture(line.substr(dot + 1)))
-            ? packageKey(line.substr(0, dot), line.substr(dot + 1))
-            : line;
-        if (!key.empty() && isPackageName(stripArchitecture(key))) names.insert(key);
-    }
+    for (const auto& entry : rpmVersions(extra)) names.insert(entry.first);
     return names;
 }
 
@@ -655,7 +775,9 @@ PlanCheck checkRemovalWithRpmOstree(
     const std::set<std::string> base = std::filesystem::is_directory(baseDb, error)
         ? rpmNames(" --dbpath " + shellQuote(baseDb))
         : std::set<std::string>{};
-    const std::set<std::string> installed = rpmNames("");
+    const std::map<std::string, std::string> installedVersions = rpmVersions("");
+    std::set<std::string> installed;
+    for (const auto& entry : installedVersions) installed.insert(entry.first);
     if (base.empty() || installed.empty()) {
         check.refusal.push_back("The image's own package list (" + baseDb +
                                 ") could not be read, so what the removal takes cannot be worked out.");
@@ -673,6 +795,8 @@ PlanCheck checkRemovalWithRpmOstree(
     }
     check.changes.upgrade = plan.upgrade;
     check.changes.downgrade = plan.downgrade;
+    check.changes.unknown = plan.unknown;
+    noteMoves(check, installedVersions, plan.versions);
     if (check.changes.remove.empty()) {
         check.refusal.push_back("rpm-ostree's plan removes nothing that is installed now.");
         check.agreement = PlanAgreement::Refused;
@@ -742,6 +866,14 @@ ApplyDecision decideInstall(
         }
     }
 
+    // Longer than Nexus's own plan: Enter is no (round-5 audit L5).
+    for (const auto& key : decision.willChange) {
+        if (!expected.count(key)) {
+            decision.defaultNo = true;
+            break;
+        }
+    }
+
     if (!decision.alsoChanges.empty()) {
         if (assumeYes) {
             decision.reason = "it would also remove, replace or downgrade packages, "
@@ -768,7 +900,7 @@ ApplyDecision decideRemoval(
     }
     const PackageChanges& c = check.changes;
     if (!c.install.empty() || !c.upgrade.empty() || !c.downgrade.empty() ||
-        !c.replaced.empty()) {
+        !c.replaced.empty() || !c.unknown.empty()) {
         decision.reason = "removing this would also install or change other packages";
         return decision;
     }

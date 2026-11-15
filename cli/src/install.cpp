@@ -9,19 +9,6 @@ namespace nexus_cli {
 
 namespace {
 
-// Check a plan against the package manager's own engine, without
-// changing anything.
-//
-// Resolution being correct and installation succeeding are different
-// claims. Nexus can prove the first from metadata; only the thing
-// that actually installs packages can speak to the second. apt will
-// say what it would do without doing it, so the plan can be checked
-// against the tool that would carry it out.
-//
-// Every other correctness question in this project was settled by
-// comparing against a native tool rather than by another assertion.
-// This is that, applied to the one part metadata cannot answer.
-
 // ---------------------------------------------------------------------
 // For `install`: the facts a person decides on, in their words.
 std::string humanBytes(std::uint64_t bytes) {
@@ -303,6 +290,18 @@ int commandInstall(
                      "the next time the machine starts\n";
     }
 
+    // Check the plan against the package manager's own engine, without
+    // changing anything.
+    //
+    // Resolution being correct and installation succeeding are
+    // different claims. Nexus can prove the first from metadata; only
+    // the thing that actually installs packages can speak to the
+    // second. Every other correctness question in this project was
+    // settled by comparing against a native tool rather than by another
+    // assertion. This is that, applied to the one part metadata cannot
+    // answer. (0.1.98: moved here from the top of the file, where it
+    // sat above unrelated helpers.)
+    //
     // The interlock is the same either way; only the tool asked
     // differs.
     const auto check = useRpm
@@ -418,11 +417,9 @@ int commandInstall(
         if (layer.agreement == nexus::system::PlanAgreement::Agrees) {
             std::cout << "\n";
         }
-        if (!layer.refreshed.empty() &&
-            (layer.agreement == nexus::system::PlanAgreement::Agrees ||
-             layer.agreement == nexus::system::PlanAgreement::Differs)) {
-            std::cout << "              (and recomputes " << layer.refreshed.size()
-                      << " package(s) layered earlier, which may move to newer versions)\n";
+        if (layer.agreement == nexus::system::PlanAgreement::Agrees ||
+            layer.agreement == nexus::system::PlanAgreement::Differs) {
+            printLayerMoves(layer, "              ");
         }
         if (layer.changes.beyondInstalling()) {
             std::cout << "  Also        rpm-ostree would also:\n";
@@ -554,14 +551,23 @@ int commandInstall(
                 std::cout << "Nothing has been changed.\n";
                 return 1;
             }
+        } else if (decision.defaultNo) {
+            // More than Nexus's own plan is on that list (round-5 audit
+            // L5): pressing Enter is not reading it.
+            std::cout << "\nThis list is longer than Nexus's own plan. Proceed? [y/N] ";
+            std::getline(std::cin, answer);
+            if (!(answer == "y" || answer == "Y" || answer == "yes")) {
+                std::cout << "Nothing has been changed.\n";
+                return 1;
+            }
         } else {
             std::cout << "\nProceed? [Y/n] ";
 
             std::getline(std::cin, answer);
 
-            // Enter is yes: the plan is on the screen and the command
-            // was run with --apply, so the person has asked twice
-            // already.
+            // Enter is yes: the plan is on the screen, it is Nexus's
+            // own, and the command was run with --apply, so the person
+            // has asked twice already.
             if (!(answer.empty() || answer == "y" || answer == "Y" ||
                   answer == "yes")) {
                 std::cout << "Nothing has been changed.\n";

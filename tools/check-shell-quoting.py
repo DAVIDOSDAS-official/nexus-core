@@ -32,7 +32,7 @@ ALLOWED = {
     ('cli/src/server.cpp', 'nexus::system::serverUnit(options.name)'): 1,
     ('cli/src/server.cpp', 'nexus::system::serverUnit(words[1])'): 1,
     ('cli/src/server.cpp', 'port'): 1,
-    ('cli/src/server.cpp', 'unit'): 3,
+    ('cli/src/server.cpp', 'unit'): 1,
     ('cli/src/update.cpp', 'quoted'): 1,
     ('cli/src/update.cpp', 'quoted("Update available")'): 1,
     ('cli/src/update.cpp', 'std::string(shop ? "-A open=\'Open Nexus Shop\' " : "")'): 1,
@@ -89,6 +89,13 @@ def main(root):
                 if seen[key] > ALLOWED.get(key, 0):
                     line = src.count("\n", 0, m.start()) + 1
                     bad.append("%s:%d: %s goes into a shell unquoted" % (f[len(root) + 1:], line, v))
+    # An allowance larger than its use lets the next unquoted value of
+    # that name through unseen (0.1.98: `unit` was allowed three times,
+    # used once). Each must match its use exactly.
+    for key, count in sorted(ALLOWED.items()):
+        if seen.get(key, 0) != count:
+            bad.append("%s: %s is allowed %d time(s) but used %d; set the allowance to the use"
+                       % (key[0], key[1], count, seen.get(key, 0)))
     for b in bad:
         print(b)
     print("%d unquoted value(s)" % len(bad))
