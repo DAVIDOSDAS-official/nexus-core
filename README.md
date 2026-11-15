@@ -266,7 +266,7 @@ It needs about 20 GB of free disk space.
 ## Layout
 
 ```
-cli/         the nexus command
+cli/         the nexus command, one file per command area
 gui/         Nexus Shop (Qt Quick)
 core/        the model: capabilities, resolution, conflicts
 system/      reading real systems: rpm, dpkg, flatpak, bootc, disks, dual boot

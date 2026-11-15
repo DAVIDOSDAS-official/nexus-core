@@ -19,22 +19,23 @@ import sys
 # A new use, or the same name in another file, fails -- read the code,
 # then raise the count here on purpose.
 ALLOWED = {
-    ('cli/src/main.cpp', 'box'): 13,
-    ('cli/src/main.cpp', 'nexus::system::kHardeningConf'): 1,
-    ('cli/src/main.cpp', 'nexus::system::serverUnit(name)'): 1,
-    ('cli/src/main.cpp', 'nexus::system::serverUnit(options.name)'): 1,
-    ('cli/src/main.cpp', 'nexus::system::serverUnit(words[1])'): 1,
-    ('cli/src/main.cpp', 'options'): 1,
-    ('cli/src/main.cpp', 'pk'): 2,
-    ('cli/src/main.cpp', 'port'): 1,
-    ('cli/src/main.cpp', 'quoted'): 1,
-    ('cli/src/main.cpp', 'quoted("Update available")'): 1,
-    ('cli/src/main.cpp', 'rootFlag'): 6,
-    ('cli/src/main.cpp', 'std::string(kGrubEnv)'): 1,
-    ('cli/src/main.cpp', 'std::string(shop ? "-A open=\'Open Nexus Shop\' " : "")'): 1,
-    ('cli/src/main.cpp', 'tier->metapackage'): 1,
-    ('cli/src/main.cpp', 'unit'): 3,
-    ('cli/src/main.cpp', 'z'): 2,
+    ('cli/src/cyber.cpp', 'box'): 5,
+    ('cli/src/cyber.cpp', 'rootFlag'): 6,
+    ('cli/src/cyber.cpp', 'tier->metapackage'): 1,
+    ('cli/src/dev.cpp', 'box'): 8,
+    ('cli/src/dev.cpp', 'pk'): 2,
+    ('cli/src/dualboot.cpp', 'options'): 1,
+    ('cli/src/dualboot.cpp', 'std::string(kGrubEnv)'): 1,
+    ('cli/src/security.cpp', 'nexus::system::kHardeningConf'): 1,
+    ('cli/src/security.cpp', 'z'): 2,
+    ('cli/src/server.cpp', 'nexus::system::serverUnit(name)'): 1,
+    ('cli/src/server.cpp', 'nexus::system::serverUnit(options.name)'): 1,
+    ('cli/src/server.cpp', 'nexus::system::serverUnit(words[1])'): 1,
+    ('cli/src/server.cpp', 'port'): 1,
+    ('cli/src/server.cpp', 'unit'): 3,
+    ('cli/src/update.cpp', 'quoted'): 1,
+    ('cli/src/update.cpp', 'quoted("Update available")'): 1,
+    ('cli/src/update.cpp', 'std::string(shop ? "-A open=\'Open Nexus Shop\' " : "")'): 1,
     ('system/src/compression.cpp', 'errors'): 1,
     ('system/src/plan_apply.cpp', 'arguments'): 2,
     ('system/src/services.cpp', 'paths'): 2,
@@ -67,7 +68,9 @@ def call_text(src, start):
 
 
 def main(root):
-    files = [root + "/cli/src/main.cpp"]
+    # Every file of the tool (0.1.96: main.cpp is one file per command
+    # area now; naming it alone would have read almost nothing).
+    files = sorted(glob.glob(root + "/cli/src/*.cpp"))
     for d in ("system", "hardware", "core"):
         files += glob.glob(root + "/%s/src/*.cpp" % d)
     bad = []

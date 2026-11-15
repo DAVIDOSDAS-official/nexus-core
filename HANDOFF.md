@@ -1212,6 +1212,91 @@ layer ("Installing 137 packages"), no "no change" message.
   reason under it, offers nothing and counts no update. Look at it
   once on the Asus if the case can be made to happen.
 
+**Patch 124 (0.1.96): cli/src/main.cpp is one file per command area.**
+- A move, nothing else. main.cpp (11,815 lines) is now main.cpp (the
+  command line, 1,441 lines) and 25 files beside it: common, inspect,
+  profile, install, remove, source, container, setup, app, language,
+  summary, doctor, history, update, rollback, security, server,
+  dualboot, gaming, gamecheck, cyber, dev, vpn, specs, guide. The
+  largest is install.cpp (996 lines). cli/src/cli.hpp declares what
+  more than one file uses: 65 of the 133 names, 38 of them the
+  commands' own entry points. Everything else stays in an unnamed
+  namespace in its file.
+- The namespace is `nexus_cli`, not `nexus::cli`, on purpose. The code
+  was written in an unnamed namespace at the top level; inside nexus::
+  a plain `system`, `find` or `Version` would be looked up in nexus
+  first, and the move would have changed what some names mean. With a
+  top-level namespace the lookup is what it was. main() keeps its text
+  and gets `using namespace nexus_cli;`.
+- Done by a program, so that it can be checked by one. Every top-level
+  piece (a definition with the comment above it) went to one file,
+  unchanged, in its old order. Checked: all 134 pieces are found
+  whole, once each; of the 10,383 lines with text in the old file only
+  two are not in the new files, the two `}` that closed namespaces.
+  With standard tools, from the commit of 124:
+  `git show HEAD~1:cli/src/main.cpp | grep -v '^\s*$' | sort > /tmp/old`
+  `cat cli/src/*.cpp cli/src/cli.hpp | grep -v '^\s*$' | sort > /tmp/new`
+  `comm -23 /tmp/old /tmp/new` prints `}` twice and nothing else.
+  Added: the namespace lines, `#include "cli.hpp"`, file-head comments
+  and the declarations in cli.hpp (498 lines).
+- Comments that sat above the wrong code went to the code they
+  explain; no comment line was changed. The comments of services,
+  largest, guide, source and vpn had been left in a stack above the
+  `nexus specs` helpers when their functions moved down the file, the
+  WireGuard one cut in two with `nexus specs` in the middle (it is one
+  comment again, above commandVpn). Three section banners (language,
+  gaming, rollback/rebase) whose first helper now lives in common.cpp
+  or cli.hpp stay with their section.
+- What the move itself needed, outside cli/: tools/check-shell-quoting.py
+  read cli/src/main.cpp by name and would have gone on passing while
+  reading almost nothing. It reads cli/src/*.cpp now, and each allowance
+  went to the file its uses went to, same names, same numbers
+  (counted by the linter's own rules: identical before and after).
+  A value let through in server.cpp is no longer let through in any
+  other file. cli/CMakeLists.txt lists the files.
+- New: tools/compare-outputs.sh <old nexus> <new nexus>. Runs every
+  command of tests/no-apply-changes-nothing.sh (list and stand-ins
+  read out of that script) with both programs and compares output,
+  exit code and which stand-in tools were called with which words.
+  For the next change that must not change behaviour.
+- Proof here (Ubuntu 24.04 container, g++ 13): 759 tests pass in the
+  release build as root and as an ordinary user, and with ASan+UBSan;
+  NoApplyChangesNothing passes in its full mode (strace). Old program
+  (123's code, built as 0.1.96) against new: the 75 commands of the
+  no-apply test identical as root and as a user; with 63 more
+  read-only commands added (guide, solve, profile, image, options,
+  errors and misspellings), 138 of 138 identical; `nexus` alone
+  identical. The two programs import the same 99 C library functions.
+- What is different, and is not behaviour: the program is 14% larger
+  (3.36 -> 3.82 MB: each file carries its own copies of inlined
+  library code); building all of the tool takes longer (17 s -> 33 s
+  here, two jobs), a change in one command much shorter (17 s -> 2 s);
+  a libstdc++ assertion, should one ever fire, names `nexus_cli::`
+  where it said `{anonymous}::`.
+- Noticed and NOT changed (for later):
+  1. The linter allows `unit` three times; it is used once.
+  2. dev.cpp (commandDev) ignores the result of std::system three
+     times; the compiler warns (it did in main.cpp too).
+  3. The comment that opens install.cpp ("Check a plan against the
+     package manager's own engine...") describes plan checking, not
+     the helpers under it.
+  4. gUseRpmVersions and gAvailableLoaded are two globals main() sets
+     and the commands read; they are visible in cli.hpp now.
+  5. describeImage and the audit call ostree-remote-image: and plain
+     ostree refs "not signature-checked"; those are checked by ostree's
+     own keys. No Nexus image uses them.
+  6. This file's own head still says "Version 0.1.85 (patches 1-111)".
+- Not verified here: the Shop beyond compiling and linking (Qt 6.4.2;
+  it includes nothing from cli/src), the image build, and the
+  comparison on
+  Fedora or Pop!_OS, where the commands read a real package database
+  and print far more than in a container. On the Acer, before
+  applying 124: `cp build/cli/nexus build/cli/nexus-before`; after
+  building 124: `tools/compare-outputs.sh build/cli/nexus-before
+  build/cli/nexus` must end "75 identical ... 0 different". On the
+  Asus after the update: `nexus doctor`, `nexus`, `nexus history`,
+  `nexus security`, `nexus update` read as they did on 0.1.95.
+
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
 hint for a mistyped package (java-lastest -> java-latest-openjdk);

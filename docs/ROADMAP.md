@@ -141,8 +141,8 @@ Not: a resident scanner; "reset the mutable layer" (/var holds /home).
   base to digests; the builder runs privileged. (Caddy, Minecraft, Kali
   and the dev boxes: by digest since 0.1.81. The ISO is built on GitHub
   with an attestation since 0.1.81.)
-- Split cli/src/main.cpp (~10,900 lines) into one file per command
-  group (cyber, dev, server, dualboot, security...): reviewers notice.
+- (cli/src/main.cpp is one file per command area since 0.1.96;
+  cli/src/cli.hpp says what they share.)
 - The qcow2 build's nexus:nexus account: never publish a qcow2.
 
 ### To consider: lessons from other distributions (research, 8 Nov 2026)

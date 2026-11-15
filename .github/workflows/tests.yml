@@ -92,7 +92,8 @@ jobs:
 
       # -fno-sanitize-recover: the first report ends the test, so a
       # finding cannot scroll past in a run that still says "passed".
-      # Two at a time: main.cpp alone takes several GB with these on.
+      # Two at a time: set when main.cpp alone took several GB with
+      # these on. It is one file per command area since 0.1.96; kept.
       - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           cmake -S . -B build-san -DCMAKE_BUILD_TYPE=Debug \
