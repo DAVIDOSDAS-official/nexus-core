@@ -1326,6 +1326,13 @@ what they were.
   on the Asus (check: `flatpak remote-info --system --show-metadata
   flathub org.videolan.VLC`).
 
+**Patch 126 (test and wording only, still 0.1.97):** the Asus showed
+Flathub's real VLC metadata (15 Nov): the format is read right, but VLC
+also talks to KDE's password store by name (org.kde.kwalletd,
+org.kde.kwalletd5), which was not marked. It is now "your saved
+passwords (KWallet)", broad. Test: VlcAsFlathubServesIt, with that
+metadata as served.
+
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
 hint for a mistyped package (java-lastest -> java-latest-openjdk);

@@ -144,6 +144,11 @@ AppPermissions parseFlatpakPermissions(const std::string& metadata) {
                 add({"running commands outside its sandbox (org.freedesktop.Flatpak)", true});
             else if (key == "org.freedesktop.secrets")
                 add({"your saved passwords (the keyring)", true});
+            // KDE's password store (the Asus, 15 Nov: VLC asks for both
+            // kwalletd and kwalletd5); reached by name, not through the
+            // secrets service, so it was missed.
+            else if (key.rfind("org.kde.kwalletd", 0) == 0)
+                add({"your saved passwords (KWallet)", true});
             else if (key == "org.freedesktop.impl.portal.PermissionStore")
                 add({"the permissions given to other apps", true});
         } else if (section == "System Bus Policy" && (value == "talk" || value == "own")) {

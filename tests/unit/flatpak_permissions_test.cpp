@@ -73,3 +73,26 @@ TEST(FlatpakPermissionsTest, NoMetadataIsNotRead) {
     ASSERT_EQ(p.items.size(), 1u);
     EXPECT_EQ(p.items[0].text.find('\x1b'), std::string::npos);
 }
+
+// The Asus, 15 Nov: VLC's real metadata from Flathub.
+TEST(FlatpakPermissionsTest, VlcAsFlathubServesIt) {
+    const auto p = parseFlatpakPermissions(
+        "[Application]\nname=org.videolan.VLC\nruntime=org.kde.Platform/x86_64/5.15-25.08\n"
+        "sdk=org.kde.Sdk/x86_64/5.15-25.08\ncommand=vlc\nrequired-flatpak=0.11.4\n\n"
+        "[Context]\nshared=ipc;network;\nsockets=pulseaudio;x11;\ndevices=all;\n"
+        "filesystems=xdg-config/kdeglobals:ro;host;xdg-run/gvfs;\n\n"
+        "[Session Bus Policy]\norg.kde.kwalletd5=talk\norg.kde.kwalletd=talk\n"
+        "org.mpris.MediaPlayer2.vlc=own\norg.freedesktop.secrets=talk\n"
+        "org.freedesktop.PowerManagement=talk\n\n"
+        "[Extension org.videolan.VLC.Plugin]\ndirectory=share/vlc/extra\nautodelete=true\n\n"
+        "[Build]\nbuilt-extensions=org.videolan.VLC.Locale;\n");
+    EXPECT_TRUE(p.read);
+    EXPECT_TRUE(has(p, "every device: cameras, USB, game pads and more", true));
+    EXPECT_TRUE(has(p, "all your files and the system's (host)", true));
+    EXPECT_TRUE(has(p, "your saved passwords (the keyring)", true));
+    EXPECT_TRUE(has(p, "your saved passwords (KWallet)", true));
+    // Extension and build sections are not permissions.
+    for (const auto& item : p.items) {
+        EXPECT_EQ(item.text.find("share/vlc"), std::string::npos);
+    }
+}
