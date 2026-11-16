@@ -798,8 +798,10 @@ QVariantList Shop::history() const {
     auto records = nexus::system::readAllTransactions();
     const QSet<QString> running = packagesInRunningSystem();
     const std::string booted = nexus::system::bootTimestamp();
-    std::sort(records.begin(), records.end(),
-              [](const auto& a, const auto& b) { return a.when > b.when; });
+    // Newest first; at the same second the machine's row stays ahead
+    // of one from the person's own log, as readAllTransactions left it.
+    std::stable_sort(records.begin(), records.end(),
+                     [](const auto& a, const auto& b) { return a.when > b.when; });
     for (const auto& record : records) {
         QVariantMap row;
         const QDateTime when =
@@ -809,14 +811,24 @@ QVariantList Shop::history() const {
             : q(record.when);
         row["what"] = q(record.request);
         row["resolved"] = q(record.resolved);
-        const bool applied = (record.outcome == "staged" &&
-            (running.contains(q(record.request)) ||
-             running.contains(q(record.resolved)))) ||
-            nexus::system::updateTookEffect(record, NEXUS_VERSION, booted);
+        // Root's log alone is this machine's history (0.2.0, ledger
+        // I3). A row from the person's own log -- a file they, and any
+        // program they ran, can write anything into -- is shown with
+        // what it says and marked as theirs. It is never turned into
+        // "applied" by what the machine runs now, and never gets the
+        // green chip: both would be the Shop vouching for a line Nexus
+        // may not have written.
+        const bool machines = nexus::system::isMachineRecord(record);
+        const bool applied = machines &&
+            ((record.outcome == "staged" &&
+              (running.contains(q(record.request)) ||
+               running.contains(q(record.resolved)))) ||
+             nexus::system::updateTookEffect(record, NEXUS_VERSION, booted));
         row["outcome"] = record.unfinished ? QStringLiteral("never finished")
                          : applied         ? QStringLiteral("applied")
                                            : q(record.outcome);
-        row["ok"] = (record.succeeded || applied) && !record.unfinished;
+        row["ok"] = machines && (record.succeeded || applied) && !record.unfinished;
+        row["own"] = !machines;
         list << row;
     }
     return list;

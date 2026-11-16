@@ -1,7 +1,7 @@
 # Nexus-CORE security ledger
 
 Every finding from every review, and what became of it. Last updated:
-0.1.99, 15 November 2026.
+0.2.0, 15 November 2026.
 
 **The rule:** an item leaves "open" only with evidence: a test that
 fails if the fix is undone, a later review that re-ran the attack, or a
@@ -32,6 +32,7 @@ Sources:
 | Full code review | 0.1.93 | 14 Nov 2026 |
 | Fable's notes with patches 123/124 | 0.1.96 | 15 Nov 2026 |
 | ChatGPT's production-readiness list | 0.1.97 | 15 Nov 2026 |
+| Fable's notes with patches 129/130 | 0.1.99 | 15 Nov 2026 |
 
 The reviews were done by AI models working from the source, with
 proof-of-concept code run in their own sandboxes. They are not
@@ -50,11 +51,11 @@ independent human audits, and this file does not call them that.
 | 5 | **R5-M3:** after the yes, rpm-ostree works out the packages again | What runs may differ from what was confirmed. Since 0.1.94 the result is compared and the history says "not as confirmed"; it is detected, not prevented. | Layer the exact versions confirmed (name-version-release) instead of names. On the Asus on 15 Nov the 56 packages added were exactly the 56 confirmed. |
 | 6 | **L6 / base image by tag:** `FROM quay.io/fedora/fedora-bootc:44` | The digest is recorded after the build, not fixed before it. | Look the digest up once when the build starts, build every stage from `@sha256:…`, record it. |
 | 7 | **L8:** server containers run rootful with default capabilities | A hole in a served app is a hole in a root container. | Rootless or user-namespaced quadlets, dropped capabilities, read-only where possible. |
-| 8 | **R4-L2:** "Starts by itself: ok" looks at two places only | Something that starts at login from a `.socket`, `.path`, drop-in, `autostart-scripts`, `plasma-workspace/env` or a shell rc file is not seen. | Look in all of them, and say what was not looked at. |
-| 9 | **I3:** the Shop's History mixes the user's own log with root's | Any user can write "applied" lines into their own log, and they show as machine history. | Label each row with the log it came from; root's log alone counts as the machine's. |
-| 10 | **Dual boot:** USB disks are still scanned | A USB stick's boot files can end up in the boot menu. | Skip removable disks unless asked for by name. |
-| 11 | **Firewall:** `firewall-cmd --reload` in suggested commands drops runtime-only rules | A rule added for this session only disappears. | Suggest `--permanent` plus the same change at runtime, without `--reload`. |
 | 12 | **Fedora 45:** the image is on Fedora 44 | Fedora 45 came out on 3 November 2026; Fedora 44 gets updates until about a month after Fedora 46 (around June 2027). | Move to 45 before spring 2027, tested on the Asus. |
+| 13 | **Firewall, by Nexus itself:** `nexus server add`, `remove` and `cockpit --apply` run `firewall-cmd --reload` after their `--permanent` change (`cli/src/server.cpp`, `openPorts` and the cockpit branch) | The same loss as old item 11, done by Nexus instead of suggested: every rule that exists only in the running firewall (a VPN's, a game's) goes when a server is added or removed. | Make the change in the running firewall as well as the saved one, and reload nothing; a stand-in-tool test on the words `firewall-cmd` is called with. |
+
+Items 8 to 11 were closed in 0.2.0 (patch 129) and keep their numbers:
+8 is R4-L2 (section 5), 9 is I3 (section 2), 10 and 11 are in section 10.
 
 Tests that need hardware or a VM, not code:
 
@@ -70,6 +71,8 @@ Tests that need hardware or a VM, not code:
 | T8 | N7 boot check: no false "bad boot" on a normal start | Asus (has passed in daily use; not a deliberate test) |
 | T9 | Server website from the phone (M3 of the server tests) | Blocked: the VPN on the Asus and phone stops it |
 | T10 | Server backup interrupted with Ctrl-C | Asus |
+| T11 | `nexus dualboot` with a USB stick and an SD card in: both said to be "not looked at", `--disk` brings one in. The tests use `lsblk` output written by hand, not recorded from such hardware; a card in a built-in slot is told from soldered storage by `/sys/block/<name>/device/type`. Also: `add`, with an entry in the menu for a system on a disk that is now left out, says it takes that entry out | Asus |
+| T12 | The audit's firewall suggestion on a real firewalld: the pair runs to the end when the rule exists only in the running firewall, and only in the saved one | Asus |
 
 ---
 
@@ -86,7 +89,7 @@ Tests that need hardware or a VM, not code:
 | M6 | ISO builder image `:latest`, privileged, unpinned | **Closed** 0.1.85 | `bootc-image-builder` and `skopeo` pinned by digest (round 3). |
 | L1 | Update freeze undetectable; no Rekor | **Partly** | Going *back* is refused since 0.1.95 (tests `UpdateRollbackTest.*`). A frozen tag (no new build) still looks up to date, and there is no Rekor: open item 1. |
 | L2 | Secure Boot status overstated | **Closed** 0.1.84 | Exact GUIDs, `MokSBStateRT`. Tests `SecureBootTest.*` (11). |
-| L3 | Dual boot mounts other disks with default options | **Partly** | `nosuid,nodev,noexec`, 4 MiB read cap (0.1.84); no log replay (N4, 0.1.85). USB disks: open item 10. |
+| L3 | Dual boot mounts other disks with default options | **Closed** 0.2.0, T11 | `nosuid,nodev,noexec`, 4 MiB read cap (0.1.84); no log replay (N4, 0.1.85). USB disks, SD cards and removable disks are not looked into unless named (0.2.0): see "USB disks in dual boot" in section 10. |
 | L4 | Shop shows catalogue text as rich text | **Closed** 0.1.84 | `Text.PlainText` everywhere, https screenshots only. Test `CatalogueTest.DescriptionIsPlainTextWithListItems`. |
 | L5 | Debian version compare hangs on a NUL byte | **Closed** 0.1.84 | Test `VersionTest.ANulByteDoesNotHang`; 20 min fuzzing in round 2. |
 | L6 | Build inputs trusted by tag | **Partly** | Builder images by digest (M6); GitHub actions by full commit (`tools/pin-actions.py`). Base image by tag: open item 6. |
@@ -94,7 +97,7 @@ Tests that need hardware or a VM, not code:
 | L8 | Servers run as rootful containers | **Open** | Open item 7. |
 | I1 | Boot check fooled by `pgrep -f` | **Closed** 0.1.85 | See N7. |
 | I2 | `github.actor` in `run:`; checkout kept credentials | **Closed** 0.1.84 | `env:` for the login; `persist-credentials: false` everywhere (round 2). |
-| I3 | History mixes the user-writable log with root's | **Open** | Open item 9. |
+| I3 | History mixes the user-writable log with root's | **Closed** 0.2.0 | Every record carries the log it was read from (`TransactionSource`); the file is never asked. `nexus history` and the Shop mark rows from the person's own log and never turn one into "applied"; `nexus doctor` counts interrupted changes from root's log only (before, without sudo, it read only the person's own). Text from a log is printed through `printable()`, so a row cannot hide its mark. Tests `TransactionLogTest.AForgedLineInTheOwnLogIsLabelledAndNeverTheMachines`, `…AnInterruptedChangeCountsOnlyFromTheMachinesLog`, `…AtTheSameTimeTheMachinesRecordComesFirst`; ctest `HistoryLabels` (`tests/history-labels-check.sh`, which fails on 0.1.99 on every point). The Shop's row was looked at offscreen (a screenshot), not by an automated test. |
 | I4 | Uninitialised status in `ResolutionPlan` | **Closed** 0.1.84 | Defaults to Failed (round 2). |
 | I5 | `nexus gaming` turns off split-lock mitigation silently | **Closed** 0.1.84 | The output explains the trade-off. |
 | I6 | `rd.luks.options=tries=0` | **Accepted** | Harmless: Argon2id makes guessing slow either way (round 1's own words). |
@@ -142,7 +145,7 @@ Round 4 confirmed every item below is in the code and checked on each image buil
 | R4-M4 | `nexus setup` approved once, installed with `--yes` | **Closed** 0.1.91 | Each item asks with its own list. Round 5: fixed. Flatpaks too since 0.1.98. |
 | R4-M5 | Old signed images stay valid; going back possible | **Closed** 0.1.95–0.1.96 | Version and build-time floor; the confirmed build digest is checked after staging, else `cleanup --pending`. Tests `UpdateRollbackTest.*` (11), `UpdateStagedTest.*` (5); `tests/update-trust-check.sh`. Asus checks 1–3 passed; T6. |
 | R4-L1 | doctor, summary and security said "signed" differently | **Closed** 0.1.95 | One function for all three (Fable, patch 123). |
-| R4-L2 | "Starts by itself" looks in two places | **Open** | Open item 8. |
+| R4-L2 | "Starts by itself" looks in two places | **Closed** 0.2.0 | `findAutoStarts`: autostart, autostart-scripts, plasma-workspace/env and shutdown, `.service` `.timer` `.socket` `.path` units with their `*.d` drop-ins and `*.wants` links in both user unit folders, environment.d; shell and login files named, not judged. Names only, at most 500 a folder, and a folder that is a link out of the home is not read. Every run ends with what was not looked at (the whole system's services and autostart, cron and at, other accounts). Tests `SecurityAuditTest.StartsByItselfLooksInEveryPlace`, `…ALinkLeadingOutOfTheHomeIsNotFollowed`, `…AnEmptyHomeStartsNothingAndSaysWhatWasNotLookedAt`, `…ShellFilesAreNamedNotJudged`, `…AFolderWithTooManyNamesIsReadInPartAndSaid`, `…AFileNameCannotSteerTheTerminal`. Not looked at, and said in the notes of patch 129: a config folder moved with `XDG_CONFIG_HOME`, `ZDOTDIR`. |
 | R4-L3 | More invisible characters pass `printable()` | **Closed** 0.1.99 | Soft hyphen, U+2028/2029, Hangul fillers, U+180E, tag characters. Test `ProcessTest.PrintableReplacesTheRestOfTheInvisibleCharacters`. |
 | R4-L4 | Flatpak permissions granted without being shown | **Closed** 0.1.97, 0.1.98 | Shown before install in `nexus install`, the Shop and `nexus setup`; broad ones need a typed yes. Tests `FlatpakPermissionsTest.*`, fuzz target. Asus: VLC and GeoGebra lists read correctly. |
 | R4-L5 | Transaction log readable by every account | **Closed** 0.1.91 | 0640, group wheel; only ever narrowed. Test `TransactionLogTest.FinishingKeepsPermissionsAndLeavesNoScraps`; round 5: fixed. |
@@ -197,7 +200,7 @@ Round 4 confirmed every item below is in the code and checked on each image buil
 | High | Destructive-disk tests of the installer | T1, VM only. |
 | High | Permission analysis on every install path | Flatpak: closed (R4-L4). rpm packages have no permission model to analyse. Server containers: open item 7. |
 | High | Every external image and dependency by digest | Actions and builder images: closed. Base image: open item 6. |
-| High | Dual boot across distributions, EFI layouts, USB disks | Open item 10 and T2. |
+| High | Dual boot across distributions, EFI layouts, USB disks | USB disks: closed 0.2.0 (section 10), T11. Other distributions and EFI layouts: T2. |
 | Medium | Interrupted updates, power failures | T3. |
 | Medium | Network and DNS behaviour verified independently | T4. |
 | Medium | First boot and Shop without terminal knowledge | T5. |
@@ -209,5 +212,15 @@ Round 4 confirmed every item below is in the code and checked on each image buil
 | Item | Status | Evidence |
 |---|---|---|
 | `runProgram`: deadlock with over 64 KiB of input; process-wide SIGPIPE swap | **Closed** | Output read while input is written (`poll`); SIGPIPE blocked per thread (`system/src/process.cpp`). Round 4: holds up under the sanitizers. |
-| `firewall-cmd --reload` in suggestions | **Open** | Open item 11. |
-| USB disks in dual boot | **Open** | Open item 10. |
+| `firewall-cmd --reload` in suggestions (was open item 11) | **Closed** 0.2.0, T12 | Each suggested change is given twice, saved and running (`--permanent ... && ...` without it), and nothing is reloaded; the one reload that is meant says what it drops and how to keep it instead (`--runtime-to-permanent`). Tests `SecurityAuditTest.FirewallFixesChangeSavedAndRunningAndReloadNothing`, `…TheOneReloadSaysWhatItDrops`. What Nexus runs itself is open item 13. |
+| USB disks in dual boot (was open item 10) | **Closed** 0.2.0, T11 | `lsblk` is asked for RM and TRAN; a disk that is USB, removable, or an SD card is not looked into and nothing on it reaches the boot menu, unless named with `--disk <path>` or it is the disk Nexus runs from. What was left out is said, with the command that includes it; a `lsblk` that gives no RM is said too. Tests `Dualboot.AUsbDiskIsNotLookedAtUnlessNamed`, `…SkippedDisksAreSaidWithHowToIncludeThem`, `…RemovableIsReadHoweverLsblkWritesIt`, `…AMissingRemovableFieldIsBuiltInAndSaid`, `…TheDiskThisSystemRunsFromIsAlwaysLookedAt`, `…ACardInABuiltInSlotIsLeftOutByWhatTheKernelCallsIt`; fuzz target `parseLsblk`. |
+
+## 11. Fable's notes with patches 129/130 (0.1.99)
+
+| # | Note | Status | Evidence or reason |
+|---|---|---|---|
+| 1 | `nexus server add`, `remove` and `cockpit --apply` run `firewall-cmd --reload` themselves | **Open** | Open item 13. |
+| 2 | `nexus history` and `nexus doctor` printed log text as it was: escape sequences in a person's own log reached the terminal, a root terminal under `sudo -E` | **Closed** 0.2.0 | Through `printable()`. ctest `HistoryLabels` looks for an escape character in what both print. |
+| 3 | "Starts by itself" showed the first six names and "..." | **Closed** 0.2.0 | Up to 40 are shown and the rest counted ("... and N more"). Test `SecurityAuditTest.AFolderWithTooManyNamesIsReadInPartAndSaid`. |
+| 4 | `nexus dualboot add` rewrites Nexus's part of the boot menu from what it finds; an entry whose system is no longer found went without a word | **Test needed** (T11) | Since 0.2.0 the plan says "Take ... out of the boot menu" for each. No automated test: it is in the CLI, behind `lsblk` and a mount. |
+| 5 | `nexus language set --apply` changes the system language and writes nothing to `nexus history` | **Open** | Every change is meant to be in the history (`CONTRIBUTING.md`). Not a security hole; listed so it is not lost. |

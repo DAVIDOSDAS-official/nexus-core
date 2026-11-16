@@ -11,6 +11,22 @@ enum class TransactionKind {
     Remove
 };
 
+// Which log a record was read from (0.2.0, ledger I3).
+//
+// Only root can write the machine's log. The person's own log is in
+// their home folder: they can write anything into it, and so can any
+// program they run. A record from it is their own account of what was
+// done without sudo; it is never this machine's history, and nothing
+// that counts or decides may take it for a change root made.
+enum class TransactionSource {
+    // Not read from a log (a record about to be written), or read by
+    // path without saying whose file it is. Never counted as the
+    // machine's: not knowing is not "root's".
+    Unknown,
+    Machine,   // /var/lib/nexus/transactions.log
+    Own        // ~/.local/state/nexus/transactions.log
+};
+
 // One thing Nexus did, written down.
 struct TransactionRecord {
     TransactionKind kind = TransactionKind::Install;
@@ -41,6 +57,10 @@ struct TransactionRecord {
     // was interrupted.
     bool unfinished = false;
     int exitCode = 0;
+
+    // Where it was read from; see TransactionSource. Not stored in the
+    // log: a file cannot be trusted to say whose it is.
+    TransactionSource source = TransactionSource::Unknown;
 };
 
 // Append a record of a change to the log.
@@ -93,8 +113,11 @@ std::vector<TransactionRecord> unfinishedTransactions(
     const std::string& path
 );
 
+// `source` is put on every record read: the caller knows whose file
+// `path` is, the file does not get to say (0.2.0, ledger I3).
 std::vector<TransactionRecord> readTransactions(
-    const std::string& path
+    const std::string& path,
+    TransactionSource source = TransactionSource::Unknown
 );
 
 // Where the log lives: a system-wide path when running as root, and a
@@ -107,7 +130,41 @@ std::string defaultTransactionLog();
 // reports "no changes recorded" about a machine that was changed.
 std::vector<std::string> transactionLogPaths();
 
+// The two logs by name (0.2.0, ledger I3). The machine's is written by
+// root only. The person's own is empty when there is no home folder.
+std::string machineTransactionLog();
+std::string ownTransactionLog();
+
+// Both logs as one list, oldest first, every record saying which log
+// it came from. Where two records carry the same time, the machine's
+// comes first.
 std::vector<TransactionRecord> readAllTransactions();
+
+// The same for two given files (tests; readAllTransactions is this
+// with the two paths above). An empty path is not read.
+std::vector<TransactionRecord> readLabelledTransactions(
+    const std::string& machineLog,
+    const std::string& ownLog
+);
+
+// Changes that started and never finished, by whose log says so
+// (0.2.0, ledger I3). `machine` is what `nexus doctor` warns about: a
+// change root began may have left the system part-way. `own` is the
+// rest -- the person's own log, or a source nobody named: shown, never
+// counted with the machine's.
+struct InterruptedChanges {
+    std::vector<TransactionRecord> machine;
+    std::vector<TransactionRecord> own;
+};
+
+InterruptedChanges interruptedChanges(
+    const std::vector<TransactionRecord>& records
+);
+
+// Whether a record is the machine's history: read from root's log.
+// One from the person's own log, or from nobody knows where, is not
+// (0.2.0, ledger I3).
+bool isMachineRecord(const TransactionRecord& record);
 
 std::string currentTimestamp();
 

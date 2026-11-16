@@ -64,10 +64,40 @@ BlockDevice readDevice(const JsonValue& value) {
         device.mountpoints.push_back(single);
     }
 
+    // RM and TRAN (0.2.0, ledger item 10). RM is true/false from
+    // util-linux 2.33 on and "1"/"0" before; a number is read too. A
+    // lsblk that gives none is said so by the caller, not guessed at.
+    const JsonValue& rm = value["rm"];
+    if (rm.kind == JsonValue::Kind::Bool) {
+        device.removable = rm.boolean;
+        device.removableKnown = true;
+    } else if (rm.isString() || rm.isNumber()) {
+        const std::string text = lower(trim(rm.asString()));
+        if (text == "1" || text == "true") {
+            device.removable = true;
+            device.removableKnown = true;
+        } else if (text == "0" || text == "false") {
+            device.removableKnown = true;
+        }
+    }
+    device.transport = lower(trim(value["tran"].asString()));
+
     for (const auto& child : value["children"].items) {
         device.children.push_back(readDevice(child));
     }
     return device;
+}
+
+bool hasPath(const BlockDevice& device, const std::string& path) {
+    if (device.path == path) {
+        return true;
+    }
+    for (const auto& child : device.children) {
+        if (hasPath(child, path)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // Value of KEY="value" or KEY=value, with the quotes and escapes of
@@ -192,6 +222,105 @@ bool inUse(const BlockDevice& device) {
         }
     }
     return false;
+}
+
+std::string portableKind(const BlockDevice& disk) {
+    if (disk.transport == "usb") {
+        return "USB disk";
+    }
+    if (disk.cardType == "SD") {
+        return "SD card";
+    }
+    if (disk.removable) {
+        return "removable disk";
+    }
+    return "";
+}
+
+DiskChoice chooseDisks(const std::vector<BlockDevice>& devices,
+                       const std::vector<std::string>& named,
+                       const std::string& thisDisk) {
+    DiskChoice choice;
+    for (const std::string& path : named) {
+        bool found = false;
+        for (const auto& device : devices) {
+            found = found || hasPath(device, path);
+        }
+        if (!found) {
+            choice.notFound.push_back(path);
+        }
+    }
+    for (const auto& device : devices) {
+        bool asked = false;
+        for (const std::string& path : named) {
+            asked = asked || hasPath(device, path);
+        }
+        const bool portable = !portableKind(device).empty();
+        if (portable && !asked && device.path != thisDisk) {
+            BlockDevice outside = device;
+            outside.children.clear();
+            choice.skipped.push_back(outside);
+            continue;
+        }
+        // Not known to be removable is not known to be built in: it is
+        // looked at, as before, and the caller says so. (Only disks
+        // with partitions: zram and the like have nothing to look in.)
+        if (device.type == "disk" && !device.removableKnown && !portable &&
+            !device.children.empty()) {
+            choice.unknown.push_back(device.path);
+        }
+        choice.looked.push_back(device);
+    }
+    return choice;
+}
+
+std::vector<std::string> skippedDiskLines(const DiskChoice& choice) {
+    std::vector<std::string> lines;
+    if (!choice.skipped.empty()) {
+        // "1 USB disk", "2 USB disks", or -- kinds mixed -- "2 disks
+        // that can be taken out".
+        std::string kind = portableKind(choice.skipped.front());
+        for (const auto& disk : choice.skipped) {
+            if (portableKind(disk) != kind) {
+                kind.clear();
+            }
+        }
+        const std::size_t count = choice.skipped.size();
+        std::string what = std::to_string(count) + " ";
+        if (kind.empty()) {
+            what += "disks that can be taken out";
+        } else {
+            what += kind + (count == 1 ? "" : "s");
+        }
+        lines.push_back(what + " not looked at:");
+        for (const auto& disk : choice.skipped) {
+            std::string line = "    " + printable(disk.path);
+            std::string about = printable(disk.model);
+            if (kind.empty()) {
+                about += (about.empty() ? "" : ", ") + portableKind(disk);
+            }
+            if (disk.size) {
+                about += (about.empty() ? "" : ", ") + sizeInWords(disk.size);
+            }
+            lines.push_back(line + (about.empty() ? "" : "  (" + about + ")"));
+        }
+        lines.push_back(std::string("A system on ") +
+                        (count == 1 ? "it is" : "them is") +
+                        " not listed and not put in the boot menu. To include " +
+                        (count == 1 ? "it:" : "one:"));
+        lines.push_back("    sudo nexus dualboot --disk " +
+                        printable(choice.skipped.front().path));
+    }
+    if (!choice.unknown.empty()) {
+        std::string paths;
+        for (const auto& path : choice.unknown) {
+            paths += (paths.empty() ? "" : ", ") + printable(path);
+        }
+        lines.push_back("lsblk here does not say whether " + paths +
+                        (choice.unknown.size() == 1 ? " is" : " are") +
+                        " removable: taken as built in, and looked at.");
+    }
+    return lines;
 }
 
 OsRelease parseOsRelease(const std::string& text) {

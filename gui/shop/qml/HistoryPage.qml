@@ -26,7 +26,7 @@ Flickable {
         Text { textFormat: Text.PlainText; text: "History"; color: Theme.bright; font.pixelSize: 28; font.bold: true }
         Text {
             textFormat: Text.PlainText
-            text: "Every change Nexus made to this computer's software, from here or from a terminal. The same list as  nexus history."
+            text: "Every change Nexus made to this computer's software, from here or from a terminal. The same list as  nexus history.  Rows marked \"your own log\" are changes made without sudo, or lines written by any program you ran: that file is yours, and only the other rows are this computer's history."
             color: Theme.dim
             font.pixelSize: 13
             wrapMode: Text.WordWrap
@@ -67,8 +67,13 @@ Flickable {
                         Layout.fillWidth: true
                         Text { textFormat: Text.PlainText; text: modelData.what; color: Theme.bright; font.pixelSize: 15; font.bold: true; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                         Text { textFormat: Text.PlainText; text: modelData.resolved; visible: text.length > 0; color: Theme.dim; font.pixelSize: 13; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        // Which log the row came from (0.2.0, ledger I3):
+                        // a row from the person's own log says so.
+                        Text { textFormat: Text.PlainText; text: "your own log: made without sudo, or written by a program you ran"; visible: modelData.own === true; color: Theme.dim; font.pixelSize: 12; font.italic: true; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     }
-                    Chip { text: modelData.outcome || "?"; good: modelData.ok; strong: !modelData.ok; Layout.alignment: Qt.AlignTop }
+                    // Green only for this computer's own history; a row
+                    // from the person's log keeps a plain chip.
+                    Chip { text: modelData.outcome || "?"; good: modelData.ok; strong: !modelData.ok && modelData.own !== true; Layout.alignment: Qt.AlignTop }
                 }
             }
         }

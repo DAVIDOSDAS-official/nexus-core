@@ -21,7 +21,7 @@ void printUsage() {
         << "    nexus update [--apply]   what is new; take it\n"
         << "    nexus update notify off|on|status [--apply]  the daily update notification\n"
         << "    nexus app install|remove <flathub id> [--apply]\n"
-        << "    nexus dualboot [add | remove | <number>] [--apply]  other systems on this disk\n"
+        << "    nexus dualboot [add | remove | <number>] [--disk <path>] [--apply]  other systems on this disk\n"
         << "    nexus gaming [--apply]   what this machine does for games\n"
         << "    nexus server [add | logs | backup | remove | cockpit]  Minecraft and websites here\n"
         << "    nexus scan\n"

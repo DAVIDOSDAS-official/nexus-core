@@ -1,5 +1,13 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <vector>
+
+#include <unistd.h>
+
 #include <nexus/system/security_audit.hpp>
 
 using namespace nexus::system;
@@ -168,4 +176,257 @@ TEST(SecurityAuditTest, AMoreExactScopeWithoutTheKeyIsNotEnforced) {
         R"("note":"sigstoreSigned /etc/pki/containers/nexus-core.pub"}]}}})";
     EXPECT_FALSE(policyRequiresKey(words, "ghcr.io/davidosdas-official", key));
     EXPECT_FALSE(policyRequiresKey("not json", "ghcr.io/davidosdas-official", key));
+}
+
+// ---------------------------------------------------------------------
+// "Starts by itself" (0.2.0, ledger R4-L2): a made-up home folder.
+
+namespace {
+
+namespace fs = std::filesystem;
+
+struct FakeHome {
+    fs::path root;      // holds the home and what lies outside it
+    fs::path home;
+    FakeHome() {
+        static int made = 0;
+        root = fs::path(::testing::TempDir()) /
+               ("nexus-home-" + std::to_string(::getpid()) + "-" + std::to_string(++made));
+        home = root / "home" / "person";
+        fs::create_directories(home);
+    }
+    ~FakeHome() {
+        std::error_code ignored;
+        fs::remove_all(root, ignored);
+    }
+    void file(const std::string& relative, const std::string& text = "x\n") const {
+        fs::create_directories((home / relative).parent_path());
+        std::ofstream(home / relative) << text;
+    }
+};
+
+bool has(const std::vector<std::string>& list, const std::string& one) {
+    return std::find(list.begin(), list.end(), one) != list.end();
+}
+
+std::string allOf(const std::vector<std::string>& lines) {
+    std::string text;
+    for (const auto& line : lines) text += line + "\n";
+    return text;
+}
+
+}  // namespace
+
+TEST(SecurityAuditTest, AnEmptyHomeStartsNothingAndSaysWhatWasNotLookedAt) {
+    const FakeHome h;
+    const auto found = findAutoStarts(h.home.string());
+    EXPECT_TRUE(found.starts.empty());
+    EXPECT_TRUE(found.shellFiles.empty());
+    EXPECT_TRUE(found.notRead.empty());
+
+    bool nothing = false;
+    const auto lines = autoStartLines(found, nothing);
+    EXPECT_TRUE(nothing);
+    const std::string text = allOf(lines);
+    EXPECT_NE(lines.front().find("nothing set up"), std::string::npos) << text;
+    // Every time, also when all is well: what "ok" does not cover.
+    EXPECT_NE(text.find("not looked at:"), std::string::npos) << text;
+    EXPECT_NE(text.find("whole system"), std::string::npos) << text;
+    EXPECT_NE(text.find("cron"), std::string::npos) << text;
+    EXPECT_NE(text.find("other accounts"), std::string::npos) << text;
+}
+
+// Until 0.1.99 only autostart/*.desktop and systemd/user/*.service and
+// *.timer were seen: every other line of this test read "ok".
+TEST(SecurityAuditTest, StartsByItselfLooksInEveryPlace) {
+    const FakeHome h;
+    // The two places it always looked in.
+    h.file(".config/autostart/chat.desktop");
+    h.file(".config/systemd/user/sync.service");
+    h.file(".config/systemd/user/sync.timer");
+    // What it did not see.
+    h.file(".config/systemd/user/agent.socket");
+    h.file(".config/systemd/user/watch.path");
+    h.file(".config/systemd/user/ssh-agent.service.d/override.conf");
+    h.file(".config/systemd/user/ssh-agent.service.d/notes.txt");   // not a drop-in
+    fs::create_directories(h.home / ".config/systemd/user/default.target.wants");
+    fs::create_symlink("/usr/lib/systemd/user/far.service",
+                       h.home / ".config/systemd/user/default.target.wants/far.service");
+    h.file(".local/share/systemd/user/hidden.service");
+    h.file(".config/autostart-scripts/run.sh");
+    h.file(".config/plasma-workspace/env/path.sh");
+    h.file(".config/plasma-workspace/shutdown/bye.sh");
+    h.file(".config/environment.d/10-preload.conf");
+    // Not something that starts: left out.
+    h.file(".config/autostart/readme.txt");
+    h.file(".config/systemd/user/notes.md");
+    h.file(".config/environment.d/readme");
+
+    const auto found = findAutoStarts(h.home.string());
+    for (const char* want : {
+             "chat.desktop", "sync.service", "sync.timer", "agent.socket", "watch.path",
+             "ssh-agent.service.d/override.conf", "default.target.wants/far.service",
+             ".local/share/systemd/user/hidden.service", "autostart-scripts/run.sh",
+             "plasma-workspace/env/path.sh", "plasma-workspace/shutdown/bye.sh",
+             "environment.d/10-preload.conf"}) {
+        EXPECT_TRUE(has(found.starts, want)) << want;
+    }
+    EXPECT_EQ(found.starts.size(), 12u);
+    EXPECT_TRUE(std::is_sorted(found.starts.begin(), found.starts.end()));
+    EXPECT_TRUE(found.notRead.empty());
+
+    bool nothing = true;
+    const std::string text = allOf(autoStartLines(found, nothing));
+    EXPECT_FALSE(nothing);
+    for (const auto& name : found.starts) {
+        EXPECT_NE(text.find(name), std::string::npos) << name << "\n" << text;
+    }
+    EXPECT_NE(text.find("(check you know each one)"), std::string::npos) << text;
+    EXPECT_NE(text.find("not looked at:"), std::string::npos) << text;
+}
+
+TEST(SecurityAuditTest, ShellFilesAreNamedNotJudged) {
+    const FakeHome h;
+    h.file(".bashrc");
+    h.file(".bash_profile");
+    h.file(".profile");
+    h.file(".zshrc");
+    h.file(".config/fish/config.fish");
+    h.file(".config/fish/conf.d/extra.fish");
+    fs::create_directories(h.home / ".zshenv");   // a folder is not a shell file
+
+    const auto found = findAutoStarts(h.home.string());
+    EXPECT_TRUE(found.starts.empty());
+    for (const char* want : {".bashrc", ".bash_profile", ".profile", ".zshrc",
+                             ".config/fish/config.fish", ".config/fish/conf.d/extra.fish"}) {
+        EXPECT_TRUE(has(found.shellFiles, want)) << want;
+    }
+    EXPECT_FALSE(has(found.shellFiles, ".zshenv"));
+
+    // Nearly everyone has a .bashrc: it is said, and it is still "ok".
+    bool nothing = false;
+    const auto lines = autoStartLines(found, nothing);
+    EXPECT_TRUE(nothing);
+    const std::string text = allOf(lines);
+    EXPECT_NE(text.find("runs in every new shell or at login: .bashrc"), std::string::npos) << text;
+    EXPECT_NE(text.find("(named, not judged)"), std::string::npos) << text;
+}
+
+// Under sudo this runs as root in a folder the person controls. A link
+// in place of a folder must not make root read out some other folder.
+TEST(SecurityAuditTest, ALinkLeadingOutOfTheHomeIsNotFollowed) {
+    const FakeHome h;
+    const fs::path outside = h.root / "roots-own";
+    fs::create_directories(outside / "inner.service.d");
+    std::ofstream(outside / "secret.desktop") << "x\n";
+    std::ofstream(outside / "secret.service") << "x\n";
+    std::ofstream(outside / "inner.service.d" / "secret.conf") << "x\n";
+
+    fs::create_directories(h.home / ".config/systemd/user");
+    fs::create_symlink(outside, h.home / ".config/autostart");
+    fs::create_symlink(outside, h.home / ".config/autostart-scripts");
+    // A unit folder that is real, with a drop-in folder that is a link out.
+    fs::create_symlink(outside / "inner.service.d",
+                       h.home / ".config/systemd/user/inner.service.d");
+    h.file(".config/systemd/user/own.service");
+
+    const auto found = findAutoStarts(h.home.string());
+    EXPECT_EQ(found.starts, std::vector<std::string>{"own.service"});
+    const std::string said = allOf(found.notRead);
+    EXPECT_EQ(said.find("secret"), std::string::npos) << said;
+    EXPECT_NE(said.find("~/.config/autostart (a link that leads outside your home folder)"),
+              std::string::npos) << said;
+    EXPECT_NE(said.find("~/.config/autostart-scripts (a link that leads outside"),
+              std::string::npos) << said;
+    EXPECT_NE(said.find("~/.config/systemd/user/inner.service.d (a link; not followed)"),
+              std::string::npos) << said;
+
+    // Not read is not "ok".
+    bool nothing = true;
+    const std::string text = allOf(autoStartLines(found, nothing));
+    EXPECT_FALSE(nothing);
+    EXPECT_NE(text.find("not read: ~/.config/autostart"), std::string::npos) << text;
+    EXPECT_EQ(text.find("secret"), std::string::npos) << text;
+}
+
+// A link that stays inside the home (a dotfiles folder) is the
+// person's own arrangement, and is read.
+TEST(SecurityAuditTest, ALinkThatStaysInsideTheHomeIsRead) {
+    const FakeHome h;
+    h.file("dotfiles/autostart/mail.desktop");
+    fs::create_directories(h.home / ".config");
+    fs::create_symlink(h.home / "dotfiles/autostart", h.home / ".config/autostart");
+
+    const auto found = findAutoStarts(h.home.string());
+    EXPECT_EQ(found.starts, std::vector<std::string>{"mail.desktop"});
+    EXPECT_TRUE(found.notRead.empty());
+}
+
+TEST(SecurityAuditTest, AFolderWithTooManyNamesIsReadInPartAndSaid) {
+    const FakeHome h;
+    fs::create_directories(h.home / ".config/autostart-scripts");
+    for (std::size_t i = 0; i < kAutoStartFolderLimit + 25; ++i) {
+        std::ofstream(h.home / ".config/autostart-scripts" / ("s" + std::to_string(i))) << "";
+    }
+    const auto found = findAutoStarts(h.home.string());
+    EXPECT_EQ(found.starts.size(), kAutoStartFolderLimit);
+    const std::string said = allOf(found.notRead);
+    EXPECT_NE(said.find("~/.config/autostart-scripts (only its first"), std::string::npos) << said;
+
+    // Forty are shown, and the rest are counted, not dropped.
+    bool nothing = true;
+    const std::string text = allOf(autoStartLines(found, nothing));
+    EXPECT_FALSE(nothing);
+    EXPECT_NE(text.find("... and " + std::to_string(kAutoStartFolderLimit - 40) + " more"),
+              std::string::npos) << text;
+}
+
+TEST(SecurityAuditTest, AFileNameCannotSteerTheTerminal) {
+    const FakeHome h;
+    h.file(".config/autostart/a\x1b[2K\x1b[1Aok.desktop");
+    h.file(".config/autostart-scripts/b\nc");
+    bool nothing = false;
+    const std::string first =
+        autoStartLines(findAutoStarts(h.home.string()), nothing).front();
+    EXPECT_EQ(first.find('\x1b'), std::string::npos);
+    EXPECT_EQ(first.find('\n'), std::string::npos);
+    EXPECT_NE(first.find("ok.desktop"), std::string::npos) << first;
+}
+
+TEST(SecurityAuditTest, AHomeThatIsNotThereIsSaidNotOk) {
+    for (const char* home : {"", "relative/home", "/nonexistent/nexus-test-home"}) {
+        const auto found = findAutoStarts(home);
+        EXPECT_FALSE(found.notRead.empty()) << home;
+        bool nothing = true;
+        autoStartLines(found, nothing);
+        EXPECT_FALSE(nothing) << home;
+    }
+}
+
+// ---------------------------------------------------------------------
+// Firewall suggestions (0.2.0, ledger item 11).
+
+TEST(SecurityAuditTest, FirewallFixesChangeSavedAndRunningAndReloadNothing) {
+    for (const char* change : {"--remove-port=1025-65535/tcp", "--remove-service=ssh",
+                               "--remove-service=kdeconnect", "--remove-source=<range>",
+                               "--change-interface=<name>"}) {
+        const std::string fix = firewallFix("FedoraWorkstation", change);
+        // Until 0.1.99: "... --permanent ... && sudo firewall-cmd --reload",
+        // which drops every rule that exists only in the running firewall.
+        EXPECT_EQ(fix.find("--reload"), std::string::npos) << fix;
+        EXPECT_EQ(fix.find("--complete-reload"), std::string::npos) << fix;
+        EXPECT_EQ(fix,
+                  std::string("sudo firewall-cmd --permanent --zone=FedoraWorkstation ") + change +
+                  " && sudo firewall-cmd --zone=FedoraWorkstation " + change);
+    }
+}
+
+TEST(SecurityAuditTest, TheOneReloadSaysWhatItDrops) {
+    const std::string back = firewallBackToSaved();
+    EXPECT_EQ(back.rfind("sudo firewall-cmd --reload", 0), 0u) << back;
+    EXPECT_NE(back.find("back to the saved rules"), std::string::npos) << back;
+    EXPECT_NE(back.find("dropped"), std::string::npos) << back;
+    EXPECT_NE(back.find("VPN"), std::string::npos) << back;
+    // And the way to keep them instead.
+    EXPECT_NE(back.find("--runtime-to-permanent"), std::string::npos) << back;
 }

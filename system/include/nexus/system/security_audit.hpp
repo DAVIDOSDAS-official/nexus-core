@@ -107,4 +107,64 @@ std::vector<LocalNetwork> parseIpAddresses(const std::string& output);
 // bridge here, or podman's or docker's default network.
 TrustedReach trustedReach(const ZoneInfo& zone, const std::vector<LocalNetwork>& local = {});
 
+// ---------------------------------------------------------------------
+// "Starts by itself" (0.2.0, ledger R4-L2).
+//
+// Until 0.1.99 this looked in two places, ~/.config/autostart and the
+// .service and .timer files of ~/.config/systemd/user, and said "ok"
+// about everything else. A .socket or .path unit, a drop-in that
+// rewrites another unit's command, a unit switched on by a link in
+// default.target.wants, a script KDE runs at login, a line in .bashrc:
+// none of them was seen.
+//
+// What is read is names, never contents: this says what is there, it
+// does not judge it. Folders are listed, at most kAutoStartFolderLimit
+// names each, and a folder that turns out to be somewhere other than
+// under the home folder (a link leading out of it) is not listed at
+// all -- under sudo that would be root reading out a folder the person
+// could not read themselves.
+inline constexpr std::size_t kAutoStartFolderLimit = 500;
+
+struct AutoStarts {
+    // What is set up to start without being asked, sorted:
+    // "foo.desktop", "sync.timer", "ssh-agent.service.d/override.conf",
+    // "default.target.wants/sync.service", "autostart-scripts/x.sh",
+    // "plasma-workspace/env/path.sh", "environment.d/10-vars.conf"...
+    std::vector<std::string> starts;
+    // Shell and login files that exist: ".bashrc", ".profile"... They
+    // run in every new shell or at every login. Named, not judged:
+    // nearly everyone has a .bashrc.
+    std::vector<std::string> shellFiles;
+    // Places that are there but were not, or not fully, read, each
+    // with why: "~/.config/autostart (a link that leads outside your
+    // home folder)".
+    std::vector<std::string> notRead;
+};
+
+// `home` is the person's home folder. Reads folder listings only.
+AutoStarts findAutoStarts(const std::string& home);
+
+// The audit's lines for it, without the "[ ok ]  Starts by itself"
+// in front: the first is the finding, the rest follow under it. The
+// last always says what was not looked at. `nothingFound` is true
+// when `starts` is empty and every place could be read.
+std::vector<std::string> autoStartLines(const AutoStarts& found, bool& nothingFound);
+
+// ---------------------------------------------------------------------
+// Firewall commands the audit suggests (0.2.0, ledger item 11).
+//
+// Until 0.1.99 they were "firewall-cmd --permanent <change> &&
+// firewall-cmd --reload". --reload throws away every rule that exists
+// only in the running firewall: a VPN's, a game's, one the person
+// added for this session. Now the change is made twice, in the saved
+// rules and in the running ones, and nothing is reloaded.
+//
+// change: "--remove-port=1025-65535/tcp", "--remove-service=ssh",
+// "--change-interface=<name>"... zone: the zone it applies to.
+std::string firewallFix(const std::string& zone, const std::string& change);
+
+// The one suggestion that is meant to bring the saved rules back, with
+// what it costs said beside it.
+std::string firewallBackToSaved();
+
 }  // namespace nexus::system

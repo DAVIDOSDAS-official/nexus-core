@@ -86,7 +86,8 @@ before touching anything. Dual boot with Windows is not supported.
 - **Next to your Linux.** `sudo nexus dualboot` lists the other systems
   on the disk; `sudo nexus dualboot 1 --apply` restarts straight into
   one, once. Each one starts through its own signed loader, so Secure
-  Boot stays on.
+  Boot stays on. USB sticks, SD cards and other disks that can be taken
+  out are not looked at unless you name one (`--disk /dev/sda`).
 - **Encrypted by default**, with signed images: an installed machine
   refuses an update that Nexus-CORE did not sign, and one that is older
   than the build it runs (an old build's signature stays good; going
@@ -107,7 +108,7 @@ nexus update [--apply]     what is new; take it
 nexus update notify off|on [--apply]   the daily "update available" check
 nexus app install|remove <flathub id> [--apply]
 nexus setup [add-ons] [--apply]
-nexus dualboot [add | remove | <number>] [--apply]
+nexus dualboot [add | remove | <number>] [--disk <path>] [--apply]
 nexus gamecheck <game>     will it run here, and what it can see
 nexus language [list | add | set] [--apply]
 nexus history              every change Nexus has made

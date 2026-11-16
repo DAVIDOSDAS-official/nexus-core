@@ -413,6 +413,17 @@ bool updateTookEffect(
     return !(running < wanted);
 }
 
+std::string machineTransactionLog() {
+    return "/var/lib/nexus/transactions.log";
+}
+
+std::string ownTransactionLog() {
+    if (const char* home = std::getenv("HOME")) {
+        return std::string(home) + "/.local/state/nexus/transactions.log";
+    }
+    return "";
+}
+
 std::vector<std::string> transactionLogPaths() {
     // Changes are made under sudo and read back without it, so the
     // account of what happened was written to one file and looked
@@ -421,34 +432,70 @@ std::vector<std::string> transactionLogPaths() {
     //
     // A tool that changes a system owes an account of what it did,
     // and an account only its author can see is not one.
-    std::vector<std::string> paths{"/var/lib/nexus/transactions.log"};
+    std::vector<std::string> paths{machineTransactionLog()};
 
-    if (const char* home = std::getenv("HOME")) {
-        paths.push_back(std::string(home) +
-                        "/.local/state/nexus/transactions.log");
+    const std::string own = ownTransactionLog();
+    if (!own.empty()) {
+        paths.push_back(own);
     }
 
     return paths;
 }
 
-std::vector<TransactionRecord> readAllTransactions() {
+bool isMachineRecord(const TransactionRecord& record) {
+    return record.source == TransactionSource::Machine;
+}
+
+InterruptedChanges interruptedChanges(
+    const std::vector<TransactionRecord>& records
+) {
+    InterruptedChanges found;
+
+    for (const TransactionRecord& record : records) {
+        if (!record.unfinished) {
+            continue;
+        }
+        (isMachineRecord(record) ? found.machine : found.own)
+            .push_back(record);
+    }
+
+    return found;
+}
+
+std::vector<TransactionRecord> readLabelledTransactions(
+    const std::string& machineLog,
+    const std::string& ownLog
+) {
+    // Each record keeps the name of the log it came from (0.2.0,
+    // ledger I3). Before, the two were merged without it, and a line
+    // anyone wrote into their own file read as a change root had made.
     std::vector<TransactionRecord> all;
 
-    for (const std::string& path : transactionLogPaths()) {
-        for (const TransactionRecord& record :
-             readTransactions(path)) {
-            all.push_back(record);
+    if (!machineLog.empty()) {
+        all = readTransactions(machineLog, TransactionSource::Machine);
+    }
+    if (!ownLog.empty()) {
+        for (TransactionRecord& record :
+             readTransactions(ownLog, TransactionSource::Own)) {
+            all.push_back(std::move(record));
         }
     }
 
-    // One machine's history rather than two files', oldest first.
-    std::sort(all.begin(), all.end(),
-              [](const TransactionRecord& left,
-                 const TransactionRecord& right) {
-                  return left.when < right.when;
-              });
+    // One list rather than two files', oldest first. Stable: at the
+    // same time the machine's record stays ahead of the person's own,
+    // so a line written to sit on top of root's cannot get in front.
+    std::stable_sort(all.begin(), all.end(),
+                     [](const TransactionRecord& left,
+                        const TransactionRecord& right) {
+                         return left.when < right.when;
+                     });
 
     return all;
+}
+
+std::vector<TransactionRecord> readAllTransactions() {
+    return readLabelledTransactions(machineTransactionLog(),
+                                    ownTransactionLog());
 }
 
 bool recordTransaction(
@@ -614,7 +661,8 @@ std::vector<TransactionRecord> unfinishedTransactions(
 }
 
 std::vector<TransactionRecord> readTransactions(
-    const std::string& path
+    const std::string& path,
+    TransactionSource source
 ) {
     std::vector<TransactionRecord> records;
 
@@ -662,6 +710,7 @@ std::vector<TransactionRecord> readTransactions(
 
         TransactionRecord record;
 
+        record.source = source;
         record.when = stanza.value("when");
         record.request = stanza.value("request");
         record.resolved = stanza.value("resolved");

@@ -290,3 +290,270 @@ TEST(Dualboot, AHostileLoaderNameNeverReachesGrub) {
     EXPECT_TRUE(isSafeFsUuid("8687-F76C"));
     EXPECT_TRUE(isSafeFsUuid("5e2a8b0c-1f3d-4c2e-9a7b-0d6e5f4c3b2a"));
 }
+
+// ---------------------------------------------------------------------
+// Disks that are plugged in (0.2.0, ledger item 10).
+//
+// Written by hand in the form `lsblk -J -b -o NAME,PATH,SIZE,TYPE,
+// FSTYPE,PARTTYPE,UUID,LABEL,MODEL,MOUNTPOINTS,RM,TRAN` prints (the
+// form itself was checked against util-linux 2.39.3: "rm" is true or
+// false, "tran" a word or null). The build machine has no USB stick and
+// no card slot, so these are not recordings of real hardware: an NVMe
+// disk with Nexus on it, a USB stick with another system on it, and an
+// SD card in a USB reader.
+static const char* kWithUsb = R"({
+   "blockdevices": [
+      {"name":"sda", "path":"/dev/sda", "size":30752636928, "type":"disk",
+       "fstype":null, "parttype":null, "uuid":null, "label":null,
+       "model":"Ultra Fit", "mountpoints":[null], "rm":true, "tran":"usb",
+       "children": [
+          {"name":"sda1", "path":"/dev/sda1", "size":536870912,
+           "type":"part", "fstype":"vfat",
+           "parttype":"c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
+           "uuid":"AAAA-0001", "label":null, "model":null,
+           "mountpoints":[null], "rm":true, "tran":null},
+          {"name":"sda2", "path":"/dev/sda2", "size":30214717440,
+           "type":"part", "fstype":"ext4",
+           "parttype":"0fc63daf-8483-4772-8e79-3d69d8477de4",
+           "uuid":"usb-root", "label":null, "model":null,
+           "mountpoints":[null], "rm":true, "tran":null}
+       ]},
+      {"name":"sdb", "path":"/dev/sdb", "size":63864569856, "type":"disk",
+       "fstype":null, "parttype":null, "uuid":null, "label":null,
+       "model":"STORAGE DEVICE", "mountpoints":[null], "rm":true,
+       "tran":"usb",
+       "children": [
+          {"name":"sdb1", "path":"/dev/sdb1", "size":63863521280,
+           "type":"part", "fstype":"ext4",
+           "parttype":"0fc63daf-8483-4772-8e79-3d69d8477de4",
+           "uuid":"card-root", "label":null, "model":null,
+           "mountpoints":[null], "rm":true, "tran":null}
+       ]},
+      {"name":"nvme0n1", "path":"/dev/nvme0n1", "size":256060514304,
+       "type":"disk", "fstype":null, "parttype":null, "uuid":null,
+       "label":null, "model":"WDC PC SN520", "mountpoints":[null],
+       "rm":false, "tran":"nvme",
+       "children": [
+          {"name":"nvme0n1p1", "path":"/dev/nvme0n1p1", "size":629145600,
+           "type":"part", "fstype":"vfat",
+           "parttype":"c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
+           "uuid":"2C1A-77B0", "label":null, "model":null,
+           "mountpoints":["/boot/efi"], "rm":false, "tran":"nvme"},
+          {"name":"nvme0n1p2", "path":"/dev/nvme0n1p2", "size":102400000000,
+           "type":"part", "fstype":"ext4",
+           "parttype":"0fc63daf-8483-4772-8e79-3d69d8477de4",
+           "uuid":"mint-root", "label":null, "model":null,
+           "mountpoints":[null], "rm":false, "tran":"nvme"},
+          {"name":"nvme0n1p3", "path":"/dev/nvme0n1p3", "size":150323855360,
+           "type":"part", "fstype":"xfs",
+           "parttype":"0fc63daf-8483-4772-8e79-3d69d8477de4",
+           "uuid":"nexus-root", "label":null, "model":null,
+           "mountpoints":["/sysroot"], "rm":false, "tran":"nvme"}
+       ]}
+   ]
+})";
+
+namespace {
+
+std::vector<std::string> pathsOf(const std::vector<BlockDevice>& devices) {
+    std::vector<std::string> paths;
+    for (const auto& device : devices) paths.push_back(device.path);
+    return paths;
+}
+
+std::vector<std::string> otherPaths(const std::vector<BlockDevice>& devices) {
+    std::vector<std::string> paths;
+    for (const auto* part : otherPartitions(devices)) paths.push_back(part->path);
+    return paths;
+}
+
+std::string joined(const std::vector<std::string>& lines) {
+    std::string all;
+    for (const auto& line : lines) all += line + "\n";
+    return all;
+}
+
+}  // namespace
+
+TEST(Dualboot, AUsbDiskIsNotLookedAtUnlessNamed) {
+    std::string error;
+    const auto devices = parseLsblk(kWithUsb, error);
+    ASSERT_TRUE(error.empty()) << error;
+    ASSERT_EQ(devices.size(), 3u);
+    EXPECT_TRUE(devices[0].removable);
+    EXPECT_EQ(devices[0].transport, "usb");
+    EXPECT_EQ(portableKind(devices[0]), "USB disk");
+    EXPECT_EQ(portableKind(devices[2]), "");
+
+    // Before 0.2.0: the stick's and the card's partitions were looked
+    // into with the internal disk's.
+    EXPECT_EQ(otherPaths(devices),
+              (std::vector<std::string>{"/dev/sda2", "/dev/sdb1", "/dev/nvme0n1p2"}));
+
+    const auto choice = chooseDisks(devices, {}, "/dev/nvme0n1");
+    EXPECT_EQ(pathsOf(choice.looked), std::vector<std::string>{"/dev/nvme0n1"});
+    EXPECT_EQ(pathsOf(choice.skipped),
+              (std::vector<std::string>{"/dev/sda", "/dev/sdb"}));
+    EXPECT_TRUE(choice.unknown.empty());
+    EXPECT_TRUE(choice.notFound.empty());
+    // Only the internal disk's other system is left, and no EFI
+    // partition of a plugged-in disk is among what is read.
+    EXPECT_EQ(otherPaths(choice.looked), std::vector<std::string>{"/dev/nvme0n1p2"});
+    for (const auto& disk : choice.looked) {
+        for (const auto& part : disk.children) {
+            EXPECT_NE(part.path, "/dev/sda1");
+        }
+    }
+    // Nothing of a skipped disk is carried along to be read by mistake.
+    for (const auto& disk : choice.skipped) {
+        EXPECT_TRUE(disk.children.empty()) << disk.path;
+    }
+
+    // Named: that one is looked at, the other still is not. A partition
+    // names its disk.
+    for (const char* name : {"/dev/sda", "/dev/sda2"}) {
+        const auto asked = chooseDisks(devices, {name}, "/dev/nvme0n1");
+        EXPECT_EQ(pathsOf(asked.looked),
+                  (std::vector<std::string>{"/dev/sda", "/dev/nvme0n1"})) << name;
+        EXPECT_EQ(pathsOf(asked.skipped), std::vector<std::string>{"/dev/sdb"}) << name;
+        EXPECT_EQ(otherPaths(asked.looked),
+                  (std::vector<std::string>{"/dev/sda2", "/dev/nvme0n1p2"})) << name;
+    }
+}
+
+TEST(Dualboot, SkippedDisksAreSaidWithHowToIncludeThem) {
+    std::string error;
+    const auto devices = parseLsblk(kWithUsb, error);
+
+    const std::string two = joined(skippedDiskLines(chooseDisks(devices, {}, "/dev/nvme0n1")));
+    EXPECT_NE(two.find("2 USB disks not looked at:"), std::string::npos) << two;
+    EXPECT_NE(two.find("/dev/sda  (Ultra Fit, 28.6 GiB)"), std::string::npos) << two;
+    EXPECT_NE(two.find("/dev/sdb  (STORAGE DEVICE, 59.5 GiB)"), std::string::npos) << two;
+    EXPECT_NE(two.find("sudo nexus dualboot --disk /dev/sda\n"), std::string::npos) << two;
+
+    const std::string one =
+        joined(skippedDiskLines(chooseDisks(devices, {"/dev/sda"}, "/dev/nvme0n1")));
+    EXPECT_NE(one.find("1 USB disk not looked at:"), std::string::npos) << one;
+    EXPECT_NE(one.find("sudo nexus dualboot --disk /dev/sdb\n"), std::string::npos) << one;
+    EXPECT_EQ(one.find("/dev/sda "), std::string::npos) << one;
+
+    // Everything named, or nothing plugged in: nothing to say.
+    EXPECT_TRUE(skippedDiskLines(
+        chooseDisks(devices, {"/dev/sda", "/dev/sdb"}, "/dev/nvme0n1")).empty());
+}
+
+TEST(Dualboot, RemovableIsReadHoweverLsblkWritesIt) {
+    // true / false since util-linux 2.33; "1" / "0" before; a bare
+    // number in between, and from other tools that write this form.
+    struct Case { const char* rm; bool known; bool removable; };
+    for (const Case& c : {Case{"true", true, true}, Case{"false", true, false},
+                          Case{"\"1\"", true, true}, Case{"\"0\"", true, false},
+                          Case{"1", true, true}, Case{"0", true, false},
+                          Case{"\"true\"", true, true}, Case{"\" 1 \"", true, true},
+                          Case{"null", false, false}, Case{"\"\"", false, false},
+                          Case{"\"yes\"", false, false}, Case{"[1]", false, false},
+                          Case{"2", false, false}}) {
+        const std::string json = std::string(
+            R"({"blockdevices":[{"name":"sdx","path":"/dev/sdx","type":"disk","rm":)") +
+            c.rm + R"(,"children":[{"name":"sdx1","path":"/dev/sdx1","type":"part","fstype":"ext4"}]}]})";
+        std::string error;
+        const auto devices = parseLsblk(json, error);
+        ASSERT_TRUE(error.empty()) << c.rm << ": " << error;
+        ASSERT_EQ(devices.size(), 1u);
+        EXPECT_EQ(devices[0].removableKnown, c.known) << c.rm;
+        EXPECT_EQ(devices[0].removable, c.removable) << c.rm;
+        EXPECT_EQ(chooseDisks(devices, {}, "").skipped.size(), c.removable ? 1u : 0u) << c.rm;
+    }
+
+    // TRAN in any case, with spaces around it.
+    std::string error;
+    const auto usb = parseLsblk(
+        R"({"blockdevices":[{"name":"sdx","path":"/dev/sdx","type":"disk","rm":false,"tran":" USB "}]})",
+        error);
+    ASSERT_EQ(usb.size(), 1u);
+    // An external disk in a USB case says "not removable" and is USB.
+    EXPECT_EQ(portableKind(usb[0]), "USB disk");
+}
+
+TEST(Dualboot, AMissingRemovableFieldIsBuiltInAndSaid) {
+    // The Asus fixture is from before RM and TRAN were asked for: an
+    // lsblk that gives neither.
+    std::string error;
+    const auto devices = parseLsblk(kAsus, error);
+    const auto choice = chooseDisks(devices, {}, "/dev/nvme0n1");
+    EXPECT_TRUE(choice.skipped.empty());
+    EXPECT_EQ(choice.looked.size(), devices.size());
+    // Said for the disk with partitions; zram has nothing to look in.
+    EXPECT_EQ(choice.unknown, std::vector<std::string>{"/dev/nvme0n1"});
+    const std::string said = joined(skippedDiskLines(choice));
+    EXPECT_NE(said.find("does not say whether /dev/nvme0n1 is removable"),
+              std::string::npos) << said;
+    EXPECT_NE(said.find("looked at"), std::string::npos) << said;
+    // What it finds is what it found before.
+    EXPECT_EQ(otherPaths(choice.looked), std::vector<std::string>{"/dev/nvme0n1p2"});
+}
+
+TEST(Dualboot, TheDiskThisSystemRunsFromIsAlwaysLookedAt) {
+    // Nexus installed on the USB disk: its neighbours on that disk are
+    // still its neighbours. The card is still left out.
+    std::string error;
+    const auto devices = parseLsblk(kWithUsb, error);
+    const auto choice = chooseDisks(devices, {}, "/dev/sda");
+    EXPECT_EQ(pathsOf(choice.looked),
+              (std::vector<std::string>{"/dev/sda", "/dev/nvme0n1"}));
+    EXPECT_EQ(pathsOf(choice.skipped), std::vector<std::string>{"/dev/sdb"});
+}
+
+TEST(Dualboot, ADiskThatIsNotThereIsSaid) {
+    std::string error;
+    const auto devices = parseLsblk(kWithUsb, error);
+    const auto choice = chooseDisks(devices, {"/dev/sdz", "/dev/sda"}, "/dev/nvme0n1");
+    EXPECT_EQ(choice.notFound, std::vector<std::string>{"/dev/sdz"});
+    // A name is a whole path: "/dev/sd" is not /dev/sda.
+    EXPECT_EQ(chooseDisks(devices, {"/dev/sd"}, "").notFound,
+              std::vector<std::string>{"/dev/sd"});
+    EXPECT_EQ(chooseDisks(devices, {""}, "").notFound, std::vector<std::string>{""});
+}
+
+TEST(Dualboot, ACardInABuiltInSlotIsLeftOutByWhatTheKernelCallsIt) {
+    // A card slot on the mainboard: lsblk says mmc and "not removable"
+    // for a card and for soldered storage alike. The CLI reads the
+    // kernel's word for it (SD or MMC) into cardType.
+    std::string error;
+    auto devices = parseLsblk(
+        R"({"blockdevices":[
+            {"name":"mmcblk0","path":"/dev/mmcblk0","type":"disk","size":31914983424,
+             "model":null,"rm":false,"tran":"mmc",
+             "children":[{"name":"mmcblk0p1","path":"/dev/mmcblk0p1","type":"part","fstype":"ext4"}]},
+            {"name":"mmcblk1","path":"/dev/mmcblk1","type":"disk","size":62537072640,
+             "model":null,"rm":false,"tran":"mmc",
+             "children":[{"name":"mmcblk1p1","path":"/dev/mmcblk1p1","type":"part","fstype":"ext4"}]}
+        ]})", error);
+    ASSERT_EQ(devices.size(), 2u);
+    // Without the kernel's word, neither is known to be a card.
+    EXPECT_TRUE(chooseDisks(devices, {}, "").skipped.empty());
+
+    devices[0].cardType = "SD";
+    devices[1].cardType = "MMC";
+    EXPECT_EQ(portableKind(devices[0]), "SD card");
+    EXPECT_EQ(portableKind(devices[1]), "");
+    const auto choice = chooseDisks(devices, {}, "");
+    EXPECT_EQ(pathsOf(choice.skipped), std::vector<std::string>{"/dev/mmcblk0"});
+    EXPECT_EQ(pathsOf(choice.looked), std::vector<std::string>{"/dev/mmcblk1"});
+    const std::string said = joined(skippedDiskLines(choice));
+    EXPECT_NE(said.find("1 SD card not looked at:"), std::string::npos) << said;
+    EXPECT_NE(said.find("--disk /dev/mmcblk0"), std::string::npos) << said;
+}
+
+TEST(Dualboot, ASkippedDisksNameCannotSteerTheTerminal) {
+    std::string error;
+    const auto devices = parseLsblk(
+        "{\"blockdevices\":[{\"name\":\"sdx\",\"path\":\"/dev/sdx\",\"type\":\"disk\","
+        "\"rm\":true,\"tran\":\"usb\",\"model\":\"Evil\\u001b[2J\\u001b]0;x\\u0007\"}]}",
+        error);
+    ASSERT_EQ(devices.size(), 1u);
+    const std::string said = joined(skippedDiskLines(chooseDisks(devices, {}, "")));
+    EXPECT_EQ(said.find('\x1b'), std::string::npos);
+    EXPECT_EQ(said.find('\x07'), std::string::npos);
+    EXPECT_NE(said.find("Evil"), std::string::npos) << said;
+}

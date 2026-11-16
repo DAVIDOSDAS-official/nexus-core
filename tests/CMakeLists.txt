@@ -117,6 +117,13 @@ add_test(NAME UpdateTrust
          COMMAND bash ${PROJECT_SOURCE_DIR}/tests/update-trust-check.sh $<TARGET_FILE:nexus>)
 set_tests_properties(UpdateTrust PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300 RUN_SERIAL TRUE)
 
+# `nexus history` and `nexus doctor` say which log a row came from, and
+# a line a person wrote into their own log is never the machine's
+# history (0.2.0, ledger I3). Reads only; a made-up home folder.
+add_test(NAME HistoryLabels
+         COMMAND bash ${PROJECT_SOURCE_DIR}/tests/history-labels-check.sh $<TARGET_FILE:nexus>)
+set_tests_properties(HistoryLabels PROPERTIES TIMEOUT 300)
+
 # The nexus that was just built is hardened the way CMakeLists.txt asks:
 # read from the program, not from the flags (0.1.87; 0.1.88 for the
 # protections beyond the first five). What is expected is what this

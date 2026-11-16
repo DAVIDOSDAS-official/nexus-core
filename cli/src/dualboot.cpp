@@ -159,7 +159,11 @@ std::vector<nexus::system::EfiLoader> readLoaders(
 struct DiskPicture {
     std::string error;
     std::vector<nexus::system::BlockDevice> devices;
+    // Which disks were looked at for other systems, and which were
+    // left out because they are plugged in (0.2.0, ledger item 10).
+    nexus::system::DiskChoice choice;
     std::string thisName;
+    std::string thisDisk;
     std::string thisPartition;
     std::uint64_t thisSize = 0;
     bool thisEncrypted = false;
@@ -188,6 +192,7 @@ bool findThisSystem(const nexus::system::BlockDevice& device,
             picture.thisSize = partition->size;
             picture.thisEncrypted = encrypted;
             if (disk) {
+                picture.thisDisk = disk->path;
                 picture.diskModel = disk->model;
                 picture.diskSize = disk->size;
             }
@@ -202,11 +207,35 @@ bool findThisSystem(const nexus::system::BlockDevice& device,
     return false;
 }
 
-DiskPicture lookAtDisk() {
+// What the kernel calls a card on the mmc bus: "SD" for a card in a
+// slot, "MMC" for storage soldered to the board (0.2.0, ledger item
+// 10). lsblk shows both as mmc and "not removable". A few bytes of
+// /sys, and only for a name made of letters and digits.
+std::string mmcCardType(const std::string& name) {
+    if (name.empty() ||
+        !std::all_of(name.begin(), name.end(), [](unsigned char c) {
+            return std::isalnum(c) != 0;
+        })) {
+        return "";
+    }
+    std::ifstream in("/sys/block/" + name + "/device/type");
+    char text[16] = {};
+    in.read(text, sizeof text - 1);
+    std::string type(text, static_cast<std::size_t>(in.gcount()));
+    while (!type.empty() && (type.back() == '\n' || type.back() == ' ')) {
+        type.pop_back();
+    }
+    return type;
+}
+
+// named: the disks the person asked for with --disk.
+DiskPicture lookAtDisk(const std::vector<std::string>& named) {
     DiskPicture picture;
+    // RM and TRAN: whether a disk can be taken out, and how it is
+    // connected (0.2.0, ledger item 10).
     const auto listed = nexus::system::runCommand(
         "lsblk -J -b -o NAME,PATH,SIZE,TYPE,FSTYPE,PARTTYPE,UUID,LABEL,"
-        "MODEL,MOUNTPOINTS", false);
+        "MODEL,MOUNTPOINTS,RM,TRAN", false);
     if (listed.exitCode != 0) {
         picture.error = "lsblk did not answer (exit " +
                         std::to_string(listed.exitCode) + ").";
@@ -225,10 +254,23 @@ DiskPicture lookAtDisk() {
     picture.thisName = nexus::system::systemName(
         nexus::system::parseOsRelease(readWholeFile("/etc/os-release")));
 
+    // USB sticks, SD cards and other disks that can be taken out are
+    // not looked into, and nothing on them reaches the boot menu,
+    // unless the person names the disk (0.2.0, ledger item 10). The
+    // disk this system runs from is always looked at.
+    for (auto& device : picture.devices) {
+        if (device.transport == "mmc" || device.name.rfind("mmcblk", 0) == 0) {
+            device.cardType = mmcCardType(device.name);
+        }
+    }
+    picture.choice = nexus::system::chooseDisks(picture.devices, named,
+                                                picture.thisDisk);
+    const auto& looked = picture.choice.looked;
+
     picture.lookedInside = nexus::system::haveRootPrivileges();
 
     std::vector<nexus::system::OtherSystem> systems;
-    for (const auto* part : nexus::system::otherPartitions(picture.devices)) {
+    for (const auto* part : nexus::system::otherPartitions(looked)) {
         nexus::system::OtherSystem system;
         system.partition = part->path;
         system.fstype = part->fstype;
@@ -262,7 +304,7 @@ DiskPicture lookAtDisk() {
 
     std::vector<nexus::system::EfiLoader> loaders;
     if (picture.lookedInside) {
-        for (const auto& disk : picture.devices) {
+        for (const auto& disk : looked) {
             for (const auto& part : disk.children) {
                 if (nexus::system::isEfiPartition(part) &&
                     !nexus::system::inUse(part)) {
@@ -273,8 +315,20 @@ DiskPicture lookAtDisk() {
         }
     }
     picture.systems =
-        nexus::system::matchSystems(systems, loaders, picture.devices);
+        nexus::system::matchSystems(systems, loaders, looked);
     return picture;
+}
+
+// The disks that were left out, and how to include them.
+void showSkippedDisks(const DiskPicture& picture) {
+    const auto lines = nexus::system::skippedDiskLines(picture.choice);
+    if (lines.empty()) {
+        return;
+    }
+    std::cout << "\n";
+    for (const auto& line : lines) {
+        std::cout << line << "\n";
+    }
 }
 
 void showDiskPicture(const DiskPicture& picture,
@@ -335,6 +389,8 @@ void showDiskPicture(const DiskPicture& picture,
         }
         std::cout << ".\n";
     }
+
+    showSkippedDisks(picture);
 
     if (!picture.lookedInside) {
         std::cout
@@ -401,17 +457,33 @@ bool writeGrubCustom(const std::string& text, std::string& error) {
 
 int commandDualboot(
 
-    const std::vector<std::string>& words,
+    const std::vector<std::string>& raw,
     bool apply,
     bool assumeYes,
     const std::string& invocation
 ) {
+    // --disk <path>: also look at a disk that is plugged in (0.2.0,
+    // ledger item 10). Its own option, like `nexus server`'s: main
+    // hands unknown words through.
+    std::vector<std::string> words;
+    std::vector<std::string> named;
+    bool badOption = false;
+    for (std::size_t i = 0; i < raw.size(); ++i) {
+        if (raw[i] == "--disk" && i + 1 < raw.size()) {
+            named.push_back(raw[++i]);
+        } else if (!raw[i].empty() && raw[i][0] == '-') {
+            badOption = true;
+        } else {
+            words.push_back(raw[i]);
+        }
+    }
+
     const std::string action = words.empty() ? "" : words[0];
     const bool isNumber =
         !action.empty() &&
         action.find_first_not_of("0123456789") == std::string::npos;
 
-    if (words.size() > 1 ||
+    if (badOption || words.size() > 1 ||
         !(action.empty() || action == "add" || action == "remove" ||
           isNumber)) {
         std::cerr << "Use: nexus dualboot              the systems on "
@@ -420,18 +492,44 @@ int commandDualboot(
                      "boot menu\n"
                      "     nexus dualboot remove       take them out again\n"
                      "     nexus dualboot <number>     restart into that "
-                     "one, once\n";
+                     "one, once\n"
+                     "     --disk /dev/sdX             also look at that USB "
+                     "or removable disk\n";
         return 2;
     }
 
     const std::string current = readWholeFile(kGrubCustom);
     const auto inMenu = nexus::system::entryIdsInBlock(current);
 
+    // A --disk that names nothing here: say which disks there are,
+    // rather than quietly looking at none of them.
+    const auto noSuchDisk = [](const DiskPicture& picture) {
+        if (picture.choice.notFound.empty()) {
+            return false;
+        }
+        for (const auto& path : picture.choice.notFound) {
+            std::cerr << "There is no disk " << nexus::system::printable(path)
+                      << " here.\n";
+        }
+        std::string disks;
+        for (const auto& device : picture.devices) {
+            if (device.type == "disk" && !device.children.empty()) {
+                disks += " " + nexus::system::printable(device.path);
+            }
+        }
+        std::cerr << "Disks with partitions here:"
+                  << (disks.empty() ? std::string(" none") : disks) << "\n";
+        return true;
+    };
+
     if (action.empty()) {
-        const DiskPicture picture = lookAtDisk();
+        const DiskPicture picture = lookAtDisk(named);
         if (!picture.error.empty()) {
             std::cerr << picture.error << "\n";
             return 1;
+        }
+        if (noSuchDisk(picture)) {
+            return 2;
         }
         showDiskPicture(picture, inMenu);
         return 0;
@@ -445,10 +543,13 @@ int commandDualboot(
         return 1;
     }
 
-    const DiskPicture picture = lookAtDisk();
+    const DiskPicture picture = lookAtDisk(named);
     if (!picture.error.empty()) {
         std::cerr << picture.error << "\n";
         return 1;
+    }
+    if (noSuchDisk(picture)) {
+        return 2;
     }
 
     nexus::system::TransactionRecord record;
@@ -481,6 +582,20 @@ int commandDualboot(
                               << system.loader.partition << "\n";
                 }
             }
+            // Nexus's part of the menu is written anew from what was
+            // found now. An entry whose system is not among them goes,
+            // and that is said (0.2.0: one on a USB disk, added before
+            // USB disks were left out, would have gone without a word).
+            for (const auto& id : inMenu) {
+                const bool still = std::any_of(
+                    picture.systems.begin(), picture.systems.end(),
+                    [&id](const auto& system) { return system.entryId == id; });
+                if (!still) {
+                    std::cout << "  Take \"" << nexus::system::printable(id)
+                              << "\" out of the boot menu: its system was "
+                                 "not found this time\n";
+                }
+            }
         } else {
             std::cout << "  Take the other systems out of the boot menu ("
                       << inMenu.size() << ")\n";
@@ -496,6 +611,9 @@ int commandDualboot(
                   << kGrubCustom << "\n";
         std::cout << "\nThe boot menu shows for a few seconds at every "
                      "start; pick the system\nwith the arrow keys.\n";
+        if (add) {
+            showSkippedDisks(picture);
+        }
 
         if (!apply) {
             std::cout << "\nNothing has been changed. To do it:\n    sudo "

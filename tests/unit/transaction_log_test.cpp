@@ -693,3 +693,155 @@ TEST(TransactionLogTest, TheLogIsNotReadableByOtherAccounts) {
         }
     }
 }
+
+// ---------------------------------------------------------------------
+// Which log a record came from (0.2.0, ledger I3).
+
+namespace {
+
+void writeLog(const std::string& path, const std::string& text) {
+    std::ofstream(path) << text;
+}
+
+}  // namespace
+
+// A person can write anything into their own log. Until 0.1.99 such a
+// line was merged with root's and read as this machine's history.
+TEST(TransactionLogTest, AForgedLineInTheOwnLogIsLabelledAndNeverTheMachines) {
+    using nexus::system::TransactionSource;
+    const std::string machine = temporaryLog();
+    const std::string own = temporaryLog();
+
+    TransactionRecord real;
+    real.when = "2026-11-10T10:00:00Z";
+    real.request = "vlc";
+    real.resolved = "vlc";
+    real.packages = {"vlc"};
+    real.outcome = "staged";
+    real.succeeded = true;
+    ASSERT_TRUE(recordTransaction(machine, real));
+
+    // Written by hand, not by nexus: says it is applied, names itself
+    // root's, and tries to pass as a line of the other file.
+    writeLog(own,
+             "When: 2026-11-11T11:00:00Z\n"
+             "Request: update\n"
+             "Resolved: Nexus 9.9.9\n"
+             "Outcome: applied\n"
+             "Exit: 0\n"
+             "Source: machine\n"
+             "Log: /var/lib/nexus/transactions.log\n"
+             "Added: backdoor\n"
+             "\n");
+
+    const auto records = nexus::system::readLabelledTransactions(machine, own);
+    ASSERT_EQ(records.size(), 2u);
+
+    EXPECT_EQ(records[0].request, "vlc");
+    EXPECT_EQ(records[0].source, TransactionSource::Machine);
+    EXPECT_TRUE(nexus::system::isMachineRecord(records[0]));
+
+    EXPECT_EQ(records[1].request, "update");
+    EXPECT_EQ(records[1].outcome, "applied");          // shown as written...
+    EXPECT_EQ(records[1].source, TransactionSource::Own);   // ...and as the person's
+    EXPECT_FALSE(nexus::system::isMachineRecord(records[1]));
+
+    // The same file read without saying whose it is: not the machine's
+    // either. Not knowing is not "root's".
+    const auto unnamed = readTransactions(own);
+    ASSERT_EQ(unnamed.size(), 1u);
+    EXPECT_EQ(unnamed[0].source, TransactionSource::Unknown);
+    EXPECT_FALSE(nexus::system::isMachineRecord(unnamed[0]));
+
+    // No own log, or none of either: nothing invented.
+    EXPECT_EQ(nexus::system::readLabelledTransactions(machine, "").size(), 1u);
+    EXPECT_TRUE(nexus::system::readLabelledTransactions("", "").empty());
+    for (const auto& record : nexus::system::readLabelledTransactions("", own)) {
+        EXPECT_EQ(record.source, TransactionSource::Own);
+    }
+}
+
+// `nexus doctor` warns about a change that began and never ended. A
+// "started" line in a person's own file is not one root left half-done.
+TEST(TransactionLogTest, AnInterruptedChangeCountsOnlyFromTheMachinesLog) {
+    const std::string machine = temporaryLog();
+    const std::string own = temporaryLog();
+
+    writeLog(own,
+             "When: 2026-11-11T11:00:00Z\n"
+             "Marker: 2026-11-11T11:00:00Z/4242\n"
+             "Request: install everything\n"
+             "Resolved: everything\n"
+             "Outcome: started\n"
+             "Exit: 0\n"
+             "\n");
+
+    auto split = nexus::system::interruptedChanges(
+        nexus::system::readLabelledTransactions(machine, own));
+    EXPECT_TRUE(split.machine.empty());
+    ASSERT_EQ(split.own.size(), 1u);
+    EXPECT_EQ(split.own[0].request, "install everything");
+
+    // One that root really began is counted, beside it.
+    TransactionRecord begun;
+    begun.when = "2026-11-12T09:00:00Z";
+    begun.request = "gimp";
+    ASSERT_FALSE(nexus::system::beginTransaction(machine, begun).empty());
+
+    split = nexus::system::interruptedChanges(
+        nexus::system::readLabelledTransactions(machine, own));
+    ASSERT_EQ(split.machine.size(), 1u);
+    EXPECT_EQ(split.machine[0].request, "gimp");
+    EXPECT_EQ(split.own.size(), 1u);
+
+    // A record from nobody knows where never counts as the machine's.
+    split = nexus::system::interruptedChanges(readTransactions(machine));
+    EXPECT_TRUE(split.machine.empty());
+    EXPECT_EQ(split.own.size(), 1u);
+}
+
+// Oldest first; at the same second root's record stays in front, so a
+// line written to sit on top of root's cannot get ahead of it.
+TEST(TransactionLogTest, AtTheSameTimeTheMachinesRecordComesFirst) {
+    const std::string machine = temporaryLog();
+    const std::string own = temporaryLog();
+    for (const auto& [path, name] : {std::pair{own, "theirs"}, std::pair{machine, "roots"}}) {
+        TransactionRecord record;
+        record.when = "2026-11-10T10:00:00Z";
+        record.request = name;
+        record.outcome = "applied";
+        ASSERT_TRUE(recordTransaction(path, record));
+    }
+    TransactionRecord earlier;
+    earlier.when = "2026-11-09T10:00:00Z";
+    earlier.request = "earlier";
+    earlier.outcome = "applied";
+    ASSERT_TRUE(recordTransaction(own, earlier));
+
+    const auto records = nexus::system::readLabelledTransactions(machine, own);
+    ASSERT_EQ(records.size(), 3u);
+    EXPECT_EQ(records[0].request, "earlier");
+    EXPECT_EQ(records[1].request, "roots");
+    EXPECT_EQ(records[2].request, "theirs");
+}
+
+// 0.1.99 -> 0.2.0: the step must read as newer, not as "0.2" < "0.1.99".
+TEST(TransactionLogTest, AnUpdateAcrossAVersionStepTookEffect) {
+    TransactionRecord update;
+    update.request = "update";
+    update.outcome = "staged";
+    update.when = "2026-11-15T10:00:00Z";
+    const std::string booted = "2026-11-15T12:00:00Z";
+
+    update.resolved = "Nexus 0.2.0";
+    EXPECT_TRUE(nexus::system::updateTookEffect(update, "0.2.0", booted));
+    EXPECT_TRUE(nexus::system::updateTookEffect(update, "0.2.1", booted));
+    EXPECT_FALSE(nexus::system::updateTookEffect(update, "0.1.99", booted));
+    EXPECT_FALSE(nexus::system::updateTookEffect(update, "0.1.100", booted));
+
+    update.resolved = "Nexus 0.1.99";
+    EXPECT_TRUE(nexus::system::updateTookEffect(update, "0.2.0", booted));
+    update.resolved = "Nexus 0.1.100";
+    EXPECT_TRUE(nexus::system::updateTookEffect(update, "0.2.0", booted));
+    EXPECT_FALSE(nexus::system::updateTookEffect(update, "0.1.99", booted));
+}

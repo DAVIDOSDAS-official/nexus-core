@@ -149,23 +149,30 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
                                            : "on " + now.interfaces;
                     if (reach == TrustedReach::Network)
                         line("FAIL", "Firewall", "zone " + zone + " lets everything in " + what + ".",
+                             // Saved and running rules both, nothing
+                             // reloaded (0.2.0, ledger item 11): a
+                             // reload drops every rule that was added
+                             // for this session only.
                              !now.sources.empty()
-                                 ? "sudo firewall-cmd --permanent --zone=" + zone + " --remove-source=<range> && sudo firewall-cmd --reload"
-                                 : "sudo firewall-cmd --permanent --zone=public --change-interface=<name> && sudo firewall-cmd --reload");
+                                 ? nexus::system::firewallFix(zone, "--remove-source=<range>")
+                                 : nexus::system::firewallFix("public", "--change-interface=<name>"));
                     else if (reach == TrustedReach::Tunnel)
                         line("warn", "Firewall", "zone " + zone + " lets everything in " + what +
                              ": whoever is at the other end of that tunnel reaches every port.",
-                             "if this machine serves nothing over it: sudo firewall-cmd --permanent --zone=public --change-interface=<name>");
+                             "if this machine serves nothing over it: " +
+                             nexus::system::firewallFix("public", "--change-interface=<name>"));
                     else
                         line(" ok ", "Firewall", "zone " + zone + " lets everything in " + what +
                              " (this machine's own containers and VMs: they can reach every port here).");
                 } else if (!wide.empty()) {
                     line("warn", "Firewall", "zone " + zone + " opens " + wide + ": any program listening there is reachable.",
-                         "sudo firewall-cmd --permanent --zone=" + zone + " --remove-port=" + wide + " && sudo firewall-cmd --reload");
+                         nexus::system::firewallFix(zone, "--remove-port=" + wide));
                 } else if (differs) {
                     line("warn", "Firewall", "zone " + zone + " runs with other rules than it has saved"
                          " (now: " + (lets.empty() ? std::string("nothing") : lets) + ").",
-                         "sudo firewall-cmd --reload   (back to the saved rules)");
+                         // The one reload that is meant: it says
+                         // what goes with it (0.2.0, ledger item 11).
+                         nexus::system::firewallBackToSaved());
                 } else {
                     line(" ok ", "Firewall", "on, zone " + zone + (lets.empty() ? ": lets nothing in." : "; lets in: " + lets));
                 }
@@ -180,7 +187,7 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
                     if (ssh && firstLine(runCommand("systemctl is-enabled sshd.service 2>/dev/null", false).text) != "enabled")
                         line("warn", "Firewall", "zone " + zone + " still lets ssh in, with remote login off:"
                              " turning sshd on would open it at once.",
-                             "sudo firewall-cmd --permanent --zone=" + zone + " --remove-service=ssh && sudo firewall-cmd --reload");
+                             nexus::system::firewallFix(zone, "--remove-service=ssh"));
                     // KDE Connect's ports with no KDE Connect (0.1.82).
                     std::istringstream kv(now.services + " " + saved.services);
                     bool kde = false;
@@ -189,7 +196,7 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
                         !runCommand("rpm -q kdeconnectd > /dev/null 2>&1", false).ok)
                         line("warn", "Firewall", "zone " + zone + " lets KDE Connect's ports in, and KDE Connect is"
                              " not installed.",
-                             "sudo firewall-cmd --permanent --zone=" + zone + " --remove-service=kdeconnect && sudo firewall-cmd --reload");
+                             nexus::system::firewallFix(zone, "--remove-service=kdeconnect"));
                 }
                 any = true;
             }
@@ -371,8 +378,11 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
     }
 
     {
-        // What starts by itself for this person: where unwanted things hide.
-        std::vector<std::string> starts;
+        // What starts by itself for this person: where unwanted things
+        // hide. Every place a login or a new shell runs something from
+        // (0.2.0, ledger R4-L2; until then two folders, and "ok" about
+        // the rest) -- see findAutoStarts for what is read and what is
+        // not followed.
         // Under sudo, HOME may be root's: look at the person who ran sudo.
         std::string home;
         if (const char* su = std::getenv("SUDO_USER")) {
@@ -380,25 +390,14 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
         } else if (const char* hh = std::getenv("HOME")) {
             home = hh;
         }
-        const char* h = home.empty() ? nullptr : home.c_str();
-        if (h) {
-            std::error_code ec;
-            for (const std::string dir : {std::string(h) + "/.config/autostart", std::string(h) + "/.config/systemd/user"}) {
-                if (!fs::is_directory(dir, ec)) continue;
-                for (const auto& e : fs::directory_iterator(dir, ec)) {
-                    const auto name = e.path().filename().string();
-                    const auto ext = e.path().extension().string();
-                    if (ext == ".desktop" || ext == ".service" || ext == ".timer") starts.push_back(name);
-                }
-            }
-        }
-        if (h) {
-            if (starts.empty()) line(" ok ", "Starts by itself", "nothing set up in your autostart or user services.");
-            else {
-                std::string n;
-                for (std::size_t i = 0; i < starts.size() && i < 6; ++i) n += (i ? ", " : "") + starts[i];
-                if (starts.size() > 6) n += ", ...";
-                line(" -- ", "Starts by itself", n + "  (check you know each one)");
+        if (!home.empty()) {
+            bool nothing = false;
+            const auto said = nexus::system::autoStartLines(
+                nexus::system::findAutoStarts(home), nothing);
+            line(nothing ? " ok " : " -- ", "Starts by itself", said.front());
+            // The rest under it, where the fix line would be.
+            for (std::size_t i = 1; i < said.size(); ++i) {
+                std::cout << std::string(28, ' ') << said[i] << "\n";
             }
         }
     }

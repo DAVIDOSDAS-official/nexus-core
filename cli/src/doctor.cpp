@@ -744,11 +744,20 @@ int commandDoctor(
 
     // A change that started and never finished. The machine may have
     // been left part-way through one, and nothing else will say so.
+    //
+    // Root's log decides that, whoever asks (0.2.0, ledger I3). Before,
+    // this read the caller's own log: without sudo that is a file in
+    // the home folder, where a line saying "started" can be written by
+    // anyone logged in as that person -- and a change root really left
+    // half-done was not looked for at all. What the person's own log
+    // says is shown on a line of its own, marked, and does not count
+    // towards the verdict.
     {
-        const auto unfinished = nexus::system::unfinishedTransactions(
-            nexus::system::defaultTransactionLog());
+        const auto interruptedNow = nexus::system::interruptedChanges(
+            nexus::system::readAllTransactions());
 
-        if (!unfinished.empty()) {
+        if (!interruptedNow.machine.empty()) {
+            const auto& unfinished = interruptedNow.machine;
             nexus::Finding interrupted;
 
             interrupted.check = "Changes";
@@ -764,12 +773,43 @@ int commandDoctor(
                 }
 
                 interrupted.examples.push_back(
-                    record.when + "  " + record.request);
+                    nexus::system::printable(record.when) + "  " +
+                    nexus::system::printable(record.request));
             }
 
             interrupted.suggestion = "nexus history";
 
             findings.push_back(std::move(interrupted));
+        }
+
+        if (!interruptedNow.own.empty()) {
+            const auto& unfinished = interruptedNow.own;
+            nexus::Finding own;
+
+            own.check = "Your own log";
+            // Not a warning: Nexus cannot tell a change you began
+            // without sudo from a line some program wrote there.
+            own.health = nexus::Health::Unknown;
+            own.total = unfinished.size();
+            own.detail =
+                std::to_string(unfinished.size()) +
+                " change(s) started and never finished, going by your own"
+                " log (made without sudo, or written by a program you ran)."
+                " Not this machine's history.";
+
+            for (const auto& record : unfinished) {
+                if (own.examples.size() >= 5) {
+                    break;
+                }
+
+                own.examples.push_back(
+                    nexus::system::printable(record.when) + "  " +
+                    nexus::system::printable(record.request));
+            }
+
+            own.suggestion = "nexus history";
+
+            findings.push_back(std::move(own));
         }
     }
 

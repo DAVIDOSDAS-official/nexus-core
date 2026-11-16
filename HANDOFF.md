@@ -3,7 +3,7 @@
 Updated 15 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.1.99** (patches 1–128). **773 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
+**Version 0.2.0** (patches 1–129). **797 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -1389,6 +1389,64 @@ tests.
 - R4-L8: the network checker scans `gui/` (it looked for `shop/`).
 - Duplicate `#include <vector>` in plan_apply.hpp removed.
 
+**Patch 129 (0.2.0): ledger items 8, 9, 10, 11 (round-4 L2, round-1 I3,
+USB disks in dual boot, firewall reloads).** 797 tests. By Fable; its
+notes (NOTES-129-130.md) came with the patch and are not in the
+repository.
+- The version is 0.2.0. `compareDotted` and `updateTookEffect` compare
+  part by part as numbers; two tests now say so for this step and the
+  next (0.2.0 > 0.1.99, 0.1.100 > 0.1.99, and back is "older").
+- I3, history: every record carries the log it was read from
+  (`TransactionSource`: Machine, Own, Unknown); the file is never asked.
+  `nexus history` and the Shop mark rows from the person's own log
+  "(your own log)" and say under the list what that means; such a row
+  shows the outcome it states and is never turned into "applied" by
+  what the machine runs now (the Shop: never the green chip). Log text
+  goes through printable(). `readAllTransactions` has two callers,
+  history.cpp and the Shop; nothing else read both logs.
+- I3, doctor: "Changes ... started and never finished" counts root's
+  log only. Before, it read the log of whoever asked: without sudo that
+  was the person's own file, and a change root left half-done was not
+  looked for at all. The person's own log has a line of its own, marked
+  [ ? ], which does not move the verdict.
+- R4-L2, "Starts by itself": also .socket and .path units, `*.d`
+  drop-ins, `*.wants`/`.requires` links, ~/.local/share/systemd/user,
+  autostart-scripts, plasma-workspace/env and shutdown, environment.d;
+  shell and login files are named ("runs in every new shell or at
+  login"), not judged. Names only, 500 a folder at most; a folder that
+  is a link leading out of the home is not read, and said. Up to 40
+  names shown (was 6 and "..."). The last two lines always say what was
+  not looked at: the whole system's services and autostart, cron and
+  at, other accounts.
+- Dual boot: lsblk is asked for RM and TRAN. A disk that is USB,
+  removable, or an SD card is not looked into, and nothing on it
+  reaches the boot menu, unless named: `nexus dualboot --disk /dev/sda`
+  (also with add and <number>). The disk Nexus runs from is always
+  looked at. What was left out is said, with the command to include it;
+  so is an lsblk that gives no RM. An SD card in a built-in slot looks
+  like soldered storage to lsblk (mmc, not removable); the kernel's
+  word for the card (/sys/block/<name>/device/type: SD or MMC) tells
+  them apart. `add` now says when it takes an entry out because its
+  system was not found.
+- Firewall: the audit's suggested commands make the change twice,
+  saved and running (`--permanent ... && ...` without it), and reload
+  nothing. The one `--reload` that is meant ("runs with other rules
+  than it has saved") says what it drops and how to keep it instead
+  (`--runtime-to-permanent`).
+- Ledger: 8, 9, 10, 11 closed with their tests. New open item 13:
+  `nexus server add | remove | cockpit --apply` run
+  `firewall-cmd --reload` themselves (found while doing 11; not
+  changed here). New T11, T12 for the Asus.
+- Tests: 23 unit tests, ctest `HistoryLabels`
+  (tests/history-labels-check.sh: fails on 0.1.99), two more command
+  lines in the no-apply test (77), the `parseLsblk` fuzz target also
+  runs the choice of disks (4.5M runs in 60 s).
+- Not verified here, to check on the Asus: what lsblk prints for a
+  real USB stick and SD card (the fixtures are written by hand);
+  the firewall pair on a running firewalld; the Shop's History on a
+  real screen (looked at offscreen only). Ledger T11 and T12; the exact
+  commands are in the notes.
+
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
 hint for a mistyped package (java-lastest -> java-latest-openjdk);
@@ -1501,7 +1559,8 @@ Nothing changes without `--apply` (and `sudo`); everything else only reads.
 **Dual boot** (0.1.44): `nexus dualboot` — the systems on this disk
 (names need `sudo`); `sudo nexus dualboot add --apply` — put them in the
 boot menu; `sudo nexus dualboot remove --apply`; `sudo nexus dualboot 1
---apply` — restart into system 1, once.
+--apply` — restart into system 1, once. `--disk /dev/sdX` (0.2.0) also
+looks at that USB or removable disk; without it they are left out.
 
 **Nexus Shop** (window, desktops only): `nexus-shop`, or "Nexus Shop" in the menu.
 

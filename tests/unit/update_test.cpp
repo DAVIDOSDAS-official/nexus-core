@@ -378,6 +378,35 @@ TEST(UpdateRollbackTest, AnOlderVersionIsRefused) {
               "0.1.99999999999999999999999999")).refused());
 }
 
+// 0.1.99 -> 0.2.0 (patch 129): a version step is newer, and the next
+// one will be too. Compared as numbers, part by part: as text, 0.1.100
+// sorts before 0.1.99, and that mistake would refuse a real update as
+// "older".
+TEST(UpdateRollbackTest, AVersionStepIsNewerNotOlder) {
+    RunningBuild running = runningNovember();
+    running.version = "0.1.99";
+    EXPECT_FALSE(judgeOffer(running,
+        offer("sha256:2222", "2026-11-17T03:40:55Z", "0.2.0")).refused());
+    EXPECT_FALSE(judgeOffer(running,
+        offer("sha256:2222", "2026-11-17T03:40:55Z", "0.1.100")).refused());
+    EXPECT_FALSE(judgeOffer(running,
+        offer("sha256:2222", "2026-11-17T03:40:55Z", "1.0.0")).refused());
+
+    // And back across the step is older, whatever the date says.
+    running.version = "0.2.0";
+    for (const char* older : {"0.1.99", "0.1.100", "0.1.999", "0.1"}) {
+        EXPECT_EQ(judgeOffer(running,
+            offer("sha256:0abc", "2026-11-20T00:00:00Z", older)).order,
+            OfferOrder::OlderVersion) << older;
+    }
+    EXPECT_FALSE(judgeOffer(running,
+        offer("sha256:2222", "2026-11-17T03:40:55Z", "0.2.1")).refused());
+    EXPECT_FALSE(judgeOffer(running,
+        offer("sha256:2222", "2026-11-17T03:40:55Z", "0.2")).refused());   // 0.2 == 0.2.0
+    EXPECT_FALSE(judgeOffer(running,
+        offer("sha256:2222", "2026-11-17T03:40:55Z", "0.10.0")).refused());
+}
+
 TEST(UpdateRollbackTest, AnOlderBuildOfTheSameVersionIsRefused) {
     // Last week's build of the same version: the replay a version
     // number alone would not catch.

@@ -27,8 +27,8 @@ namespace nexus::system {
 // file in, words and text out. Mounting and writing is the CLI's.
 
 // One line of `lsblk -J -b -o NAME,PATH,SIZE,TYPE,FSTYPE,PARTTYPE,
-// UUID,LABEL,MODEL,MOUNTPOINTS`, with its children (partitions of a
-// disk, the opened volume inside an encrypted partition).
+// UUID,LABEL,MODEL,MOUNTPOINTS,RM,TRAN`, with its children (partitions
+// of a disk, the opened volume inside an encrypted partition).
 struct BlockDevice {
     std::string name;       // nvme0n1p2
     std::string path;       // /dev/nvme0n1p2
@@ -41,6 +41,17 @@ struct BlockDevice {
     std::uint64_t size = 0; // bytes
     std::vector<std::string> mountpoints;
     std::vector<BlockDevice> children;
+
+    // RM and TRAN (0.2.0, ledger item 10): whether the disk can be
+    // taken out, and how it is connected.
+    bool removable = false;       // RM: true, 1, "1" or "true"
+    bool removableKnown = false;  // false: this lsblk gave no RM for it
+    std::string transport;        // usb, nvme, sata, mmc...; "" if not given
+    // For a disk on the mmc bus, what the kernel calls the card
+    // (/sys/block/<name>/device/type): "SD" for a card in a slot, "MMC"
+    // for storage soldered to the board. lsblk reports both as mmc and
+    // not removable, so the CLI reads it and puts it here.
+    std::string cardType;
 };
 
 std::vector<BlockDevice> parseLsblk(
@@ -64,6 +75,41 @@ std::vector<const BlockDevice*> otherPartitions(
 // Whether this device, or anything inside it, is mounted -- that is,
 // whether it is part of the running system.
 bool inUse(const BlockDevice& device);
+
+// Disks that are plugged in rather than built in (0.2.0, ledger item
+// 10). Until 0.1.99 a USB stick's partitions were looked into like the
+// internal disk's, and a boot loader on it could end up in Nexus's boot
+// menu. They are left out now unless the person names the disk.
+//
+// What kind of plugged-in disk this is, in words -- "USB disk", "SD
+// card", "removable disk" -- or "" for one that is built in. A disk
+// lsblk says nothing about (no RM, no TRAN) counts as built in; see
+// DiskChoice::unknown.
+std::string portableKind(const BlockDevice& disk);
+
+struct DiskChoice {
+    // The disks to look at for other systems, with their partitions.
+    std::vector<BlockDevice> looked;
+    // The ones left out (without their partitions: nothing in them
+    // was read).
+    std::vector<BlockDevice> skipped;
+    // Disks lsblk gave no RM for: they were taken to be built in.
+    std::vector<std::string> unknown;
+    // Named with --disk, and no disk or partition here has that path.
+    std::vector<std::string> notFound;
+};
+
+// Splits lsblk's list. A plugged-in disk is looked at only if `named`
+// holds its path or the path of something on it ("/dev/sda",
+// "/dev/sda1"), or if it is the disk the running system is on
+// (thisDisk: Nexus installed on a USB disk still sees its neighbours).
+DiskChoice chooseDisks(const std::vector<BlockDevice>& devices,
+                       const std::vector<std::string>& named,
+                       const std::string& thisDisk);
+
+// What to say about the disks that were left out, and how to include
+// them; empty when there is nothing to say. Each string is one line.
+std::vector<std::string> skippedDiskLines(const DiskChoice& choice);
 
 // /etc/os-release, or /usr/lib/os-release.
 struct OsRelease {

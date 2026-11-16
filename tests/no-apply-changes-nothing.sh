@@ -498,6 +498,7 @@ security harden off
 dualboot add
 dualboot remove
 dualboot 1
+dualboot add --disk /dev/sda
 rollback
 rebase signed
 rebase ghcr.io/davidosdas-official/nexus-core:kde
@@ -527,6 +528,7 @@ hardware
 secureboot
 largest
 dualboot
+dualboot --disk /dev/sda
 vpn
 vpn check
 server

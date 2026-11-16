@@ -2,7 +2,17 @@
 #include <cstdint>
 #include <arpa/inet.h>
 #include <nexus/system/json.hpp>
+#include <nexus/system/process.hpp>
 #include <initializer_list>
+
+#include <algorithm>
+#include <cerrno>
+#include <climits>
+#include <cstdlib>
+#include <dirent.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <ctime>
 #include <iomanip>
@@ -258,6 +268,276 @@ ZoneInfo parseZoneInfo(const std::string& output) {
         else if (key == "sources") info.sources = value;
     }
     return info;
+}
+
+// ---------------------------------------------------------------------
+// "Starts by itself" (0.2.0, ledger R4-L2).
+
+namespace {
+
+bool endsWith(const std::string& text, const std::string& ending) {
+    return text.size() > ending.size() &&
+           text.compare(text.size() - ending.size(), ending.size(), ending) == 0;
+}
+
+// Where an open folder really is, whatever links led to it.
+std::string realPathOf(int fd) {
+    char buffer[PATH_MAX + 1];
+    const std::string link = "/proc/self/fd/" + std::to_string(fd);
+    const ssize_t n = ::readlink(link.c_str(), buffer, PATH_MAX);
+    return n > 0 ? std::string(buffer, static_cast<std::size_t>(n)) : std::string();
+}
+
+bool isInside(const std::string& homeReal, const std::string& path) {
+    return !path.empty() &&
+           (path == homeReal || path.rfind(homeReal + "/", 0) == 0);
+}
+
+struct Entry {
+    std::string name;
+    mode_t mode = 0;   // of the entry itself: a link is a link
+};
+
+// The names in an open folder, sorted; at most kAutoStartFolderLimit
+// (more: `cut` is set). Takes the descriptor over and closes it.
+std::vector<Entry> namesIn(int fd, bool& cut) {
+    std::vector<Entry> entries;
+    DIR* dir = ::fdopendir(fd);
+    if (dir == nullptr) {
+        ::close(fd);
+        return entries;
+    }
+    while (const dirent* item = ::readdir(dir)) {
+        const std::string name = item->d_name;
+        if (name == "." || name == "..") continue;
+        if (entries.size() >= kAutoStartFolderLimit) {
+            cut = true;
+            break;
+        }
+        Entry entry;
+        entry.name = name;
+        struct stat info {};
+        // The entry, not what it points to: nothing here is followed.
+        if (::fstatat(::dirfd(dir), name.c_str(), &info, AT_SYMLINK_NOFOLLOW) == 0) {
+            entry.mode = info.st_mode;
+        }
+        entries.push_back(entry);
+    }
+    ::closedir(dir);
+    std::sort(entries.begin(), entries.end(),
+              [](const Entry& a, const Entry& b) { return a.name < b.name; });
+    return entries;
+}
+
+// Opens home/relative for listing. -1 when it is not there (said by
+// nobody), or when it is not read (said in notRead): it cannot be
+// opened, or it is somewhere other than under the home folder. The
+// check is made on the folder that was opened, so nothing can be
+// swapped between the check and the listing.
+int openPlace(const std::string& homeReal, const std::string& home,
+              const std::string& relative, std::vector<std::string>& notRead) {
+    const std::string shown = "~/" + relative;
+    const int fd = ::open((home + "/" + relative).c_str(),
+                          O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NONBLOCK);
+    if (fd < 0) {
+        if (errno != ENOENT && errno != ENOTDIR) {
+            notRead.push_back(shown + " (could not be opened)");
+        }
+        return -1;
+    }
+    if (!isInside(homeReal, realPathOf(fd))) {
+        notRead.push_back(shown + " (a link that leads outside your home folder)");
+        ::close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+void noteCut(bool cut, const std::string& relative, std::vector<std::string>& notRead) {
+    if (cut) {
+        notRead.push_back("~/" + relative + " (only its first " +
+                          std::to_string(kAutoStartFolderLimit) + " names)");
+    }
+}
+
+// A folder where every entry counts, or every entry with one ending.
+void listPlace(const std::string& homeReal, const std::string& home,
+               const std::string& relative, const std::string& ending,
+               const std::string& prefix, std::vector<std::string>& into,
+               std::vector<std::string>& notRead) {
+    const int fd = openPlace(homeReal, home, relative, notRead);
+    if (fd < 0) return;
+    bool cut = false;
+    for (const Entry& entry : namesIn(fd, cut)) {
+        if (!ending.empty() && !endsWith(entry.name, ending)) continue;
+        into.push_back(prefix + entry.name);
+    }
+    noteCut(cut, relative, notRead);
+}
+
+// A folder of systemd user units: the units themselves, the drop-ins
+// that change a unit (<unit>.d/*.conf) and the links that switch one
+// on (<target>.wants/, .requires/, .upholds/).
+void listUnits(const std::string& homeReal, const std::string& home,
+               const std::string& relative, const std::string& prefix,
+               std::vector<std::string>& into, std::vector<std::string>& notRead) {
+    const int fd = openPlace(homeReal, home, relative, notRead);
+    if (fd < 0) return;
+    // namesIn closes fd; the folders inside are opened from a copy.
+    const int again = ::fcntl(fd, F_DUPFD_CLOEXEC, 0);
+    bool cut = false;
+    const std::vector<Entry> entries = namesIn(fd, cut);
+    noteCut(cut, relative, notRead);
+
+    for (const Entry& entry : entries) {
+        const bool dropIns = endsWith(entry.name, ".d");
+        const bool switchedOn = endsWith(entry.name, ".wants") ||
+                                endsWith(entry.name, ".requires") ||
+                                endsWith(entry.name, ".upholds");
+        if (dropIns || switchedOn) {
+            if (!S_ISDIR(entry.mode)) {
+                // A link standing where the folder would be.
+                if (S_ISLNK(entry.mode)) {
+                    notRead.push_back("~/" + relative + "/" + entry.name +
+                                      " (a link; not followed)");
+                }
+                continue;
+            }
+            const int inner = again < 0 ? -1 :
+                ::openat(again, entry.name.c_str(),
+                         O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+            if (inner < 0) {
+                notRead.push_back("~/" + relative + "/" + entry.name +
+                                  " (could not be opened)");
+                continue;
+            }
+            bool innerCut = false;
+            for (const Entry& file : namesIn(inner, innerCut)) {
+                if (dropIns && !endsWith(file.name, ".conf")) continue;
+                into.push_back(prefix + entry.name + "/" + file.name);
+            }
+            noteCut(innerCut, relative + "/" + entry.name, notRead);
+            continue;
+        }
+        for (const char* kind : {".service", ".timer", ".socket", ".path"}) {
+            if (endsWith(entry.name, kind) && !S_ISDIR(entry.mode)) {
+                into.push_back(prefix + entry.name);
+                break;
+            }
+        }
+    }
+    if (again >= 0) ::close(again);
+}
+
+// Names joined with ", ", broken into lines of about `width`.
+std::vector<std::string> wrappedNames(const std::vector<std::string>& names,
+                                      std::size_t most, std::size_t width) {
+    std::vector<std::string> lines(1);
+    for (std::size_t i = 0; i < names.size() && i < most; ++i) {
+        // A file name is somebody's text: nothing in it steers the
+        // terminal (0.1.85 N3, 0.1.86 R2).
+        const std::string name = printable(names[i]) +
+                                 (i + 1 < names.size() ? "," : "");
+        if (!lines.back().empty() && lines.back().size() + 1 + name.size() > width) {
+            lines.emplace_back();
+        }
+        lines.back() += (lines.back().empty() ? "" : " ") + name;
+    }
+    if (names.size() > most) {
+        lines.back() += " ... and " + std::to_string(names.size() - most) + " more";
+    }
+    return lines;
+}
+
+}  // namespace
+
+AutoStarts findAutoStarts(const std::string& home) {
+    AutoStarts found;
+    if (home.empty() || home[0] != '/') {
+        found.notRead.push_back("your home folder (not known)");
+        return found;
+    }
+    char resolved[PATH_MAX + 1];
+    if (::realpath(home.c_str(), resolved) == nullptr) {
+        found.notRead.push_back("your home folder (could not be opened)");
+        return found;
+    }
+    const std::string homeReal = resolved;
+
+    // Desktop autostart, and what KDE runs at login and logout.
+    listPlace(homeReal, home, ".config/autostart", ".desktop", "",
+              found.starts, found.notRead);
+    listPlace(homeReal, home, ".config/autostart-scripts", "", "autostart-scripts/",
+              found.starts, found.notRead);
+    listPlace(homeReal, home, ".config/plasma-workspace/env", "", "plasma-workspace/env/",
+              found.starts, found.notRead);
+    listPlace(homeReal, home, ".config/plasma-workspace/shutdown", "",
+              "plasma-workspace/shutdown/", found.starts, found.notRead);
+    // The person's own systemd units, in both folders systemd reads.
+    listUnits(homeReal, home, ".config/systemd/user", "", found.starts, found.notRead);
+    listUnits(homeReal, home, ".local/share/systemd/user", ".local/share/systemd/user/",
+              found.starts, found.notRead);
+    // Variables set for the whole session (LD_PRELOAD lives here if
+    // anywhere).
+    listPlace(homeReal, home, ".config/environment.d", ".conf", "environment.d/",
+              found.starts, found.notRead);
+    std::sort(found.starts.begin(), found.starts.end());
+
+    // Shell and login files: there or not, nothing more.
+    for (const char* file : {".bashrc", ".bash_profile", ".bash_login", ".profile",
+                             ".zshenv", ".zprofile", ".zshrc", ".zlogin", ".xprofile",
+                             ".config/fish/config.fish"}) {
+        struct stat info {};
+        if (::lstat((home + "/" + file).c_str(), &info) == 0 &&
+            (S_ISREG(info.st_mode) || S_ISLNK(info.st_mode))) {
+            found.shellFiles.push_back(file);
+        }
+    }
+    listPlace(homeReal, home, ".config/fish/conf.d", ".fish", ".config/fish/conf.d/",
+              found.shellFiles, found.notRead);
+    return found;
+}
+
+std::vector<std::string> autoStartLines(const AutoStarts& found, bool& nothingFound) {
+    std::vector<std::string> lines;
+    nothingFound = found.starts.empty() && found.notRead.empty();
+
+    if (found.starts.empty()) {
+        lines.push_back(found.notRead.empty()
+            ? "nothing set up in your autostart, user services or login scripts."
+            : "nothing found where Nexus could look; see below.");
+    } else {
+        lines = wrappedNames(found.starts, 40, 60);
+        lines.back() += "  (check you know each one)";
+    }
+    if (!found.shellFiles.empty()) {
+        auto shell = wrappedNames(found.shellFiles, 40, 60);
+        shell.front() = "runs in every new shell or at login: " + shell.front();
+        shell.back() += "  (named, not judged)";
+        lines.insert(lines.end(), shell.begin(), shell.end());
+    }
+    for (const std::string& place : found.notRead) {
+        lines.push_back("not read: " + printable(place));
+    }
+    // What this line does not cover, every time: an "ok" here is about
+    // one person's own folders and nothing else.
+    lines.push_back("not looked at: what starts for the whole system (services and autostart");
+    lines.push_back("in /etc and /usr), cron and at jobs, other accounts.");
+    return lines;
+}
+
+// ---------------------------------------------------------------------
+// Firewall suggestions (0.2.0, ledger item 11).
+
+std::string firewallFix(const std::string& zone, const std::string& change) {
+    const std::string what = " --zone=" + zone + " " + change;
+    return "sudo firewall-cmd --permanent" + what + " && sudo firewall-cmd" + what;
+}
+
+std::string firewallBackToSaved() {
+    return "sudo firewall-cmd --reload   (back to the saved rules: every rule added for this"
+           " session only is dropped, a VPN's or a game's too. To keep what runs now"
+           " instead: sudo firewall-cmd --runtime-to-permanent)";
 }
 
 }  // namespace nexus::system
