@@ -160,17 +160,37 @@ int needRoot(const std::string& invocation) {
     return 1;
 }
 
+// One firewall change, in the saved rules and in the running ones, and
+// nothing reloaded (0.2.2, ledger item 13). Until 0.2.1 it was saved and
+// then `firewall-cmd --reload` ran, which drops every rule that exists
+// only in the running firewall: a VPN's, a game's, one added for this
+// session. What counts is the saved rule; if the running firewall does
+// not take it, that is said, and it applies from the firewall's next
+// start.
+bool changeFirewall(const std::string& change) {
+    const auto steps = nexus::system::firewallChanges(change);
+    const auto saved = runProgram(steps[0], mergedErrors());
+    if (!saved.ok) {
+        return false;
+    }
+    const auto running = runProgram(steps[1], mergedErrors());
+    if (!running.ok) {
+        std::cout << "(The firewall saved " << change
+                  << " but the running firewall did not take it: "
+                  << firstLine(running.text)
+                  << ". It applies from the firewall's next start.)\n";
+    }
+    return true;
+}
+
 bool openPorts(const std::vector<std::string>& ports, bool open) {
     if (!firewallRunning()) {
         return true;
     }
     bool ok = true;
     for (const std::string& port : ports) {
-        ok = runProgram({"firewall-cmd", "--permanent",
-                         (open ? "--add-port=" : "--remove-port=") + port},
-                        mergedErrors()).ok && ok;
+        ok = changeFirewall((open ? "--add-port=" : "--remove-port=") + port) && ok;
     }
-    runProgram({"firewall-cmd", "--reload"}, mergedErrors());
     return ok;
 }
 
@@ -465,9 +485,7 @@ int commandServer(
         bool ok = runProgram({"systemctl", "enable", "--now", "cockpit.socket"},
                              mergedErrors()).ok;
         if (ok && firewallRunning()) {
-            runProgram({"firewall-cmd", "--permanent", "--add-service=cockpit"},
-                       mergedErrors());
-            runProgram({"firewall-cmd", "--reload"}, mergedErrors());
+            changeFirewall("--add-service=cockpit");
         }
         record.outcome = ok ? "switched on" : "failed";
         record.succeeded = ok;

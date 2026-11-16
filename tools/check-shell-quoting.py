@@ -139,6 +139,16 @@ def main(root):
         if seen.get(key, 0) != count:
             bad.append("%s: %s is allowed %d time(s) but used %d; set the allowance to the use"
                        % (key[0], key[1], count, seen.get(key, 0)))
+    # Nexus never reloads the firewall itself (0.2.2, ledger item 13): a
+    # reload drops every rule that exists only in the running firewall.
+    # Changes go to the saved and the running rules (firewallChanges).
+    for f in files:
+        src = open(f).read()
+        for m in re.finditer(r'"--reload"', src):
+            if not in_comment(src, m.start()):
+                line = src.count("\n", 0, m.start()) + 1
+                bad.append("%s:%d: Nexus reloads the firewall itself; use "
+                           "firewallChanges() instead" % (f[len(root) + 1:], line))
     for key in sorted(SHELL_ON_PURPOSE):
         if key not in purposeful:
             bad.append("%s: SHELL_ON_PURPOSE names a call that is not there: %s" % key)

@@ -430,3 +430,22 @@ TEST(SecurityAuditTest, TheOneReloadSaysWhatItDrops) {
     // And the way to keep them instead.
     EXPECT_NE(back.find("--runtime-to-permanent"), std::string::npos) << back;
 }
+
+// What Nexus itself changes in the firewall (0.2.2, ledger item 13): the
+// saved rules and the running ones, never a reload. Until 0.2.1 `nexus
+// server add | remove | cockpit --apply` ran `firewall-cmd --reload`
+// after saving, dropping every rule that existed only while running.
+TEST(SecurityAuditTest, NexussOwnFirewallChangesReloadNothing) {
+    for (const char* change : {"--add-port=25565/tcp", "--remove-port=8080/tcp",
+                               "--add-service=cockpit"}) {
+        const auto steps = firewallChanges(change);
+        ASSERT_EQ(steps.size(), 2u) << change;
+        EXPECT_EQ(steps[0], (std::vector<std::string>{"firewall-cmd", "--permanent", change}));
+        EXPECT_EQ(steps[1], (std::vector<std::string>{"firewall-cmd", change}));
+        for (const auto& step : steps) {
+            for (const auto& word : step) {
+                EXPECT_EQ(word.find("reload"), std::string::npos) << change;
+            }
+        }
+    }
+}

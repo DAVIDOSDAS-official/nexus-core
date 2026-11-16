@@ -163,6 +163,14 @@ std::vector<std::string> autoStartLines(const AutoStarts& found, bool& nothingFo
 // "--change-interface=<name>"... zone: the zone it applies to.
 std::string firewallFix(const std::string& zone, const std::string& change);
 
+// The same rule for what Nexus changes itself (0.2.2, ledger item 13):
+// `nexus server add | remove | cockpit --apply` saved a port or service
+// and then ran `firewall-cmd --reload`, dropping every rule that existed
+// only in the running firewall -- a VPN's, a game's -- as root. Now: the
+// two argument vectors to run, saved rules first, running ones second.
+// No zone: the default zone, for both, as before.
+std::vector<std::vector<std::string>> firewallChanges(const std::string& change);
+
 // The one suggestion that is meant to bring the saved rules back, with
 // what it costs said beside it.
 std::string firewallBackToSaved();

@@ -3,7 +3,7 @@
 Updated 15 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.2.1** (patches 1–130). **814 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
+**Version 0.2.2** (patches 1–131). **816 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -1493,6 +1493,35 @@ files that run most as root.** 814 tests. By Fable; notes as for 129.
 - Not verified here: the real rpm-ostree, dnf, firewalld, podman,
   systemd, GRUB. On the Asus: read-only commands before and after the
   update should print the same; the list is in the notes.
+
+**Patch 131 (0.2.2): the signing key's guard (ledger item 2, R4-H1);
+Nexus's own firewall changes without --reload (item 13).** By Claude.
+- `sign` job, first step after checkout: GitHub's API is asked how the
+  `release` environment is protected (`actions: read` for that), and
+  `tools/check-release-environment.py` stops the job unless it has a
+  required reviewer. Before, a lost reviewer rule would have meant
+  signing without asking. A missing deployment branch policy is a
+  warning, not a stop. The checkout moved to the top (it was behind
+  "Anything to sign?"), so the check runs every time.
+- `tools/check-workflow-secrets.py`: a `COSIGN_` secret only in a job
+  that runs in `release`, only after that check; never workflow-wide,
+  never `secrets: inherit` or `toJSON(secrets)`. Text, by indentation;
+  no YAML library. ctest `ReleaseGuard` (tests/release-guard-check.sh):
+  12 answers judged, the real workflows pass, 7 planted breaks fail
+  (each checked to fail for the reason it plants).
+- Item 13: `firewallChanges(change)` gives the saved and the running
+  change; server add/remove/cockpit use it and reload nothing. If the
+  running firewall refuses, that is said and the rule applies from its
+  next start. `check-shell-quoting.py` fails on `"--reload"` in Nexus's
+  code. Test `SecurityAuditTest.NexussOwnFirewallChangesReloadNothing`.
+- Also: tests/history-labels-check.sh reads doctor's blocks from one
+  `[ .. ]` line to the next (review of 129: a machine with a real
+  interrupted change made it fail). Folded into 129 as delivered.
+- Ledger: item 2 Test needed (closed after the next signing run passes
+  the step); 13 Closed; new item 14, the maintainer's accounts (FIDO2
+  keys, GitHub audit), from two outside threat reviews.
+- Not verified here: the step on GitHub itself (it runs at the next
+  workflow), and firewalld's answers (T12).
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"

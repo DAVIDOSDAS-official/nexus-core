@@ -245,6 +245,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Only to read whether "release" still has a required reviewer
+      # (the first two steps below).
+      actions: read
 
     strategy:
       fail-fast: false
@@ -257,6 +260,35 @@ jobs:
       DIGEST: ${{ needs.build.outputs[format('digest_{0}', matrix.profile)] }}
 
     steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      # First, before anything here touches the key (0.2.2, ledger item
+      # 2, round-4 audit H1): the key is a secret of the "release"
+      # environment, and what makes a run wait for the maintainer's yes
+      # is a reviewer rule on that environment -- a setting, not code.
+      # If it were ever gone, this job would have started without
+      # asking; it stops here instead. tools/check-workflow-secrets.py
+      # (ctest ReleaseGuard) fails if this step is moved after a use of
+      # the key or taken out.
+      - name: Check the release environment is guarded
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          answer="${RUNNER_TEMP}/release-environment.json"
+          if ! curl --fail-with-body -sS --proto =https \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "Authorization: Bearer ${GH_TOKEN}" \
+                  "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/environments/release" \
+                  -o "${answer}"; then
+            echo "GitHub did not say how 'release' is protected:"
+            cat "${answer}" 2>/dev/null
+            echo "Not signing."
+            exit 1
+          fi
+          python3 tools/check-release-environment.py "${answer}"
+
       - name: Anything to sign?
         id: what
         run: |
@@ -267,11 +299,6 @@ jobs:
             echo "The ${PROFILE} build did not stage an image; nothing to sign."
             echo "sign=no" >> "${GITHUB_OUTPUT}"
           fi
-
-      - if: steps.what.outputs.sign == 'yes'
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
 
       - name: Where the login goes
         if: steps.what.outputs.sign == 'yes'

@@ -534,6 +534,10 @@ std::string firewallFix(const std::string& zone, const std::string& change) {
     return "sudo firewall-cmd --permanent" + what + " && sudo firewall-cmd" + what;
 }
 
+std::vector<std::vector<std::string>> firewallChanges(const std::string& change) {
+    return {{"firewall-cmd", "--permanent", change}, {"firewall-cmd", change}};
+}
+
 std::string firewallBackToSaved() {
     return "sudo firewall-cmd --reload   (back to the saved rules: every rule added for this"
            " session only is dropped, a VPN's or a game's too. To keep what runs now"

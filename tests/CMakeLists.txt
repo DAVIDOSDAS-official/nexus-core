@@ -117,6 +117,13 @@ add_test(NAME UpdateTrust
          COMMAND bash ${PROJECT_SOURCE_DIR}/tests/update-trust-check.sh $<TARGET_FILE:nexus>)
 set_tests_properties(UpdateTrust PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300 RUN_SERIAL TRUE)
 
+# The signing key's guard (0.2.2, ledger item 2): signing stops when the
+# "release" environment has no required reviewer, and the key is used
+# only in that environment, after that check. Reads files only.
+add_test(NAME ReleaseGuard
+         COMMAND bash ${PROJECT_SOURCE_DIR}/tests/release-guard-check.sh ${PROJECT_SOURCE_DIR})
+set_tests_properties(ReleaseGuard PROPERTIES TIMEOUT 120)
+
 # `nexus history` and `nexus doctor` say which log a row came from, and
 # a line a person wrote into their own log is never the machine's
 # history (0.2.0, ledger I3). Reads only; a made-up home folder.
