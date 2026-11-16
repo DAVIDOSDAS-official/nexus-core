@@ -7,7 +7,14 @@
 #include <cerrno>
 
 #include <atomic>
+#include <chrono>
 #include <cstdlib>
+#include <fcntl.h>
+#include <functional>
+#include <iterator>
+#include <string>
+#include <utility>
+#include <vector>
 #include <unistd.h>
 #include <thread>
 #include <filesystem>
@@ -538,4 +545,536 @@ TEST(ProcessTest, PrintableReplacesTheRestOfTheInvisibleCharacters) {
     EXPECT_EQ(printable("\xf3\xa0\x84\x80"), "\xf3\xa0\x84\x80");
     EXPECT_EQ(printable("x\xf3\xa0\x80"), "x\xf3\xa0\x80");
     EXPECT_EQ(printable("\xc2\xa0"), "\xc2\xa0");                           // no-break space stays
+}
+
+// ---------------------------------------------------------------------
+// runProgram with options (0.2.1, ledger item 4): everything a command
+// line handed to /bin/sh used to say with 2>&1, 2>/dev/null, >/dev/null,
+// VAR=value and timeout, without a shell.
+//
+// `sh -c` appears below as the program under test: a small script is
+// the plainest way to make a program that prints to both streams, exits
+// with a chosen number or signals somebody. Nothing here builds a
+// command out of a value.
+
+namespace {
+
+using nexus::system::ProgramOptions;
+using nexus::system::runProgram;
+
+// Runs `body` in a child with one of its standard streams (0, 1 or 2)
+// pointed at a file, and gives back what the file then holds.
+template <typename Body>
+std::string withStreamInAFile(int stream, const std::string& before, Body body, int* exitCode = nullptr) {
+    const std::string path = (std::filesystem::temp_directory_path() /
+        ("nexus-stream-" + std::to_string(::getpid()) + "-" + std::to_string(stream))).string();
+    { std::ofstream(path) << before; }
+    const int status = inAChild([&]() -> int {
+        const int fd = ::open(path.c_str(), stream == 0 ? O_RDONLY : (O_WRONLY | O_TRUNC));
+        if (fd < 0 || ::dup2(fd, stream) < 0) return 99;
+        return body();
+    });
+    if (exitCode != nullptr) *exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    std::ifstream in(path);
+    std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::filesystem::remove(path);
+    return text;
+}
+
+const std::vector<std::string> kBothStreams{"sh", "-c", "echo out; echo err >&2; exit 3"};
+
+}  // namespace
+
+TEST(ProcessTest, OptionsSendErrorsWhereTheyAreAskedTo) {
+    // The default: what "2>/dev/null" was.
+    const auto dropped = runProgram(kBothStreams, ProgramOptions());
+    EXPECT_TRUE(dropped.ran);
+    EXPECT_FALSE(dropped.ok);
+    EXPECT_EQ(dropped.exitCode, 3);
+    EXPECT_EQ(dropped.text, "out\n");
+    EXPECT_EQ(dropped.errors, "");
+    ASSERT_EQ(dropped.lines.size(), 1u);
+    EXPECT_EQ(dropped.lines[0], "out");
+
+    // "2>&1": with the output, in the order written.
+    const auto merged = runProgram({"sh", "-c", "echo a; echo b >&2; echo c; exit 3"},
+                                   nexus::system::mergedErrors());
+    EXPECT_EQ(merged.text, "a\nb\nc\n");
+    EXPECT_EQ(merged.errors, "");
+    EXPECT_EQ(merged.exitCode, 3);
+    EXPECT_EQ(merged.lines, (std::vector<std::string>{"a", "b", "c"}));
+
+    // On their own.
+    ProgramOptions apart;
+    apart.errors = ProgramOptions::Errors::Separate;
+    const auto separate = runProgram(kBothStreams, apart);
+    EXPECT_EQ(separate.text, "out\n");
+    EXPECT_EQ(separate.errors, "err\n");
+    EXPECT_EQ(separate.exitCode, 3);
+
+    // "> /dev/null 2>&1": only how it ended.
+    const auto nothing = runProgram(kBothStreams, nexus::system::nothingKept());
+    EXPECT_TRUE(nothing.ran);
+    EXPECT_EQ(nothing.text, "");
+    EXPECT_EQ(nothing.errors, "");
+    EXPECT_EQ(nothing.exitCode, 3);
+
+    // No redirection at all: this process's own stderr gets them.
+    int code = -1;
+    const std::string seen = withStreamInAFile(2, "", [] {
+        const auto shown = runProgram(kBothStreams, nexus::system::shownErrors());
+        return shown.text == "out\n" && shown.errors.empty() && shown.exitCode == 3 ? 0 : 1;
+    }, &code);
+    EXPECT_EQ(code, 0);
+    EXPECT_EQ(seen, "err\n");
+
+    // Lines only when asked for.
+    ProgramOptions noLines = nexus::system::mergedErrors();
+    noLines.splitLines = false;
+    const auto whole = runProgram(kBothStreams, noLines);
+    EXPECT_EQ(whole.text, "out\nerr\n");
+    EXPECT_TRUE(whole.lines.empty());
+}
+
+TEST(ProcessTest, OptionsCanLeaveTheOutputToTheTerminal) {
+    // What std::system did: nothing collected, the program writes where
+    // this process writes. Errors "merged" follow the output there.
+    for (const bool merge : {false, true}) {
+        int code = -1;
+        const std::string seen = withStreamInAFile(1, "", [merge] {
+            ProgramOptions options = nexus::system::handedOver(false);
+            if (merge) options.errors = ProgramOptions::Errors::Merge;
+            else options.errors = ProgramOptions::Errors::Discard;
+            const auto ran = runProgram(kBothStreams, options);
+            return ran.text.empty() && ran.lines.empty() && ran.exitCode == 3 ? 0 : 1;
+        }, &code);
+        EXPECT_EQ(code, 0) << merge;
+        EXPECT_EQ(seen, merge ? "out\nerr\n" : "out\n") << merge;
+    }
+}
+
+// Unless input is given, the program reads what this process reads
+// (a command run through the shell did: dpkg asks its questions there).
+TEST(ProcessTest, OptionsShareStdinUnlessInputIsGiven) {
+    int code = -1;
+    withStreamInAFile(0, "typed by the person\n", [] {
+        int wrong = 0;
+        const auto shared = runProgram({"cat"}, ProgramOptions());
+        if (shared.text != "typed by the person\n") wrong |= 1;
+        ProgramOptions given;
+        given.input = "from nexus";
+        if (runProgram({"cat"}, given).text != "from nexus") wrong |= 2;
+        given.input = "";   // given, and empty: the end of input at once
+        const auto empty = runProgram({"cat"}, given);
+        if (!empty.text.empty() || !empty.ok) wrong |= 4;
+        return wrong;
+    }, &code);
+    EXPECT_EQ(code, 0) << "bit 1: shared; 2: given; 4: given empty";
+}
+
+// More than a pipe holds (64 KiB), in every direction at once.
+TEST(ProcessTest, OptionsMoveMoreThanAPipeHoldsEveryWay) {
+    const std::string big(300000, 'x');
+
+    ProgramOptions in;
+    in.input = big;
+    const auto echoed = runProgram({"cat"}, in);
+    EXPECT_TRUE(echoed.ok);
+    EXPECT_EQ(echoed.text, big);
+
+    // In, out and errors, all three larger than a pipe.
+    ProgramOptions three;
+    three.input = big;
+    three.errors = ProgramOptions::Errors::Separate;
+    const auto all = runProgram(
+        {"sh", "-c", "head -c 200000 /dev/zero | tr '\\0' e >&2; cat; head -c 200000 /dev/zero | tr '\\0' E >&2"},
+        three);
+    EXPECT_TRUE(all.ok);
+    EXPECT_EQ(all.text, big);
+    EXPECT_EQ(all.errors, std::string(200000, 'e') + std::string(200000, 'E'));
+
+    ProgramOptions merged = nexus::system::mergedErrors();
+    merged.input = big;
+    const auto both = runProgram(
+        {"sh", "-c", "cat; head -c 200000 /dev/zero | tr '\\0' e >&2"}, merged);
+    EXPECT_EQ(both.text.size(), 500000u);
+
+    // In only: nothing is read back, all of it is still written.
+    ProgramOptions swallowed = nexus::system::nothingKept();
+    swallowed.input = big;
+    const auto counted = runProgram({"sh", "-c", "test \"$(wc -c)\" -eq 300000"}, swallowed);
+    EXPECT_TRUE(counted.ok);
+    EXPECT_EQ(counted.text, "");
+}
+
+// A program that ends without reading: the write would raise SIGPIPE
+// and end nexus. It must not, whichever way the output goes.
+TEST(ProcessTest, OptionsSurviveAProgramThatExitsWhileInputIsWritten) {
+    const int status = inAChild([] {
+        int wrong = 0;
+        const std::string big(4 * 1024 * 1024, 'x');
+        ProgramOptions given;
+        given.input = big;
+        const auto early = runProgram({"sh", "-c", "exit 5"}, given);
+        if (!early.ran || early.exitCode != 5) wrong |= 1;
+        const auto some = runProgram({"head", "-c", "10"}, given);
+        if (some.text != std::string(10, 'x') || !some.ok) wrong |= 2;
+        ProgramOptions quiet = nexus::system::nothingKept();
+        quiet.input = big;
+        if (runProgram({"true"}, quiet).exitCode != 0) wrong |= 4;
+        ProgramOptions merged = nexus::system::mergedErrors();
+        merged.input = big;
+        const auto said = runProgram({"sh", "-c", "echo bye >&2; exit 6"}, merged);
+        if (said.text != "bye\n" || said.exitCode != 6) wrong |= 8;
+        // And no SIGPIPE left waiting for whoever unblocks it next.
+        sigset_t pending;
+        sigemptyset(&pending);
+        ::sigpending(&pending);
+        if (sigismember(&pending, SIGPIPE) == 1) wrong |= 16;
+        return wrong;
+    });
+    ASSERT_TRUE(WIFEXITED(status)) << "ended by signal " << WTERMSIG(status);
+    EXPECT_EQ(WEXITSTATUS(status), 0);
+}
+
+TEST(ProcessTest, OptionsReportAKilledProgramAs128PlusTheSignal) {
+    for (const auto& [name, number] : {std::pair{"TERM", SIGTERM}, std::pair{"KILL", SIGKILL},
+                                       std::pair{"INT", SIGINT}, std::pair{"HUP", SIGHUP}}) {
+        const auto killed = runProgram(
+            {"sh", "-c", std::string("echo before; kill -") + name + " $$; echo after"},
+            nexus::system::mergedErrors());
+        EXPECT_TRUE(killed.ran) << name;
+        EXPECT_FALSE(killed.ok) << name;
+        EXPECT_EQ(killed.exitCode, 128 + number) << name;
+        EXPECT_EQ(killed.text, "before\n") << name;
+    }
+}
+
+// A program that is not there: the numbers a shell gave, never 0, and
+// the reason where the shell's "not found" line used to be.
+TEST(ProcessTest, OptionsSayWhenAProgramCannotBeStarted) {
+    const std::string missing = "nexus-no-such-program-for-the-test";
+    const std::size_t before = openDescriptors();
+
+    const auto merged = runProgram({missing, "x"}, nexus::system::mergedErrors());
+    EXPECT_FALSE(merged.ran);
+    EXPECT_FALSE(merged.ok);
+    EXPECT_EQ(merged.exitCode, 127);
+    EXPECT_EQ(merged.text, missing + ": no such program\n");
+    ASSERT_EQ(merged.lines.size(), 1u);
+
+    ProgramOptions apart;
+    apart.errors = ProgramOptions::Errors::Separate;
+    const auto separate = runProgram({missing}, apart);
+    EXPECT_EQ(separate.exitCode, 127);
+    EXPECT_EQ(separate.text, "");
+    EXPECT_EQ(separate.errors, missing + ": no such program\n");
+
+    const auto dropped = runProgram({missing}, ProgramOptions());
+    EXPECT_EQ(dropped.exitCode, 127);
+    EXPECT_EQ(dropped.text, "");
+
+    // Shown to the person, as the shell's line was.
+    const std::string seen = withStreamInAFile(2, "", [&missing] {
+        return runProgram({missing}, nexus::system::shownErrors()).exitCode == 127 ? 0 : 1;
+    });
+    EXPECT_EQ(seen, missing + ": no such program\n");
+
+    // A folder in PATH that cannot be looked into does not turn "not
+    // there" into "not allowed" (the C library says the latter; a shell
+    // says the former). Root can look into anything, so only otherwise.
+    if (::geteuid() != 0) {
+        const auto locked = std::filesystem::temp_directory_path() /
+                            ("nexus-locked-" + std::to_string(::getpid()));
+        std::filesystem::create_directories(locked);
+        std::filesystem::permissions(locked, std::filesystem::perms::none);
+        const std::string oldPath = std::getenv("PATH") ? std::getenv("PATH") : "";
+        ::setenv("PATH", (locked.string() + ":" + oldPath).c_str(), 1);
+        const auto behind = runProgram({missing}, nexus::system::mergedErrors());
+        EXPECT_EQ(behind.exitCode, 127);
+        EXPECT_EQ(behind.text, missing + ": no such program\n");
+        // And what is there further along PATH still runs.
+        EXPECT_EQ(runProgram({"echo", "found"}, ProgramOptions()).text, "found\n");
+        ::setenv("PATH", oldPath.c_str(), 1);
+        std::filesystem::permissions(locked, std::filesystem::perms::owner_all);
+        std::filesystem::remove(locked);
+    }
+
+    // There, and not a program: 126.
+    const auto notAProgram = runProgram({"/etc/hostname"}, nexus::system::mergedErrors());
+    EXPECT_FALSE(notAProgram.ran);
+    EXPECT_EQ(notAProgram.exitCode, 126);
+    EXPECT_NE(notAProgram.text.find("could not be started"), std::string::npos) << notAProgram.text;
+
+    // Nothing to run at all.
+    EXPECT_EQ(runProgram({}, ProgramOptions()).exitCode, 127);
+    EXPECT_FALSE(runProgram({}, ProgramOptions()).ran);
+    EXPECT_EQ(runProgram({""}, ProgramOptions()).exitCode, 127);
+    EXPECT_EQ(runProgram({"/"}, ProgramOptions()).exitCode, 126);
+    // The form without options too: it said 0 until 0.2.0.
+    EXPECT_EQ(runProgram({missing}).exitCode, 127);
+    EXPECT_FALSE(runProgram({missing}).ok);
+
+    EXPECT_EQ(openDescriptors(), before);
+    EXPECT_EQ(::waitpid(-1, nullptr, WNOHANG), -1);   // no child left uncollected
+}
+
+// The point of all this: an argument is one argument, whatever it
+// holds. Nothing is split, expanded, globbed or run.
+TEST(ProcessTest, OptionsPassEveryArgumentAsItIs) {
+    const std::vector<std::string> hostile{
+        "",                           // an empty argument stays an argument
+        "two words",
+        "it's",
+        "say \"hi\"",
+        "$HOME",
+        "${PATH}",
+        "`id`",
+        "$(id)",
+        "a;b",
+        "a|b",
+        "a&b",
+        "> /tmp/nexus-should-not-exist",
+        "*",
+        "~",
+        "line one\nline two",
+        "tab\there",
+        "-n",
+        "--",
+        "\\",
+        "caf\xc3\xa9",
+    };
+    // Prints each argument it was given with a zero byte after it: no
+    // argument can hold one, so where each ends is beyond doubt.
+    std::vector<std::string> argv{"sh", "-c", "printf '%s\\0' \"$@\"", "sh"};
+    argv.insert(argv.end(), hostile.begin(), hostile.end());
+    std::string expected;
+    for (const auto& one : hostile) {
+        expected += one + std::string(1, '\0');
+    }
+    const auto echoed = runProgram(argv, ProgramOptions());
+    EXPECT_TRUE(echoed.ok);
+    EXPECT_EQ(echoed.text, expected);
+    EXPECT_FALSE(std::filesystem::exists("/tmp/nexus-should-not-exist"));
+
+    // And with nothing in between that could count them wrongly.
+    const auto count = runProgram({"sh", "-c", "echo $#", "sh", "", "a b", "", "$(id)"}, ProgramOptions());
+    EXPECT_EQ(count.text, "4\n");
+}
+
+TEST(ProcessTest, OptionsSetTheLocaleAndVariablesForTheProgramOnly) {
+    const char* oldAll = std::getenv("LC_ALL");
+    const char* oldLanguage = std::getenv("LANGUAGE");
+    const std::string keptAll = oldAll ? oldAll : "";
+    const std::string keptLanguage = oldLanguage ? oldLanguage : "";
+    ::setenv("LC_ALL", "sr_RS.UTF-8", 1);
+    ::setenv("LANGUAGE", "sr", 1);
+    ::setenv("NEXUS_TEST_KEPT", "kept", 1);
+
+    const std::vector<std::string> show{"sh", "-c",
+        "printf '%s|%s|%s|%s' \"$LC_ALL\" \"${LANGUAGE-unset}\" \"$NEXUS_TEST_KEPT\" \"$NEXUS_TEST_SET\""};
+
+    // As runCommand always did: LC_ALL=C.UTF-8, LANGUAGE set and empty.
+    EXPECT_EQ(runProgram(show, ProgramOptions()).text, "C.UTF-8||kept|");
+
+    ProgramOptions own;
+    own.plainLocale = false;
+    EXPECT_EQ(runProgram(show, own).text, "sr_RS.UTF-8|sr|kept|");
+    // The form without options keeps the caller's locale, as before.
+    EXPECT_EQ(runProgram(show).text, "sr_RS.UTF-8|sr|kept|");
+
+    // "LC_ALL=de_DE.UTF-8 locale title": one variable over the plain locale.
+    ProgramOptions one;
+    one.environment = {{"LC_ALL", "de_DE.UTF-8"}, {"NEXUS_TEST_SET", "a b;$(id)"}};
+    EXPECT_EQ(runProgram(show, one).text, "de_DE.UTF-8||kept|a b;$(id)");
+
+    // The last setting of a name wins; a name that is not one is left out.
+    ProgramOptions twice;
+    twice.environment = {{"NEXUS_TEST_SET", "first"}, {"NEXUS_TEST_SET", "second"},
+                         {"NEXUS_TEST_KEPT=x", "smuggled"}, {"", "nameless"}};
+    EXPECT_EQ(runProgram(show, twice).text, "C.UTF-8||kept|second");
+
+    // This process's own variables are as they were.
+    EXPECT_STREQ(std::getenv("LC_ALL"), "sr_RS.UTF-8");
+    EXPECT_STREQ(std::getenv("LANGUAGE"), "sr");
+    EXPECT_EQ(std::getenv("NEXUS_TEST_SET"), nullptr);
+
+    if (oldAll) ::setenv("LC_ALL", keptAll.c_str(), 1); else ::unsetenv("LC_ALL");
+    if (oldLanguage) ::setenv("LANGUAGE", keptLanguage.c_str(), 1); else ::unsetenv("LANGUAGE");
+    ::unsetenv("NEXUS_TEST_KEPT");
+}
+
+namespace {
+
+double secondsFor(const std::function<void()>& work) {
+    const auto start = std::chrono::steady_clock::now();
+    work();
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+}
+
+}  // namespace
+
+TEST(ProcessTest, OptionsStopAProgramWhenItsTimeIsUp) {
+    // In time: nothing changes.
+    ProgramOptions limited;
+    limited.timeoutSeconds = 20;
+    const auto quick = runProgram({"echo", "hi"}, limited);
+    EXPECT_TRUE(quick.ok);
+    EXPECT_FALSE(quick.timedOut);
+    EXPECT_EQ(quick.text, "hi\n");
+
+    // Too long: SIGTERM, exit code 124 as timeout(1), what it had
+    // printed is kept.
+    limited.timeoutSeconds = 1;
+    nexus::system::ProcessResult slow;
+    double took = secondsFor([&] {
+        slow = runProgram({"sh", "-c", "echo first; exec sleep 30"}, limited);
+    });
+    EXPECT_TRUE(slow.ran);
+    EXPECT_TRUE(slow.timedOut);
+    EXPECT_FALSE(slow.ok);
+    EXPECT_EQ(slow.exitCode, 124);
+    EXPECT_EQ(slow.text, "first\n");
+    EXPECT_GE(took, 0.9);
+    EXPECT_LT(took, 15.0);   // not the thirty seconds; loose for a busy machine
+
+    // With nothing to read from it the limit holds as well.
+    ProgramOptions silent = nexus::system::nothingKept();
+    silent.timeoutSeconds = 1;
+    took = secondsFor([&] { slow = runProgram({"sleep", "30"}, silent); });
+    EXPECT_TRUE(slow.timedOut);
+    EXPECT_EQ(slow.exitCode, 124);
+    EXPECT_LT(took, 15.0);
+
+    // One that refuses SIGTERM gets SIGKILL two seconds later.
+    took = secondsFor([&] {
+        slow = runProgram({"sh", "-c", "trap '' TERM; echo deaf; exec sleep 30"}, limited);
+    });
+    EXPECT_TRUE(slow.timedOut);
+    EXPECT_EQ(slow.exitCode, 124);
+    EXPECT_EQ(slow.text, "deaf\n");
+    EXPECT_GE(took, 2.9);    // SIGTERM at one second, SIGKILL two later
+    EXPECT_LT(took, 15.0);
+
+    // Something the program started keeps the pipe open after it is
+    // gone: nexus does not wait for that for ever.
+    took = secondsFor([&] {
+        slow = runProgram({"sh", "-c", "sleep 8 & echo started; wait"}, limited);
+    });
+    EXPECT_TRUE(slow.timedOut);
+    EXPECT_EQ(slow.exitCode, 124);
+    EXPECT_EQ(slow.text, "started\n");
+    EXPECT_LT(took, 15.0);
+
+    EXPECT_EQ(::waitpid(-1, nullptr, WNOHANG), -1);   // every program was collected
+}
+
+// Work handed over in the foreground (what std::system was): Ctrl-C
+// goes to everything in the terminal's foreground, nexus included.
+// nexus must still be there afterwards to write down how it ended.
+TEST(ProcessTest, HandedOverWorkTakesCtrlCItselfAndNexusLivesOn) {
+    // The program interrupts its parent, as a terminal's Ctrl-C would.
+    const std::vector<std::string> interrupts{"sh", "-c", "kill -INT $PPID; kill -QUIT $PPID; exit 7"};
+
+    int status = inAChild([&] {
+        const auto ran = runProgram(interrupts, nexus::system::handedOver(false));
+        if (ran.exitCode != 7) return 1;
+        // Afterwards Ctrl-C is nexus's own again.
+        struct sigaction now {};
+        ::sigaction(SIGINT, nullptr, &now);
+        if (now.sa_handler != SIG_DFL) return 2;
+        ::sigaction(SIGQUIT, nullptr, &now);
+        return now.sa_handler == SIG_DFL ? 0 : 3;
+    });
+    ASSERT_TRUE(WIFEXITED(status)) << "nexus was ended by signal " << WTERMSIG(status);
+    EXPECT_EQ(WEXITSTATUS(status), 0);
+
+    // Without it, that is what happens: the test is about something real.
+    status = inAChild([&] {
+        ProgramOptions plain = nexus::system::nothingKept();
+        runProgram(interrupts, plain);
+        return 0;
+    });
+    EXPECT_TRUE(WIFSIGNALED(status));
+
+    // The program itself is interrupted as usual: it is not shielded...
+    status = inAChild([] {
+        const auto ran = runProgram({"sh", "-c", "kill -INT $$; exit 7"},
+                                    nexus::system::handedOver(false));
+        return ran.exitCode == 128 + SIGINT ? 0 : 1;
+    });
+    ASSERT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(WEXITSTATUS(status), 0);
+
+    // ...unless nexus itself was started with Ctrl-C ignored (nohup, a
+    // background job): then so is what it starts, as with system(3).
+    status = inAChild([] {
+        ::signal(SIGINT, SIG_IGN);
+        const auto ran = runProgram({"sh", "-c", "kill -INT $$; exit 7"},
+                                    nexus::system::handedOver(false));
+        struct sigaction now {};
+        ::sigaction(SIGINT, nullptr, &now);
+        return ran.exitCode == 7 && now.sa_handler == SIG_IGN ? 0 : 1;
+    });
+    ASSERT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(WEXITSTATUS(status), 0);
+}
+
+// Started with stdin, stdout or stderr closed, a process gets those
+// numbers back from the next pipe(). The pipes must still reach the
+// program the right way round.
+TEST(ProcessTest, OptionsWorkWithTheStandardStreamsClosed) {
+    const int status = inAChild([] {
+        ::close(0);
+        ::close(1);
+        ::close(2);
+        int wrong = 0;
+        ProgramOptions given = nexus::system::mergedErrors();
+        given.input = "hello";
+        if (runProgram({"cat"}, given).text != "hello") wrong |= 1;
+        ProgramOptions apart;
+        apart.input = "";
+        apart.errors = ProgramOptions::Errors::Separate;
+        const auto both = runProgram({"sh", "-c", "echo o; echo e >&2"}, apart);
+        if (both.text != "o\n" || both.errors != "e\n") wrong |= 2;
+        if (runProgram({"echo", "x"}, "").text != "x\n") wrong |= 4;
+        // And 0, 1 and 2 are closed again afterwards, as they were.
+        for (int fd = 0; fd <= 2; ++fd) {
+            if (::fcntl(fd, F_GETFD) != -1) wrong |= 8;
+        }
+        return wrong;
+    });
+    ASSERT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(WEXITSTATUS(status), 0) << "bit 1: input; 2: three pipes; 4: old form; 8: descriptors";
+}
+
+TEST(ProcessTest, OptionsLeaveNoDescriptorOpen) {
+    const std::size_t before = openDescriptors();
+    ProgramOptions apart;
+    apart.errors = ProgramOptions::Errors::Separate;
+    apart.input = "x";
+    ProgramOptions limited = nexus::system::nothingKept();
+    limited.timeoutSeconds = 5;
+    for (int i = 0; i < 20; ++i) {
+        runProgram(kBothStreams, ProgramOptions());
+        runProgram(kBothStreams, nexus::system::mergedErrors());
+        runProgram(kBothStreams, apart);
+        runProgram(kBothStreams, nexus::system::nothingKept());
+        runProgram({"true"}, limited);
+        runProgram({"nexus-no-such-program-for-the-test"}, apart);
+    }
+    EXPECT_EQ(openDescriptors(), before);
+    EXPECT_EQ(::waitpid(-1, nullptr, WNOHANG), -1);
+}
+
+// "| head -2", done here.
+TEST(ProcessTest, FirstLinesIsWhatHeadKept) {
+    using nexus::system::firstLines;
+    EXPECT_EQ(firstLines("State: busy\nDeployments:\n  one\n", 2), "State: busy\nDeployments:\n");
+    EXPECT_EQ(firstLines("a\nb\nc\n", 1), "a\n");
+    EXPECT_EQ(firstLines("a\nb", 5), "a\nb");
+    EXPECT_EQ(firstLines("a", 2), "a");
+    EXPECT_EQ(firstLines("\n\nx\n", 2), "\n\n");
+    EXPECT_EQ(firstLines("", 2), "");
+    EXPECT_EQ(firstLines("a\nb\n", 0), "");
 }

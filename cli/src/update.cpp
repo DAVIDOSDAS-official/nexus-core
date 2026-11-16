@@ -9,6 +9,18 @@ namespace nexus_cli {
 
 namespace {
 
+// Every tool in this file is started directly, each value an argument
+// of its own (0.2.1, ledger item 4): `nexus update --apply` runs as
+// root, and no command line here is read by a shell any more. A plain
+// runProgram is what "2>/dev/null" was; handedOver() is what
+// std::system was, for the work whose progress the person watches.
+using nexus::system::runProgram;
+
+// rpm-ostree's status, in the plain locale, errors dropped.
+std::string rpmOstreeStatus() {
+    return runProgram({"rpm-ostree", "status"}, nexus::system::ProgramOptions()).text;
+}
+
 // What this machine knows about the build it runs, for holding an
 // offered update against (0.1.95, round-4 audit M5). Nothing here is
 // asked of the registry. BUILD_ID is read from /usr/lib/os-release,
@@ -165,15 +177,12 @@ int commandUpdate(
     nexus::system::SystemUpdate system;
     bool reached = false;
     if (image) {
-        system = nexus::system::parseSystemUpdate(
-            nexus::system::runCommand("rpm-ostree status 2>/dev/null",
-                                      false).text);
+        system = nexus::system::parseSystemUpdate(rpmOstreeStatus());
         if (!system.origin.empty() &&
             nexus::system::commandExists("skopeo")) {
             const auto remote = nexus::system::parseImageInspect(
-                nexus::system::runCommand(
-                    "skopeo inspect --no-tags " + shellQuote("docker://" + system.origin) +
-                    " 2>/dev/null", false).text);
+                runProgram({"skopeo", "inspect", "--no-tags", "docker://" + system.origin},
+                           nexus::system::ProgramOptions()).text);
             reached = remote.ok;
             // Judged before it is called new: an older build than the
             // one running is not an update, whatever its signature
@@ -192,10 +201,9 @@ int commandUpdate(
     std::vector<nexus::system::AppUpdate> apps;
     if (haveFlatpak) {
         apps = nexus::system::parseFlatpakUpdates(
-            nexus::system::runCommand(
-                "flatpak remote-ls --updates --app "
-                "--columns=application,version 2>/dev/null",
-                false).text);
+            runProgram({"flatpak", "remote-ls", "--updates", "--app",
+                        "--columns=application,version"},
+                       nexus::system::ProgramOptions()).text);
     }
 
     const std::string summary = nexus::system::updateSummary(system, apps);
@@ -273,13 +281,6 @@ int commandUpdate(
             std::filesystem::path(seenFile).parent_path(), seenError);
         std::ofstream(seenFile) << summary << "\n";
 
-        auto quoted = [](const std::string& text) {
-            std::string out = "'";
-            for (char c : text) {
-                out += c == '\'' ? std::string("'\\''") : std::string(1, c);
-            }
-            return out + "'";
-        };
         // -t 0: it stays until it is clicked away. A notification
         // that vanishes while nobody looks is one nobody saw (Asus,
         // 4 October). `nexus update` says the same any time.
@@ -292,22 +293,29 @@ int commandUpdate(
         // it. The session's display is known to the user manager
         // (WAYLAND_DISPLAY, checked the same day).
         const bool shop = nexus::system::commandExists("nexus-shop");
-        const auto answer = nexus::system::runCommand(
-            "notify-send -a Nexus -t 0 -i system-software-update " +
-            std::string(shop ? "-A open='Open Nexus Shop' " : "") +
-            quoted("Update available") + " " +
-            quoted(summary + ". Nothing is installed until you ask: " +
-                   (shop ? std::string("open Nexus Shop, Updates")
-                         : std::string("open a terminal and run  "
-                                       "nexus update")) +
-                   (first ? std::string(". Not wanted? In a terminal:  "
-                                        "nexus update notify off --apply")
-                          : std::string())),
-            false);
+        // The title and the text are one argument each, whatever a
+        // version label or an app's name holds (0.2.1: they were
+        // quoted by hand for the shell).
+        std::vector<std::string> notification{
+            "notify-send", "-a", "Nexus", "-t", "0", "-i", "system-software-update"};
+        if (shop) {
+            notification.push_back("-A");
+            notification.push_back("open=Open Nexus Shop");
+        }
+        notification.push_back("Update available");
+        notification.push_back(
+            summary + ". Nothing is installed until you ask: " +
+            (shop ? std::string("open Nexus Shop, Updates")
+                  : std::string("open a terminal and run  "
+                                "nexus update")) +
+            (first ? std::string(". Not wanted? In a terminal:  "
+                                 "nexus update notify off --apply")
+                   : std::string()));
+        const auto answer = runProgram(notification, nexus::system::shownErrors());
         if (shop && answer.text.find("open") != std::string::npos) {
-            nexus::system::runCommand(
-                "systemd-run --user --quiet --collect --no-block "
-                "nexus-shop --updates >/dev/null 2>&1", false);
+            runProgram({"systemd-run", "--user", "--quiet", "--collect", "--no-block",
+                        "nexus-shop", "--updates"},
+                       nexus::system::nothingKept());
         }
         return 0;
     }
@@ -423,9 +431,10 @@ int commandUpdate(
     // and a terminal's, Asus 14 October) waited silently behind the
     // first; say what is happening instead.
     if (image && system.available) {
-        const auto state = nexus::system::runCommand(
-            "rpm-ostree status 2>/dev/null | head -2", false);
-        if (state.text.find("State: busy") != std::string::npos) {
+        // The first two lines of the status say whether it is busy
+        // (what `| head -2` kept).
+        const std::string state = nexus::system::firstLines(rpmOstreeStatus(), 2);
+        if (state.find("State: busy") != std::string::npos) {
             std::cout << "\nAn update is already running (from Nexus Shop, "
                          "or another terminal).\nLet it finish; "
                          "`rpm-ostree status` shows when it is idle again.\n"
@@ -469,8 +478,8 @@ int commandUpdate(
         std::cout << "Downloading the new version; this can take a while on "
                      "a slow\nconnection. Its progress is below.\n\n"
                   << std::flush;
-        const int status = std::system(
-            nexus::system::inPlainLocale("rpm-ostree upgrade").c_str());
+        const int status = runProgram({"rpm-ostree", "upgrade"},
+                                      nexus::system::handedOver(true)).exitCode;
         std::cout << "\n";
         ok = ok && status == 0;
 
@@ -486,22 +495,18 @@ int commandUpdate(
         // is anything else it is removed again; it has not started and
         // never will.
         if (status == 0) {
-            const auto after = nexus::system::parseSystemUpdate(
-                nexus::system::runCommand("rpm-ostree status 2>/dev/null",
-                                          false).text);
+            const auto after = nexus::system::parseSystemUpdate(rpmOstreeStatus());
             // Removes what this run staged; true only when rpm-ostree's
             // status, read again, no longer lists it.
             auto discard = [](const std::string& digest) {
                 std::cout << std::flush;
-                if (std::system(nexus::system::inPlainLocale(
-                        "rpm-ostree cleanup --pending").c_str()) != 0) {
+                if (!runProgram({"rpm-ostree", "cleanup", "--pending"},
+                                nexus::system::handedOver(true)).ok) {
                     // Its own message is above; what counts is what
                     // the status says next.
                     std::cout << "(rpm-ostree cleanup reported a problem.)\n";
                 }
-                const auto now = nexus::system::parseSystemUpdate(
-                    nexus::system::runCommand(
-                        "rpm-ostree status 2>/dev/null", false).text);
+                const auto now = nexus::system::parseSystemUpdate(rpmOstreeStatus());
                 return !now.digest.empty() && now.pendingDigest != digest;
             };
             auto removeUnconfirmed = [&](const std::string& what) {
@@ -585,8 +590,8 @@ int commandUpdate(
         std::cout << "\nApps: handing over to flatpak.\n\n";
         std::cout << std::flush;
         // Not captured either, for the same reason as the system.
-        const int status = std::system(nexus::system::inPlainLocale(
-            "flatpak update -y --noninteractive").c_str());
+        const int status = runProgram({"flatpak", "update", "-y", "--noninteractive"},
+                                      nexus::system::handedOver(true)).exitCode;
         std::cout << "\n";
         ok = ok && status == 0;
     }

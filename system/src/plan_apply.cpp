@@ -37,7 +37,12 @@ std::string toString(ApplyOutcome outcome) {
 
 namespace {
 
-ApplyResult runApt(const std::string& arguments) {
+// The package managers are started directly, each name an argument of
+// its own, never through /bin/sh (0.2.1, ledger item 4). They run as
+// root, and until now one value joined in without shellQuote would
+// have been a command. Errors are collected with the output, and the
+// tool shares this process's stdin, as before: dpkg asks there.
+ApplyResult runApt(const std::vector<std::string>& arguments) {
     ApplyResult result;
 
     if (!commandExists("apt-get")) {
@@ -50,7 +55,9 @@ ApplyResult runApt(const std::string& arguments) {
         return result;
     }
 
-    const ProcessResult ran = runCommand("apt-get " + arguments);
+    std::vector<std::string> argv{"apt-get"};
+    argv.insert(argv.end(), arguments.begin(), arguments.end());
+    const ProcessResult ran = runProgram(argv, mergedErrors());
 
     if (!ran.ran) {
         result.outcome = ApplyOutcome::Failed;
@@ -70,7 +77,7 @@ ApplyResult runApt(const std::string& arguments) {
 
 namespace {
 
-ApplyResult runDnf(const std::string& arguments) {
+ApplyResult runDnf(const std::vector<std::string>& arguments) {
     ApplyResult result;
 
     if (!commandExists("dnf")) {
@@ -83,7 +90,9 @@ ApplyResult runDnf(const std::string& arguments) {
         return result;
     }
 
-    const ProcessResult ran = runCommand("dnf " + arguments);
+    std::vector<std::string> argv{"dnf"};
+    argv.insert(argv.end(), arguments.begin(), arguments.end());
+    const ProcessResult ran = runProgram(argv, mergedErrors());
 
     if (!ran.ran) {
         result.outcome = ApplyOutcome::Failed;
@@ -103,8 +112,7 @@ ApplyResult runDnf(const std::string& arguments) {
 
 ApplyResult applyWithDnf(const std::string& requested) {
     return runDnf(
-        "install -y --setopt=install_weak_deps=False " +
-        shellQuote(requested));
+        {"install", "-y", "--setopt=install_weak_deps=False", requested});
 }
 
 ApplyResult removeWithDnf(
@@ -116,11 +124,8 @@ ApplyResult removeWithDnf(
         return result;
     }
 
-    std::string arguments = "remove -y";
-
-    for (const std::string& name : packages) {
-        arguments += " " + shellQuote(name);
-    }
+    std::vector<std::string> arguments{"remove", "-y"};
+    arguments.insert(arguments.end(), packages.begin(), packages.end());
 
     return runDnf(arguments);
 }
@@ -134,11 +139,8 @@ ApplyResult removeWithApt(
         return result;
     }
 
-    std::string arguments = "remove -y";
-
-    for (const std::string& name : packages) {
-        arguments += " " + shellQuote(name);
-    }
+    std::vector<std::string> arguments{"remove", "-y"};
+    arguments.insert(arguments.end(), packages.begin(), packages.end());
 
     return runApt(arguments);
 }
@@ -159,8 +161,7 @@ ApplyResult applyWithApt(const std::string& requested) {
     // -y is deliberate: the person was asked already, by Nexus, with
     // the plan in front of them. Asking twice trains people to say
     // yes without reading.
-    return runApt(
-        "install -y --no-install-recommends " + shellQuote(requested));
+    return runApt({"install", "-y", "--no-install-recommends", requested});
 }
 
 }
@@ -170,7 +171,7 @@ namespace nexus::system {
 ApplyResult uninstallWithRpmOstree(const std::vector<std::string>& names) {
     ApplyResult result;
 
-    std::string quoted;
+    std::vector<std::string> argv{"rpm-ostree", "uninstall"};
     for (const auto& name : names) {
         if (!isPackageName(name)) {
             result.outcome = ApplyOutcome::Refused;
@@ -178,20 +179,18 @@ ApplyResult uninstallWithRpmOstree(const std::vector<std::string>& names) {
             result.output.push_back("Not a package name, nothing done: " + name);
             return result;
         }
-        quoted += " " + shellQuote(name);
+        argv.push_back(name);
     }
-    if (quoted.empty()) {
+    if (names.empty()) {
         result.outcome = ApplyOutcome::Refused;
         result.exitCode = 2;
         result.output.push_back("No packages given.");
         return result;
     }
 
-    // Every name was checked and shell-quoted above.
-    const std::string command =
-        "rpm-ostree uninstall" + quoted;
-
-    const ProcessResult ran = runCommand(command, true);
+    // Every name was checked above, and each is one argument: no shell
+    // reads them (0.2.1, ledger item 4).
+    const ProcessResult ran = runProgram(argv, mergedErrors());
     result.exitCode = ran.exitCode;
     result.output.push_back(ran.text);
     if (!ran.ran) {
@@ -224,7 +223,11 @@ bool isImageBasedAt(const std::string& root) {
 ApplyResult layerWithRpmOstree(const std::vector<std::string>& names) {
     ApplyResult result;
 
-    std::string quoted;
+    // --idempotent: asking for something already layered is not a
+    // failure, and treating it as one turns a repeated setup into an
+    // error the user cannot act on.
+    std::vector<std::string> argv{"rpm-ostree", "install", "--idempotent",
+                                  "--allow-inactive"};
     for (const auto& name : names) {
         if (!isPackageName(name)) {
             result.outcome = ApplyOutcome::Refused;
@@ -232,22 +235,16 @@ ApplyResult layerWithRpmOstree(const std::vector<std::string>& names) {
             result.output.push_back("Not a package name, nothing done: " + name);
             return result;
         }
-        quoted += " " + shellQuote(name);
+        argv.push_back(name);
     }
-    if (quoted.empty()) {
+    if (names.empty()) {
         result.outcome = ApplyOutcome::Refused;
         result.exitCode = 2;
         result.output.push_back("No packages given.");
         return result;
     }
 
-    // --idempotent: asking for something already layered is not a
-    // failure, and treating it as one turns a repeated setup into an
-    // error the user cannot act on.
-    const std::string command =
-        "rpm-ostree install --idempotent --allow-inactive" + quoted;
-
-    const ProcessResult ran = runCommand(command, true);
+    const ProcessResult ran = runProgram(argv, mergedErrors());
 
     result.exitCode = ran.exitCode;
     result.output.push_back(ran.text);

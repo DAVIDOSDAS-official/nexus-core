@@ -12,6 +12,13 @@ namespace {
 // nexus language: what the system speaks, and adding or switching.
 // See system/include/nexus/system/language.hpp for what Fedora offers
 // and how that was checked.
+//
+// Every tool here is started directly, each value an argument of its
+// own (0.2.1, ledger item 4): adding and setting a language run as
+// root, and no command line here is read by a shell any more. A plain
+// runProgram is what "2>/dev/null" was, mergedErrors() what "2>&1" was.
+using nexus::system::mergedErrors;
+using nexus::system::runProgram;
 
 // Every language Fedora has a pack for. Asks dnf, which reads its own
 // cache; empty when dnf is not here or cannot answer.
@@ -20,30 +27,31 @@ std::vector<nexus::system::Language> fedoraLanguages() {
         return {};
     }
     std::cerr << "Asking dnf which languages Fedora offers...\n";
-    const auto ran = nexus::system::runCommand(
-        "dnf -q repoquery --qf '%{name}|%{summary}\\n' 'langpacks-*' "
-        "2>/dev/null", false);
+    // "\n" as two characters: dnf turns it into the line end itself.
+    const auto ran = runProgram(
+        {"dnf", "-q", "repoquery", "--qf", "%{name}|%{summary}\\n", "langpacks-*"},
+        nexus::system::ProgramOptions());
     return nexus::system::parseLanguagePacks(ran.text);
 }
 
 bool packageInstalled(const std::string& name) {
     if (!nexus::system::rpmDatabasePresent()) return false;
-    return nexus::system::runCommand(
-        "rpm -q " + shellQuote(name) + " >/dev/null 2>&1", false).exitCode == 0;
+    return runProgram({"rpm", "-q", name}, nexus::system::nothingKept()).exitCode == 0;
 }
 
 bool packageOffered(const std::string& name) {
-    const auto ran = nexus::system::runCommand(
-        "dnf -q repoquery --qf '%{name}\\n' " + shellQuote(name) + " 2>/dev/null",
-        false);
+    const auto ran = runProgram(
+        {"dnf", "-q", "repoquery", "--qf", "%{name}\\n", name},
+        nexus::system::ProgramOptions());
     return ran.text.find(name) != std::string::npos;
 }
 
 std::vector<std::string> addedLanguageCodes() {
     std::vector<std::string> codes;
     if (!nexus::system::rpmDatabasePresent()) return codes;
-    const auto ran = nexus::system::runCommand(
-        "rpm -qa --qf '%{NAME}\\n' 'langpacks-*' 2>/dev/null", false);
+    const auto ran = runProgram(
+        {"rpm", "-qa", "--qf", "%{NAME}\\n", "langpacks-*"},
+        nexus::system::ProgramOptions());
     std::istringstream lines(ran.text);
     std::string line;
     while (std::getline(lines, line)) {
@@ -80,8 +88,8 @@ std::string keyboardLayouts() {
                 ? layouts : layouts + " (variants: " + variants + ")";
         }
     }
-    const auto ran = nexus::system::runCommand(
-        "LC_ALL=C.UTF-8 localectl status 2>/dev/null", false);
+    const auto ran = runProgram({"localectl", "status"},
+                                nexus::system::ProgramOptions());
     std::istringstream lines(ran.text);
     std::string line;
     while (std::getline(lines, line)) {
@@ -133,8 +141,10 @@ const nexus::system::Language* languageOrSuggest(
 // Serbia with Latin" -- every locale is installed (glibc-all-langpacks),
 // so this is there; Nexus's short form when it is not.
 std::string localeInWords(const std::string& locale) {
-    const auto ran = nexus::system::runCommand(
-        "LC_ALL=" + shellQuote(locale) + " locale title 2>/dev/null", false);
+    // In that locale: LC_ALL for this one program.
+    nexus::system::ProgramOptions inLocale;
+    inLocale.environment = {{"LC_ALL", locale}};
+    const auto ran = runProgram({"locale", "title"}, inLocale);
     std::string title = ran.text;
     while (!title.empty() && (title.back() == '\n' || title.back() == ' ')) {
         title.pop_back();
@@ -307,12 +317,9 @@ int commandLanguage(
             ? nexus::system::layerWithRpmOstree(wanted)
             : [&] {
                   nexus::system::ApplyResult result;
-                  const auto ran = nexus::system::runCommand(
-                      "dnf install -y" + [&] {
-                          std::string q;
-                          for (const auto& w : wanted) q += " " + shellQuote(w);
-                          return q;
-                      }(), true);
+                  std::vector<std::string> argv{"dnf", "install", "-y"};
+                  argv.insert(argv.end(), wanted.begin(), wanted.end());
+                  const auto ran = runProgram(argv, mergedErrors());
                   result.exitCode = ran.exitCode;
                   result.output.push_back(ran.text);
                   result.outcome = !ran.ran ? nexus::system::ApplyOutcome::Unavailable
@@ -373,8 +380,8 @@ int commandLanguage(
             shown = language->name;
         }
 
-        const auto listing = nexus::system::runCommand(
-            "localectl list-locales 2>/dev/null", false);
+        const auto listing = runProgram({"localectl", "list-locales"},
+                                        nexus::system::ProgramOptions());
         const auto locales = nexus::system::localesFor(listing.text, code);
 
         if (locales.empty()) {
@@ -439,8 +446,8 @@ int commandLanguage(
             return 1;
         }
 
-        const auto ran = nexus::system::runCommand(
-            "localectl set-locale " + shellQuote("LANG=" + locale), true);
+        const auto ran = runProgram({"localectl", "set-locale", "LANG=" + locale},
+                                    mergedErrors());
         if (ran.exitCode != 0) {
             std::cout << "localectl refused (exit " << ran.exitCode << "): "
                       << ran.text << "\nNothing has been changed.\n";

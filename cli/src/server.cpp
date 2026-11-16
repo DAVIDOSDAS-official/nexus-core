@@ -19,6 +19,14 @@ namespace {
 // only with --apply, and every change is in `nexus history`. Nothing
 // is made reachable from the internet by Nexus: that is the router's
 // (port forwarding) or a tunnel's, and the person's decision.
+//
+// Every tool here is started directly, each value an argument of its
+// own (0.2.1, ledger item 4): most of this file runs as root, and no
+// command line in it is read by a shell any more. mergedErrors() is
+// what "2>&1" was, a plain runProgram what "2>/dev/null" was.
+using nexus::system::mergedErrors;
+using nexus::system::runProgram;
+
 std::string trimmed(const std::string& text) {
     const auto start = text.find_first_not_of(" \t\r\n");
     if (start == std::string::npos) {
@@ -38,7 +46,7 @@ std::string reachableNote(const std::string& name, int port) {
 
 // The machine's address on the home network, for "connect to ...".
 std::string lanAddress() {
-    const auto result = nexus::system::runCommand("hostname -I 2>/dev/null", false);
+    const auto result = runProgram({"hostname", "-I"}, nexus::system::ProgramOptions());
     std::stringstream words(result.text);
     std::string word;
     while (words >> word) {
@@ -65,7 +73,7 @@ std::uint64_t totalMemoryBytes() {
 
 bool firewallRunning() {
     return nexus::system::commandExists("firewall-cmd") &&
-           nexus::system::runCommand("firewall-cmd --state 2>/dev/null", false).ok;
+           runProgram({"firewall-cmd", "--state"}, nexus::system::ProgramOptions()).ok;
 }
 
 struct ServerSeen {
@@ -116,8 +124,8 @@ std::vector<std::string> serverNames() {
 }
 
 std::string unitState(const std::string& unit) {
-    const auto state = nexus::system::runCommand(
-        "systemctl is-active " + unit + " 2>/dev/null", false);
+    const auto state = runProgram({"systemctl", "is-active", unit},
+                                  nexus::system::ProgramOptions());
     const std::string word = trimmed(state.text);
     return word.empty() ? "unknown" : word;
 }
@@ -158,12 +166,11 @@ bool openPorts(const std::vector<std::string>& ports, bool open) {
     }
     bool ok = true;
     for (const std::string& port : ports) {
-        ok = nexus::system::runCommand(
-                 std::string("firewall-cmd --permanent ") +
-                 (open ? "--add-port=" : "--remove-port=") + port + " 2>&1",
-                 true).ok && ok;
+        ok = runProgram({"firewall-cmd", "--permanent",
+                         (open ? "--add-port=" : "--remove-port=") + port},
+                        mergedErrors()).ok && ok;
     }
-    nexus::system::runCommand("firewall-cmd --reload 2>&1", true);
+    runProgram({"firewall-cmd", "--reload"}, mergedErrors());
     return ok;
 }
 
@@ -173,7 +180,8 @@ bool startServer(const std::string& name, const std::string& image,
                  std::string& error) {
     std::cout << "\nDownloading " << image << " (first time only; it can take a few minutes):\n"
               << std::flush;
-    if (std::system(("podman pull " + shellQuote(image)).c_str()) != 0) {
+    // Not collected: podman shows the download as it goes.
+    if (!runProgram({"podman", "pull", image}, nexus::system::handedOver(false)).ok) {
         error = "the download did not finish (podman pull " + image + ")";
         return false;
     }
@@ -190,9 +198,9 @@ bool startServer(const std::string& name, const std::string& image,
         }
     }
 
-    nexus::system::runCommand("systemctl daemon-reload 2>&1", true);
-    const auto started = nexus::system::runCommand(
-        "systemctl start " + nexus::system::serverUnit(name) + " 2>&1", true);
+    runProgram({"systemctl", "daemon-reload"}, mergedErrors());
+    const auto started = runProgram(
+        {"systemctl", "start", nexus::system::serverUnit(name)}, mergedErrors());
     if (!started.ok) {
         error = "systemctl start " + nexus::system::serverUnit(name) + ": " +
                 firstLine(started.text);
@@ -416,8 +424,9 @@ int commandServer(
                          " up to 30 characters.\n`nexus server` lists the servers here.\n";
             return 2;
         }
-        return std::system(("journalctl -u " + nexus::system::serverUnit(words[1]) +
-                            " -n 80 --no-pager").c_str()) == 0 ? 0 : 1;
+        return runProgram({"journalctl", "-u", nexus::system::serverUnit(words[1]),
+                           "-n", "80", "--no-pager"},
+                          nexus::system::handedOver(false)).ok ? 0 : 1;
     }
 
     // ---------------------------------------------------------- cockpit
@@ -453,11 +462,12 @@ int commandServer(
                                    "cockpit.socket, firewall service cockpit", "cockpit");
         const std::string log = nexus::system::defaultTransactionLog();
         const std::string marker = nexus::system::beginTransaction(log, record);
-        bool ok = nexus::system::runCommand(
-            "systemctl enable --now cockpit.socket 2>&1", true).ok;
+        bool ok = runProgram({"systemctl", "enable", "--now", "cockpit.socket"},
+                             mergedErrors()).ok;
         if (ok && firewallRunning()) {
-            nexus::system::runCommand("firewall-cmd --permanent --add-service=cockpit 2>&1", true);
-            nexus::system::runCommand("firewall-cmd --reload 2>&1", true);
+            runProgram({"firewall-cmd", "--permanent", "--add-service=cockpit"},
+                       mergedErrors());
+            runProgram({"firewall-cmd", "--reload"}, mergedErrors());
         }
         record.outcome = ok ? "switched on" : "failed";
         record.succeeded = ok;
@@ -552,12 +562,11 @@ int commandServer(
         // plain "inactive" counts as that. One that was starting,
         // restarting after a crash, or failed gets its start as before.
         const auto unitState = [&unit] {
-            return trimmed(nexus::system::runCommand(
-                "systemctl is-active " + shellQuote(unit) + " 2>/dev/null", false).text);
+            return trimmed(runProgram({"systemctl", "is-active", unit},
+                                      nexus::system::ProgramOptions()).text);
         };
         wasRunning = nexus::system::startAgainAfterBackup(unitState());
-        const auto stop = nexus::system::runCommand(
-            "systemctl stop " + shellQuote(unit), true);
+        const auto stop = runProgram({"systemctl", "stop", unit}, mergedErrors());
         // Stopped -- seen to be, not assumed (0.1.88, review of patch
         // 113). 0.1.87 ignored what `systemctl stop` answered and went
         // on: a copy taken from a server that was still writing is a
@@ -586,7 +595,7 @@ int commandServer(
             fs::remove(nexus::system::serverQuadletPath(name), ec);
             ok = !ec;
             if (!ok) error = ec.message();
-            nexus::system::runCommand("systemctl daemon-reload 2>&1", true);
+            runProgram({"systemctl", "daemon-reload"}, mergedErrors());
             openPorts(seen.ports, false);
         } else {
             // Root's only (0.1.85, outside review N2): the archive holds
@@ -603,9 +612,9 @@ int commandServer(
             // folder under a finished backup's name.
             const std::string partial = archive + ".partial";
             const mode_t before = ::umask(077);
-            const auto tar = nexus::system::runCommand(
-                "tar -czf " + shellQuote(partial) + " -C /var/lib/nexus/servers " + shellQuote(name),
-                true);
+            const auto tar = runProgram(
+                {"tar", "-czf", partial, "-C", "/var/lib/nexus/servers", name},
+                mergedErrors());
             ::umask(before);
             ok = tar.ok;
             if (!ok) {
@@ -642,8 +651,7 @@ int commandServer(
         // seen to be running, not assumed from start's exit code.
         const bool removed = action == "remove" && ok;
         if (wasRunning && !removed) {
-            const auto started = nexus::system::runCommand(
-                "systemctl start " + shellQuote(unit), true);
+            const auto started = runProgram({"systemctl", "start", unit}, mergedErrors());
             const std::string stateAtEnd = unitState();
             if (!started.ok) {
                 notRestarted = firstLine(started.text);
@@ -841,9 +849,9 @@ int commandServer(
             bool ok = copyWebsite(folder, site, copyError);
             if (!ok) std::cout << "\nNot updated: " << copyError << "\n";
             if (ok) {
-                ok = nexus::system::runCommand(
-                    "systemctl restart " + nexus::system::serverUnit(options.name) + " 2>&1",
-                    true).ok;
+                ok = runProgram(
+                    {"systemctl", "restart", nexus::system::serverUnit(options.name)},
+                    mergedErrors()).ok;
             }
             record.outcome = ok ? "updated" : "failed";
             record.succeeded = ok;

@@ -1,6 +1,8 @@
 #pragma once
 
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace nexus::system {
@@ -13,6 +15,12 @@ struct ProcessResult {
     std::string text;
 
     bool ran = false;
+
+    // runProgram only (0.2.1). What the program wrote to its error
+    // output, when that was asked for on its own (Errors::Separate).
+    std::string errors;
+    // The time limit ran out and the program was stopped.
+    bool timedOut = false;
 };
 
 // Run a command and read all of its output.
@@ -87,7 +95,93 @@ std::string printable(const std::string& text);
 // the WireGuard private key in sh's arguments, which every local user
 // can read). argv[0] is looked up in PATH only if it has no '/'.
 // Input and output of any size: both are moved at the same time.
+// The program keeps this process's own language settings (use the
+// options below for the plain locale).
 ProcessResult runProgram(const std::vector<std::string>& argv, const std::string& input = "");
+
+// How runProgram runs a program, for everything a command line handed
+// to /bin/sh used to say with `2>&1`, `2>/dev/null`, `> /dev/null`,
+// `VAR=value command` and `timeout N` (0.2.1, ledger item 4).
+//
+// Why: a command built as one string is parsed by a shell, and one
+// value joined in without shellQuote is a command of somebody else's
+// choosing, run as root. With an argument vector there is nothing to
+// parse: each value is one argument, whatever it holds.
+//
+// The defaults are what runCommand(command, false) did with
+// "2>/dev/null" at the end, the most common call: stdin shared with
+// this process, output collected, errors dropped, the plain C locale.
+struct ProgramOptions {
+    // Written to the program's stdin through a pipe; the program sees
+    // the end of its input after it. Not set: the program shares this
+    // process's stdin, as one run through the shell did (apt and dpkg
+    // ask their questions there).
+    std::optional<std::string> input;
+
+    // Where what the program prints goes.
+    enum class Output {
+        Capture,   // into ProcessResult::text (and ::lines)
+        Discard,   // nowhere                                  "> /dev/null"
+        Inherit    // this process's stdout, as it is written: for work
+                   // whose progress a person watches (rpm-ostree upgrade)
+    };
+    Output output = Output::Capture;
+
+    // Where its error output goes.
+    enum class Errors {
+        Discard,   // nowhere                                  "2>/dev/null"
+        Merge,     // with the output, in the order written    "2>&1"
+        Separate,  // into ProcessResult::errors
+        Inherit    // this process's stderr: the person sees it
+    };
+    Errors errors = Errors::Discard;
+
+    // LC_ALL=C.UTF-8 and an empty LANGUAGE for the program, as
+    // runCommand always set them (inPlainLocale says why).
+    bool plainLocale = true;
+
+    // Variables for the program on top of that, replacing any of the
+    // same name: {"LC_ALL", "sr_RS.UTF-8"}.
+    std::vector<std::pair<std::string, std::string>> environment;
+
+    // Seconds the program may take; 0 for as long as it needs. When
+    // they are up it is sent SIGTERM, and SIGKILL two seconds later if
+    // it is still there. ProcessResult::timedOut is then set and the
+    // exit code is 124, the number timeout(1) gives. Only the program
+    // itself is stopped, not what it started.
+    int timeoutSeconds = 0;
+
+    // ProcessResult::lines is filled (runCommand's splitLines).
+    bool splitLines = true;
+
+    // While the program runs, Ctrl-C and Ctrl-\ are the program's and
+    // not this process's, the way system(3) arranges it: for work
+    // handed over in the foreground, so that nexus is still there
+    // afterwards to write down how it ended.
+    bool waitThroughInterrupts = false;
+};
+
+// As above, with options. Never 0 for a program that did not run:
+// exit code 127 when it could not be found, 126 when it was found and
+// could not be started -- the numbers a shell gives -- and `ran` false.
+// With Errors::Merge the reason is put in `text`, with Separate in
+// `errors`, where the shell's own "not found" line used to be.
+ProcessResult runProgram(const std::vector<std::string>& argv, const ProgramOptions& options);
+
+// The usual sets of options, named for what the command line handed
+// to a shell used to end in (0.2.1). A plain ProgramOptions() is
+// "2>/dev/null": output collected, errors dropped.
+ProgramOptions mergedErrors();   // "2>&1": errors collected with the output
+ProgramOptions shownErrors();    // nothing: errors go to the person's terminal
+ProgramOptions nothingKept();    // "> /dev/null 2>&1": only the exit code matters
+// Not collected at all: the program writes to the terminal itself, and
+// Ctrl-C is its own while it runs. What std::system(command) did.
+// plainLocale: whether the command was wrapped in inPlainLocale.
+ProgramOptions handedOver(bool plainLocale);
+
+// The first `count` lines of a text, each with its line end: what
+// `| head -N` kept (0.2.1: pipes are done here, not by a shell).
+std::string firstLines(const std::string& text, std::size_t count);
 
 // What a wait status means as one number: the program's exit code;
 // 128 + the signal's number if a signal ended it (as a shell reports

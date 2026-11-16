@@ -17,6 +17,13 @@ const char* const kGrubCustom = "/boot/grub2/custom.cfg";
 
 const char* const kGrubEnv = "/boot/grub2/grubenv";
 
+// Every tool in this file is started directly, each value an argument
+// of its own (0.2.1, ledger item 4): this runs as root on what other
+// systems' disks hold, and no command line here is read by a shell any
+// more. mergedErrors() is what "2>&1" was.
+using nexus::system::mergedErrors;
+using nexus::system::runProgram;
+
 // Look inside a partition, read-only, and give it back. Options that
 // never write, even to replay a journal: a system that was hibernated
 // or switched off hard keeps its unfinished journal for itself.
@@ -45,15 +52,14 @@ struct LookInside {
             return;
         }
         dir = pattern;
-        const auto ran = nexus::system::runCommand(
-            "mount -o " + options + " " + shellQuote(device.path) + " " +
-            shellQuote(dir) + " 2>&1", true);
+        const auto ran = runProgram({"mount", "-o", options, device.path, dir},
+                                    mergedErrors());
         mounted = ran.exitCode == 0;
     }
 
     ~LookInside() {
         if (mounted) {
-            nexus::system::runCommand("umount " + shellQuote(dir), true);
+            runProgram({"umount", dir}, mergedErrors());
         }
         if (!dir.empty()) {
             std::error_code ignored;
@@ -233,9 +239,10 @@ DiskPicture lookAtDisk(const std::vector<std::string>& named) {
     DiskPicture picture;
     // RM and TRAN: whether a disk can be taken out, and how it is
     // connected (0.2.0, ledger item 10).
-    const auto listed = nexus::system::runCommand(
-        "lsblk -J -b -o NAME,PATH,SIZE,TYPE,FSTYPE,PARTTYPE,UUID,LABEL,"
-        "MODEL,MOUNTPOINTS,RM,TRAN", false);
+    const auto listed = runProgram(
+        {"lsblk", "-J", "-b", "-o",
+         "NAME,PATH,SIZE,TYPE,FSTYPE,PARTTYPE,UUID,LABEL,MODEL,MOUNTPOINTS,RM,TRAN"},
+        nexus::system::shownErrors());
     if (listed.exitCode != 0) {
         picture.error = "lsblk did not answer (exit " +
                         std::to_string(listed.exitCode) + ").";
@@ -412,13 +419,13 @@ void showDiskPicture(const DiskPicture& picture,
 // Write custom.cfg. /boot may be mounted read-only; if it is, it is
 // made writable for the write and put back.
 bool writeGrubCustom(const std::string& text, std::string& error) {
-    const auto options = nexus::system::runCommand(
-        "findmnt -n -o OPTIONS /boot", true);
+    const auto options = runProgram({"findmnt", "-n", "-o", "OPTIONS", "/boot"},
+                                    mergedErrors());
     const bool readOnly =
         options.text.rfind("ro,", 0) == 0 || options.text == "ro\n";
     if (readOnly) {
-        const auto rw = nexus::system::runCommand(
-            "mount -o remount,rw /boot 2>&1", true);
+        const auto rw = runProgram({"mount", "-o", "remount,rw", "/boot"},
+                                   mergedErrors());
         if (rw.exitCode != 0) {
             error = "/boot could not be made writable: " + rw.text;
             return false;
@@ -448,7 +455,7 @@ bool writeGrubCustom(const std::string& text, std::string& error) {
         error = "could not write " + temporary;
     }
     if (readOnly) {
-        nexus::system::runCommand("mount -o remount,ro /boot", true);
+        runProgram({"mount", "-o", "remount,ro", "/boot"}, mergedErrors());
     }
     return ok;
 }
@@ -731,16 +738,16 @@ int commandDualboot(
         std::cout << "\nAdded to the boot menu.\n";
     }
 
-    const auto set = nexus::system::runCommand(
-        "grub2-editenv " + std::string(kGrubEnv) + " set next_entry=" +
-            shellQuote(chosen->entryId) + " 2>&1", true);
+    const auto set = runProgram(
+        {"grub2-editenv", kGrubEnv, "set", "next_entry=" + chosen->entryId},
+        mergedErrors());
     if (set.exitCode != 0) {
         std::cout << "\nThe boot menu would not take it (" << set.text
                   << ").\nNothing has been changed; not restarting.\n";
         return 1;
     }
     std::cout << "\nRestarting into " << chosen->name << ".\n" << std::flush;
-    return std::system("systemctl reboot") == 0 ? 0 : 1;
+    return runProgram({"systemctl", "reboot"}, nexus::system::handedOver(false)).ok ? 0 : 1;
 }
 
 }  // namespace nexus_cli

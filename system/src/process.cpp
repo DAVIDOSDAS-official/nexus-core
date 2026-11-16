@@ -12,6 +12,10 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <utility>
+#include <sys/stat.h>
 #include <sys/wait.h>
 
 extern char** environ;
@@ -106,34 +110,273 @@ int exitCodeFromStatus(int status) {
     return -1;
 }
 
+namespace {
+
+// A pipe with neither end on descriptor 0, 1 or 2. A process started
+// with one of those closed gets it back from the next pipe(), and
+// handing that end to a child as its stdin or stdout would then mean
+// moving a descriptor onto itself (0.2.1).
+bool pipeAboveStandard(int fds[2]) {
+    if (::pipe2(fds, O_CLOEXEC) != 0) return false;
+    for (int i = 0; i < 2; ++i) {
+        if (fds[i] > 2) continue;
+        const int moved = ::fcntl(fds[i], F_DUPFD_CLOEXEC, 3);
+        if (moved < 0) {
+            ::close(fds[0]);
+            ::close(fds[1]);
+            return false;
+        }
+        ::close(fds[i]);
+        fds[i] = moved;
+    }
+    return true;
+}
+
+void closeBoth(int fds[2]) {
+    if (fds[0] >= 0) ::close(fds[0]);
+    if (fds[1] >= 0) ::close(fds[1]);
+    fds[0] = fds[1] = -1;
+}
+
+// This process's environment with the options applied: the plain
+// locale first, then the caller's own variables over it.
+std::vector<std::string> environmentFor(const ProgramOptions& options) {
+    std::vector<std::pair<std::string, std::string>> set;
+    if (options.plainLocale) {
+        // What inPlainLocale exports: LANGUAGE is cleared, not removed,
+        // because gettext consults it before LC_ALL.
+        set.emplace_back("LC_ALL", "C.UTF-8");
+        set.emplace_back("LANGUAGE", "");
+    }
+    for (const auto& [name, value] : options.environment) {
+        // Not a variable's name: left out rather than passed on as
+        // something else ("A=B" as a name would set A).
+        if (name.empty() || name.find('=') != std::string::npos ||
+            name.find('\0') != std::string::npos) {
+            continue;
+        }
+        set.emplace_back(name, value);
+    }
+
+    std::vector<std::string> out;
+    for (char** entry = environ; entry != nullptr && *entry != nullptr; ++entry) {
+        const std::string text = *entry;
+        const std::string name = text.substr(0, text.find('='));
+        bool replaced = false;
+        for (const auto& [wanted, value] : set) {
+            replaced = replaced || wanted == name;
+        }
+        if (!replaced) out.push_back(text);
+    }
+    // The last setting of a name wins.
+    for (std::size_t i = 0; i < set.size(); ++i) {
+        bool later = false;
+        for (std::size_t k = i + 1; k < set.size(); ++k) {
+            later = later || set[k].first == set[i].first;
+        }
+        if (!later) out.push_back(set[i].first + "=" + set[i].second);
+    }
+    return out;
+}
+
+// Whether a file of that name is there at all: at the path given, or
+// in one of PATH's folders. posix_spawnp answers "permission denied"
+// when a folder in PATH cannot be searched, also when the program is
+// in none of them; a shell says "not found" then, and so does
+// runProgram.
+bool programIsThere(const std::string& name) {
+    struct stat info {};
+    if (name.find('/') != std::string::npos) {
+        return ::stat(name.c_str(), &info) == 0;
+    }
+    const char* path = std::getenv("PATH");
+    // What the C library searches when PATH is not set.
+    std::istringstream folders(path != nullptr ? path : "/bin:/usr/bin");
+    std::string folder;
+    while (std::getline(folders, folder, ':')) {
+        const std::string file = (folder.empty() ? std::string(".") : folder) + "/" + name;
+        if (::stat(file.c_str(), &info) == 0 && !S_ISDIR(info.st_mode)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+long long nowMilliseconds() {
+    struct timespec now {};
+    ::clock_gettime(CLOCK_MONOTONIC, &now);
+    return static_cast<long long>(now.tv_sec) * 1000 + now.tv_nsec / 1000000;
+}
+
+// One line per '\n'; a last line without one counts too.
+void splitInto(const std::string& text, std::vector<std::string>& lines) {
+    std::istringstream stream(text);
+    std::string line;
+    while (std::getline(stream, line)) lines.push_back(line);
+}
+
+}  // namespace
+
+ProgramOptions mergedErrors() {
+    ProgramOptions options;
+    options.errors = ProgramOptions::Errors::Merge;
+    return options;
+}
+
+ProgramOptions shownErrors() {
+    ProgramOptions options;
+    options.errors = ProgramOptions::Errors::Inherit;
+    return options;
+}
+
+ProgramOptions nothingKept() {
+    ProgramOptions options;
+    options.output = ProgramOptions::Output::Discard;
+    options.errors = ProgramOptions::Errors::Discard;
+    return options;
+}
+
+ProgramOptions handedOver(bool plainLocale) {
+    ProgramOptions options;
+    options.output = ProgramOptions::Output::Inherit;
+    options.errors = ProgramOptions::Errors::Inherit;
+    options.plainLocale = plainLocale;
+    options.waitThroughInterrupts = true;
+    options.splitLines = false;
+    return options;
+}
+
+std::string firstLines(const std::string& text, std::size_t count) {
+    std::size_t end = 0;
+    for (std::size_t line = 0; line < count && end < text.size(); ++line) {
+        const std::size_t newline = text.find('\n', end);
+        end = newline == std::string::npos ? text.size() : newline + 1;
+    }
+    return text.substr(0, end);
+}
+
 ProcessResult runProgram(const std::vector<std::string>& argv, const std::string& input) {
+    // As it always was: the input through a pipe (an empty one too),
+    // the output collected, errors dropped, this process's own locale.
+    ProgramOptions options;
+    options.input = input;
+    options.plainLocale = false;
+    return runProgram(argv, options);
+}
+
+ProcessResult runProgram(const std::vector<std::string>& argv, const ProgramOptions& options) {
+    using Output = ProgramOptions::Output;
+    using Errors = ProgramOptions::Errors;
+
     ProcessResult result;
+    // Not run is never "exit 0" (0.2.1): callers read exitCode.
+    result.exitCode = 127;
     if (argv.empty()) return result;
 
-    int toChild[2], fromChild[2];
-    if (::pipe2(toChild, O_CLOEXEC) != 0) return result;
-    if (::pipe2(fromChild, O_CLOEXEC) != 0) {
-        ::close(toChild[0]); ::close(toChild[1]);
+    const bool feed = options.input.has_value();
+    const bool capture = options.output == Output::Capture;
+    const bool separate = options.errors == Errors::Separate;
+
+    int toChild[2] = {-1, -1}, fromChild[2] = {-1, -1}, errorsFromChild[2] = {-1, -1};
+    if ((feed && !pipeAboveStandard(toChild)) ||
+        (capture && !pipeAboveStandard(fromChild)) ||
+        (separate && !pipeAboveStandard(errorsFromChild))) {
+        closeBoth(toChild);
+        closeBoth(fromChild);
+        closeBoth(errorsFromChild);
         return result;
     }
+
     posix_spawn_file_actions_t actions;
     posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_adddup2(&actions, toChild[0], 0);
-    posix_spawn_file_actions_adddup2(&actions, fromChild[1], 1);
-    posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0);
+    if (feed) posix_spawn_file_actions_adddup2(&actions, toChild[0], 0);
+    if (capture) {
+        posix_spawn_file_actions_adddup2(&actions, fromChild[1], 1);
+    } else if (options.output == Output::Discard) {
+        posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0);
+    }
+    switch (options.errors) {
+        case Errors::Discard:
+            posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0);
+            break;
+        case Errors::Merge:
+            // Wherever the output goes by now: the pipe, /dev/null or
+            // this process's own stdout.
+            posix_spawn_file_actions_adddup2(&actions, 1, 2);
+            break;
+        case Errors::Separate:
+            posix_spawn_file_actions_adddup2(&actions, errorsFromChild[1], 2);
+            break;
+        case Errors::Inherit:
+            break;
+    }
+
+    // Ctrl-C while the program has the foreground: ignored here, as
+    // system(3) does, so this process outlives the program and can say
+    // how it ended. The program gets the signals back as they were --
+    // unless they were already ignored when nexus started (nohup, a
+    // background job), which stays the caller's choice.
+    struct sigaction ignore {}, savedInt {}, savedQuit {};
+    posix_spawnattr_t attributes;
+    posix_spawnattr_init(&attributes);
+    if (options.waitThroughInterrupts) {
+        ignore.sa_handler = SIG_IGN;
+        sigemptyset(&ignore.sa_mask);
+        ::sigaction(SIGINT, &ignore, &savedInt);
+        ::sigaction(SIGQUIT, &ignore, &savedQuit);
+        sigset_t standard;
+        sigemptyset(&standard);
+        if (savedInt.sa_handler != SIG_IGN) sigaddset(&standard, SIGINT);
+        if (savedQuit.sa_handler != SIG_IGN) sigaddset(&standard, SIGQUIT);
+        posix_spawnattr_setsigdefault(&attributes, &standard);
+        posix_spawnattr_setflags(&attributes, POSIX_SPAWN_SETSIGDEF);
+    }
+    const auto restoreInterrupts = [&] {
+        if (!options.waitThroughInterrupts) return;
+        ::sigaction(SIGINT, &savedInt, nullptr);
+        ::sigaction(SIGQUIT, &savedQuit, nullptr);
+    };
 
     std::vector<char*> args;
     for (const auto& a : argv) args.push_back(const_cast<char*>(a.c_str()));
     args.push_back(nullptr);
 
+    const std::vector<std::string> variables = environmentFor(options);
+    std::vector<char*> envp;
+    for (const auto& v : variables) envp.push_back(const_cast<char*>(v.c_str()));
+    envp.push_back(nullptr);
+
     pid_t pid = 0;
-    const int spawned = ::posix_spawnp(&pid, argv[0].c_str(), &actions, nullptr, args.data(), environ);
+    const int spawned = ::posix_spawnp(&pid, argv[0].c_str(), &actions, &attributes,
+                                       args.data(), envp.data());
     posix_spawn_file_actions_destroy(&actions);
-    ::close(toChild[0]);
-    ::close(fromChild[1]);
+    posix_spawnattr_destroy(&attributes);
+    if (toChild[0] >= 0) ::close(toChild[0]);
+    if (fromChild[1] >= 0) ::close(fromChild[1]);
+    if (errorsFromChild[1] >= 0) ::close(errorsFromChild[1]);
     if (spawned != 0) {
-        ::close(toChild[1]);
-        ::close(fromChild[0]);
+        if (toChild[1] >= 0) ::close(toChild[1]);
+        if (fromChild[0] >= 0) ::close(fromChild[0]);
+        if (errorsFromChild[0] >= 0) ::close(errorsFromChild[0]);
+        restoreInterrupts();
+        // What a shell would have answered with: 127 for a program
+        // that is not there, 126 for one that cannot be started.
+        const bool missing = spawned == ENOENT || spawned == ENOTDIR ||
+                             (spawned == EACCES && !programIsThere(argv[0]));
+        result.exitCode = missing ? 127 : 126;
+        const std::string why = argv[0] +
+            (missing ? ": no such program\n"
+                     : std::string(": could not be started (") + std::strerror(spawned) + ")\n");
+        if (options.errors == Errors::Merge && capture) {
+            result.text = why;
+        } else if (separate) {
+            result.errors = why;
+        } else if (options.errors == Errors::Inherit ||
+                   (options.errors == Errors::Merge && options.output == Output::Inherit)) {
+            // Where the shell's "not found" went: in front of the person.
+            [[maybe_unused]] const ssize_t ignored = ::write(2, why.data(), why.size());
+        }
+        if (options.splitLines) splitInto(result.text, result.lines);
         return result;
     }
     result.ran = true;
@@ -159,30 +402,67 @@ ProcessResult runProgram(const std::vector<std::string>& argv, const std::string
     const bool wasPending = sigismember(&pendingBefore, SIGPIPE) == 1;
     ::pthread_sigmask(SIG_BLOCK, &pipeSignal, &previousMask);
 
-    ::fcntl(toChild[1], F_SETFL, ::fcntl(toChild[1], F_GETFL) | O_NONBLOCK);
-    ::fcntl(fromChild[0], F_SETFL, ::fcntl(fromChild[0], F_GETFL) | O_NONBLOCK);
-
     int writeEnd = toChild[1];
     int readEnd = fromChild[0];
+    int errorEnd = errorsFromChild[0];
+    for (const int fd : {writeEnd, readEnd, errorEnd}) {
+        if (fd >= 0) ::fcntl(fd, F_SETFL, ::fcntl(fd, F_GETFL) | O_NONBLOCK);
+    }
+
+    const std::string empty;
+    const std::string& input = feed ? *options.input : empty;
     std::size_t done = 0;
     bool brokenPipe = false;
-    if (input.empty()) {
-        ::close(writeEnd);
+    if (writeEnd >= 0 && input.empty()) {
+        ::close(writeEnd);   // the child sees the end of its input at once
         writeEnd = -1;
     }
+
+    // The time limit: SIGTERM when it is up, SIGKILL two seconds on,
+    // and one second more for what the program left in its pipes.
+    const long long limit = options.timeoutSeconds > 0
+        ? nowMilliseconds() + static_cast<long long>(options.timeoutSeconds) * 1000 : -1;
+    long long killAt = -1;
+    long long giveUpAt = -1;
+    // Returns how long to wait at most, in milliseconds (-1: for ever),
+    // and sends the signals that are due.
+    const auto timeLeft = [&]() -> int {
+        if (limit < 0) return -1;
+        const long long now = nowMilliseconds();
+        if (!result.timedOut) {
+            if (now < limit) return static_cast<int>(limit - now);
+            result.timedOut = true;
+            ::kill(pid, SIGTERM);
+            killAt = now + 2000;
+        }
+        if (giveUpAt < 0) {
+            if (now < killAt) return static_cast<int>(killAt - now);
+            ::kill(pid, SIGKILL);
+            giveUpAt = now + 1000;
+        }
+        return now < giveUpAt ? static_cast<int>(giveUpAt - now) : 0;
+    };
+
     char buffer[65536];
-    while (readEnd >= 0) {
-        struct pollfd fds[2];
-        fds[0].fd = readEnd;
+    while (readEnd >= 0 || errorEnd >= 0 || writeEnd >= 0) {
+        const int wait = timeLeft();
+        if (giveUpAt >= 0 && wait == 0) break;   // killed; something else holds the pipes
+        struct pollfd fds[3];
+        fds[0].fd = readEnd;    // -1 once closed: ignored by poll
         fds[0].events = POLLIN;
         fds[0].revents = 0;
-        fds[1].fd = writeEnd;   // -1 once the input is written: ignored
+        fds[1].fd = writeEnd;
         fds[1].events = POLLOUT;
         fds[1].revents = 0;
-        if (::poll(fds, 2, -1) < 0) {
+        fds[2].fd = errorEnd;
+        fds[2].events = POLLIN;
+        fds[2].revents = 0;
+        const int ready = ::poll(fds, 3, wait);
+        if (ready < 0) {
             if (errno == EINTR) continue;
             break;
         }
+        if (ready == 0) continue;   // the time limit: timeLeft acts on it
         if (writeEnd >= 0 && (fds[1].revents & (POLLOUT | POLLERR | POLLHUP)) != 0) {
             const ssize_t w = ::write(writeEnd, input.data() + done, input.size() - done);
             if (w > 0) done += static_cast<std::size_t>(w);
@@ -193,7 +473,7 @@ ProcessResult runProgram(const std::vector<std::string>& argv, const std::string
                 writeEnd = -1;
             }
         }
-        if ((fds[0].revents & (POLLIN | POLLERR | POLLHUP)) != 0) {
+        if (readEnd >= 0 && (fds[0].revents & (POLLIN | POLLERR | POLLHUP)) != 0) {
             const ssize_t n = ::read(readEnd, buffer, sizeof buffer);
             if (n > 0) {
                 result.text.append(buffer, static_cast<std::size_t>(n));
@@ -202,9 +482,19 @@ ProcessResult runProgram(const std::vector<std::string>& argv, const std::string
                 readEnd = -1;
             }
         }
+        if (errorEnd >= 0 && (fds[2].revents & (POLLIN | POLLERR | POLLHUP)) != 0) {
+            const ssize_t n = ::read(errorEnd, buffer, sizeof buffer);
+            if (n > 0) {
+                result.errors.append(buffer, static_cast<std::size_t>(n));
+            } else if (n == 0 || (errno != EINTR && errno != EAGAIN)) {
+                ::close(errorEnd);
+                errorEnd = -1;
+            }
+        }
     }
     if (writeEnd >= 0) ::close(writeEnd);
     if (readEnd >= 0) ::close(readEnd);
+    if (errorEnd >= 0) ::close(errorEnd);
 
     if (brokenPipe && !wasPending) {
         // Ours: take it off the queue before the mask goes back.
@@ -221,14 +511,33 @@ ProcessResult runProgram(const std::vector<std::string>& argv, const std::string
     // 0": a program whose ending nobody saw was called a success.
     int status = 0;
     pid_t waited = -1;
-    do {
-        waited = ::waitpid(pid, &status, 0);
-    } while (waited < 0 && errno == EINTR);
+    if (limit < 0) {
+        do {
+            waited = ::waitpid(pid, &status, 0);
+        } while (waited < 0 && errno == EINTR);
+    } else {
+        // With a time limit the wait is in short steps, so the signals
+        // still go out on time when the program prints nothing.
+        while (true) {
+            waited = ::waitpid(pid, &status, WNOHANG);
+            if (waited == pid || (waited < 0 && errno != EINTR)) break;
+            const int wait = timeLeft();
+            if (giveUpAt >= 0 && wait == 0) {
+                // Killed and still not collected: wait for it for good;
+                // SIGKILL cannot be refused.
+                do {
+                    waited = ::waitpid(pid, &status, 0);
+                } while (waited < 0 && errno == EINTR);
+                break;
+            }
+            ::poll(nullptr, 0, wait < 0 || wait > 20 ? 20 : wait);
+        }
+    }
+    restoreInterrupts();
     result.exitCode = waited == pid ? exitCodeFromStatus(status) : -1;
+    if (result.timedOut && waited == pid) result.exitCode = 124;
     result.ok = result.exitCode == 0;
-    std::istringstream lines(result.text);
-    std::string line;
-    while (std::getline(lines, line)) result.lines.push_back(line);
+    if (options.splitLines) splitInto(result.text, result.lines);
     return result;
 }
 

@@ -3,7 +3,7 @@
 Updated 15 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.2.0** (patches 1–129). **797 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
+**Version 0.2.1** (patches 1–130). **814 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -1446,6 +1446,53 @@ repository.
   the firewall pair on a running firewalld; the Shop's History on a
   real screen (looked at offscreen only). Ledger T11 and T12; the exact
   commands are in the notes.
+
+**Patch 130 (0.2.1): ledger item 4, first batch: no shell in the five
+files that run most as root.** 814 tests. By Fable; notes as for 129.
+- `runProgram(argv, ProgramOptions)` (system/process.hpp): everything
+  a command line for /bin/sh said with `2>&1`, `2>/dev/null`,
+  `> /dev/null`, `VAR=value command` and `timeout N`, without a shell.
+  Options: input (or the caller's own stdin), where the output goes
+  (collected, dropped, the terminal), where errors go (dropped, with
+  the output, on their own, the terminal), the plain locale (on, as
+  runCommand had it), extra variables, a time limit (SIGTERM, then
+  SIGKILL; exit 124), and "Ctrl-C belongs to the program" for work
+  handed over in the foreground (what std::system did).
+  Shorthands: `mergedErrors()`, `shownErrors()`, `nothingKept()`,
+  `handedOver(plainLocale)`; `firstLines(text, n)` is `| head -n`.
+- A program that cannot be started is exit code 127 (not there) or 126
+  (not runnable), never 0, and says so where the shell's "not found"
+  line was. The old two-argument `runProgram` goes through the same
+  code and keeps its behaviour (the caller's locale, input by pipe).
+- Moved, 44 `runCommand` and 6 `std::system` calls: plan_apply.cpp (4:
+  apt-get, dnf, rpm-ostree install and uninstall), server.cpp (16 + 2),
+  dualboot.cpp (7 + 1), update.cpp (8 + 3), language.cpp (9). No call
+  in them needed a shell; none is left. The hand-written `quoted()` in
+  update.cpp is gone with its use.
+- Behaviour is meant to be the same, and was compared: every read-only
+  command, 0.2.0 against 0.2.1, as uid 65534 and as root (77 of 77
+  the same, tools/compare-outputs.sh); and the --apply paths in a
+  throwaway container with stand-in tools that write down their
+  arguments, their locale and where their three streams lead (48
+  commands, 171 calls, the same; the files nexus wrote and the history
+  too). One difference, on purpose: see ledger section 11, note 7.
+- tools/check-shell-quoting.py: the five files are in `MOVED`; any
+  `runCommand(`, `std::system(`, `popen(` or `runProgram({"sh", ...})`
+  in them fails ctest `ShellQuoting` unless it is in `SHELL_ON_PURPOSE`
+  with a reason (empty today). Their old allowances are gone.
+- Ledger: item 4 is Partly, with what is left by file. Root calls that
+  still go through sh: rollback.cpp, security.cpp (sysctl),
+  install.cpp, setup.cpp, gaming.cpp, vpn.cpp, main.cpp; and
+  `commandExists` everywhere.
+- Tests: 14 for the options (output over 64 KiB every way, a program
+  that exits while input is written, killed, missing, an empty
+  argument, quotes, `$`, backticks, newlines, the standard streams
+  closed, the time limit, Ctrl-C handed over, no descriptor left
+  open), 3 for the package tools with stand-ins (one needs root and
+  is skipped otherwise).
+- Not verified here: the real rpm-ostree, dnf, firewalld, podman,
+  systemd, GRUB. On the Asus: read-only commands before and after the
+  update should print the same; the list is in the notes.
 
 Done in 89 (was queued): `nexus install` should fetch the package list itself
 (not make the user run `dnf makecache`) and give a "did you mean"
