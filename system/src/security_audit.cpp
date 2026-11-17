@@ -25,6 +25,15 @@ const std::vector<HardeningSetting>& hardeningTable() {
         {"kernel.kptr_restrict", 1, true, "hide kernel addresses from programs (makes exploits harder)"},
         {"kernel.dmesg_restrict", 1, true, "kernel log only for admins (`sudo dmesg`)"},
         {"kernel.unprivileged_bpf_disabled", 1, true, "no kernel BPF programs for normal users"},
+        // 0.2.3: one program may no longer read another's memory unless it
+        // started it (Fedora ships 0: anything you run could read the
+        // browser's). Ubuntu's default. The one cost, said in the preview:
+        // attaching gdb or strace to a program already running needs sudo.
+        {"kernel.yama.ptrace_scope", 1, true, "a program may not read another's memory unless it started it (cost: gdb -p / strace -p need sudo)"},
+        // 0.2.3: no replacing the running kernel without a restart. Nothing
+        // on a desktop uses it (kdump is off); once on, it stays on until
+        // the next start.
+        {"kernel.kexec_load_disabled", 1, true, "no swapping in another kernel without a restart"},
         {"net.ipv4.conf.all.accept_redirects", 0, false, "ignore routing redirects (a laptop is not a router)"},
         {"net.ipv4.conf.default.accept_redirects", 0, false, "the same, for networks joined later"},
         {"net.ipv6.conf.all.accept_redirects", 0, false, "the same, for IPv6"},
@@ -38,6 +47,17 @@ const std::vector<HardeningSetting>& hardeningTable() {
         {"fs.protected_regular", 1, true, "block file tricks in /tmp"},
     };
     return t;
+}
+
+std::string parseLockdown(const std::string& text) {
+    const auto open = text.find('[');
+    if (open == std::string::npos) return "";
+    const auto close = text.find(']', open + 1);
+    if (close == std::string::npos || close == open + 1) return "";
+    const std::string mode = text.substr(open + 1, close - open - 1);
+    for (const char c : mode)
+        if (!(c >= 'a' && c <= 'z')) return "";
+    return mode;
 }
 
 std::vector<HardeningSetting> weakSettings(const std::map<std::string, int>& now) {

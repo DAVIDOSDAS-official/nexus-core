@@ -47,4 +47,39 @@ struct BoxState {
 };
 BoxState parseDistroboxList(const std::string& text, const std::string& name);
 
+// ---- The isolated toolbox (0.2.3, `nexus cyber ... --isolated`)
+//
+// Distrobox is no wall: it mounts the person's home folder and the
+// host's whole file system (/run/host), and its --home option changes
+// only where $HOME points -- its own manual says it "will NOT prevent
+// the mount of the host's home directory". A tool that turned hostile
+// could write ~/.bashrc and run as the person at the next login.
+//
+// The isolated box is a plain rootless podman container instead. It
+// sees one folder of its own and nothing else of the machine: no home
+// folder, no /run/host, no desktop or D-Bus sockets, no devices, its
+// own network namespace (pasta: it reaches the network, not this
+// machine's local-only services or abstract sockets). Its root is the
+// person's own account, mapped. The cost: terminal tools only, no
+// `export`, and scans that need raw sockets on the real network
+// (nmap -sS, monitor mode) are not possible from it.
+
+inline constexpr const char* kCyberIsolatedContainer = "nexus-cyber-isolated";
+
+// <home>/.local/share/nexus-cyber-isolated/work: the one folder shared,
+// seen as /work inside.
+std::string isolatedWorkFolder(const std::string& home);
+
+// podman create ..., for the image and that folder.
+std::vector<std::string> isolatedCreateArgs(const std::string& image,
+                                            const std::string& workFolder);
+
+// podman exec into it, in /work; -t only when there is a terminal.
+std::vector<std::string> isolatedExecArgs(const std::vector<std::string>& command,
+                                          bool terminal);
+
+// `podman container inspect --format {{.State.Status}}`: its answer
+// and exit code -> the box's state.
+BoxState parseIsolatedInspect(int exitCode, const std::string& text);
+
 }  // namespace nexus::system

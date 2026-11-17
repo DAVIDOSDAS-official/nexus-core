@@ -28,10 +28,18 @@ struct HardeningSetting {
 };
 
 // The default tier: settings Kicksecure and secureblue apply without
-// breaking a desktop. Not ptrace or user-namespace limits -- those
-// break debuggers, browsers' sandboxes or Flatpak for some people, so
-// they are not "invisible".
+// breaking a desktop. Not user-namespace limits -- those break browsers'
+// sandboxes or Flatpak for some people. ptrace_scope = 1 is in since
+// 0.2.3 (the maintainer's choice, 17 Nov): its one cost, attaching a
+// debugger to a program already running, is said where it is offered.
+// Module lockdown is not: it would refuse unsigned drivers (NVIDIA's);
+// the audit only reports it (parseLockdown).
 const std::vector<HardeningSetting>& hardeningTable();
+
+// /sys/kernel/security/lockdown: "[none] integrity confidentiality" ->
+// "none". Empty when the text has no bracketed word (no such file, or
+// a kernel without lockdown).
+std::string parseLockdown(const std::string& text);
 
 inline constexpr const char* kHardeningConf = "/etc/sysctl.d/90-nexus-hardening.conf";
 

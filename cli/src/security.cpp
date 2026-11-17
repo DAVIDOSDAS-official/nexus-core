@@ -60,8 +60,8 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
             std::cout << "Every setting in Nexus's default hardening tier is already on.\n";
             return 0;
         }
-        std::cout << "Nexus's default hardening tier: settings that make attacks harder and\n"
-                     "do not get in the way on a desktop. These are weaker here:\n\n";
+        std::cout << "Nexus's default hardening tier: settings that make attacks harder;\n"
+                     "where one costs something, its line says what. These are weaker here:\n\n";
         std::size_t width = 0;
         for (const auto& w : weak) width = std::max(width, w.key.size() + 3 + std::to_string(w.wanted).size());
         for (const auto& w : weak)
@@ -69,8 +69,8 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
                       << (w.key + " = " + std::to_string(w.wanted)) << w.why << "\n";
         std::cout << "\nWritten to " << nexus::system::kHardeningConf << ", applied at once and at every start.\n"
                      "Undo any time: sudo nexus security harden off --apply\n"
-                     "Not in this tier (they break things for some people): ptrace limits,\n"
-                     "user-namespace limits, module lockdown.\n";
+                     "Not in this tier (they break things for some people): user-namespace\n"
+                     "limits, and kernel lockdown (it refuses unsigned drivers, NVIDIA's too).\n";
         if (!apply) { std::cout << "\nNothing has been changed. To do it:\n    sudo " << invocation << " --apply\n"; return 0; }
         if (!nexus::system::haveRootPrivileges()) { std::cout << "\nThis needs root:\n    sudo " << invocation << " --apply\n"; return 1; }
         nexus::system::TransactionRecord record;
@@ -349,6 +349,21 @@ int commandSecurity(const std::vector<std::string>& words, bool apply, const std
             line("warn", "Kernel settings", std::to_string(weak.size()) + " of " + std::to_string(total) +
                  " could be stricter (" + names + ").", "sudo nexus security harden --apply");
         }
+    }
+
+    {
+        // Kernel lockdown (0.2.3): reported, never set by Nexus. On, it
+        // stops even root from changing the running kernel -- and refuses
+        // drivers that are not signed (NVIDIA's own among them), so it is
+        // the owner's choice, not a default.
+        std::ifstream in("/sys/kernel/security/lockdown");
+        std::stringstream b; b << in.rdbuf();
+        const std::string mode = nexus::system::parseLockdown(b.str());
+        if (mode == "none")
+            line(" -- ", "Kernel lockdown", "off: root can still change the running kernel.",
+                 "kernel argument lockdown=integrity -- only if every driver here is signed; unsigned ones (NVIDIA's) stop loading");
+        else if (!mode.empty())
+            line(" ok ", "Kernel lockdown", mode + ": not even root can change the running kernel.");
     }
 
     {

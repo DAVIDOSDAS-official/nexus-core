@@ -26,16 +26,45 @@ TEST(SecurityAuditTest, WeakSettingsOnlyWhereKnownAndWeaker) {
     EXPECT_EQ(weak[1].key, "net.ipv4.conf.all.accept_redirects");
 }
 
-TEST(SecurityAuditTest, NoPtraceOrUsernsInTheDefaultTier) {
+// ptrace_scope joined the tier in 0.2.3, with its cost said; user
+// namespaces stay out (they would break browsers' sandboxes, Flatpak).
+TEST(SecurityAuditTest, PtraceIsInTheTierWithItsCostUserNamespacesAreNot) {
+    bool ptrace = false, kexec = false;
     for (const auto& s : hardeningTable()) {
-        EXPECT_EQ(s.key.find("ptrace"), std::string::npos);
+        if (s.key == "kernel.yama.ptrace_scope") {
+            ptrace = true;
+            EXPECT_EQ(s.wanted, 1);
+            EXPECT_TRUE(s.atLeast);  // 2 and 3 are stricter, and fine
+            EXPECT_NE(s.why.find("gdb -p"), std::string::npos);
+        }
+        if (s.key == "kernel.kexec_load_disabled") kexec = true;
+    }
+    EXPECT_TRUE(ptrace);
+    EXPECT_TRUE(kexec);
+    // Fedora's 0 is weak; Ubuntu's 1 and anything stricter is not.
+    EXPECT_EQ(weakSettings({{"kernel.yama.ptrace_scope", 0}}).size(), 1u);
+    EXPECT_TRUE(weakSettings({{"kernel.yama.ptrace_scope", 1}}).empty());
+    EXPECT_TRUE(weakSettings({{"kernel.yama.ptrace_scope", 3}}).empty());
+    EXPECT_EQ(parseLockdown("[none] integrity confidentiality\n"), "none");
+    EXPECT_EQ(parseLockdown("none [integrity] confidentiality\n"), "integrity");
+    EXPECT_EQ(parseLockdown(""), "");
+    EXPECT_EQ(parseLockdown("[] x"), "");
+    EXPECT_EQ(parseLockdown("[\x1b[31m] x"), "");
+    for (const auto& s : hardeningTable()) {
         EXPECT_EQ(s.key.find("userns"), std::string::npos);
         EXPECT_EQ(s.key.find("unprivileged_userns"), std::string::npos);
     }
 }
 
 TEST(SecurityAuditTest, HardeningFileHasEachSettingAndTheUndo) {
-    const auto f = hardeningFile({hardeningTable()[0], hardeningTable()[3]});
+    // By name, not by place in the table (0.2.3 added two entries).
+    auto named = [](const std::string& key) {
+        for (const auto& s : hardeningTable()) if (s.key == key) return s;
+        ADD_FAILURE() << key << " is not in the table";
+        return HardeningSetting{};
+    };
+    const auto f = hardeningFile({named("kernel.kptr_restrict"),
+                                  named("net.ipv4.conf.all.accept_redirects")});
     EXPECT_NE(f.find("kernel.kptr_restrict = 1"), std::string::npos);
     EXPECT_NE(f.find("net.ipv4.conf.all.accept_redirects = 0"), std::string::npos);
     EXPECT_NE(f.find("harden off --apply"), std::string::npos);

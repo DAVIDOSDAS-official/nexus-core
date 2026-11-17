@@ -41,6 +41,53 @@ std::string trim(const std::string& s) {
 }
 }  // namespace
 
+std::string isolatedWorkFolder(const std::string& home) {
+    return home + "/.local/share/nexus-cyber-isolated/work";
+}
+
+std::vector<std::string> isolatedCreateArgs(const std::string& image,
+                                            const std::string& workFolder) {
+    return {
+        "podman", "create",
+        "--name", kCyberIsolatedContainer,
+        "--hostname", kCyberIsolatedContainer,
+        "--pull=missing",
+        // Said, not left to containers.conf: a default of "host" there
+        // would hand it this machine's network namespace.
+        "--network=pasta",
+        "--security-opt", "no-new-privileges",
+        // The one folder it shares; :Z gives it a label only this
+        // container may use.
+        "--volume", workFolder + ":/work:Z",
+        "--workdir", "/work",
+        "--env", "HOME=/root",
+        image,
+        "sleep", "infinity",
+    };
+}
+
+std::vector<std::string> isolatedExecArgs(const std::vector<std::string>& command,
+                                          bool terminal) {
+    std::vector<std::string> args = {"podman", "exec", "-i"};
+    if (terminal) args.push_back("-t");
+    args.insert(args.end(), {"--workdir", "/work", kCyberIsolatedContainer});
+    args.insert(args.end(), command.begin(), command.end());
+    return args;
+}
+
+BoxState parseIsolatedInspect(int exitCode, const std::string& text) {
+    BoxState state;
+    if (exitCode != 0) return state;
+    std::string status = text;
+    while (!status.empty() && (status.back() == '\n' || status.back() == '\r' || status.back() == ' '))
+        status.pop_back();
+    if (status.empty() || status.find('\n') != std::string::npos) return state;
+    state.exists = true;
+    state.running = status == "running";
+    state.status = status;
+    return state;
+}
+
 BoxState parseDistroboxList(const std::string& text, const std::string& name) {
     // ID           | NAME        | STATUS             | IMAGE
     // 3f2a...      | nexus-cyber | Up 2 minutes       | docker.io/kalilinux/kali-rolling:latest

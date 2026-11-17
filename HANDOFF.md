@@ -3,7 +3,7 @@
 Updated 15 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.2.2** (patches 1–131). **816 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
+**Version 0.2.3** (patches 1–132). **819 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -1493,6 +1493,32 @@ files that run most as root.** 814 tests. By Fable; notes as for 129.
 - Not verified here: the real rpm-ostree, dnf, firewalld, podman,
   systemd, GRUB. On the Asus: read-only commands before and after the
   update should print the same; the list is in the notes.
+
+**Patch 132 (0.2.3): an isolated Kali toolbox; ptrace and kexec in the
+hardening tier; kernel lockdown reported.** By Claude, 17 Nov.
+- `nexus cyber create|shell|run|remove ... --isolated`: a plain rootless
+  podman container, `nexus-cyber-isolated`, seeing only
+  ~/.local/share/nexus-cyber-isolated/work as /work; `--network=pasta`
+  said explicitly (not left to containers.conf), `no-new-privileges`,
+  no devices, no export (refused, with why). The ordinary toolbox is
+  unchanged: distrobox mounts the home and /run/host whatever --home
+  says (its own manual), so `--home` was not the fix an outside review
+  suggested. `--isolated --root` is refused. `nexus cyber` shows both
+  boxes. All podman calls are argument vectors.
+- `nexus security harden`: + `kernel.yama.ptrace_scope = 1` (Fedora ships
+  0; the cost, gdb -p/strace -p need sudo, is in the preview line) and
+  `kernel.kexec_load_disabled = 1`. The maintainer chose this on 17 Nov
+  over the earlier rule "nothing anyone would notice". User namespaces
+  stay out.
+- `nexus security`: "Kernel lockdown" line, reported only
+  (`parseLockdown`); setting it would refuse unsigned drivers.
+- Ledger: item 2 (GitHub's real answer passes the check), new 15
+  (Partly) and 16 (Closed, opt-in).
+- Asus: `nexus cyber create small --isolated --apply`, then
+  `nexus cyber run --isolated ls /` and `nexus cyber shell --isolated`
+  (inside: `ls /var/home` must fail, `ls /work` works);
+  `nexus security` (lockdown line); `sudo nexus security harden` (preview
+  lists ptrace_scope with its cost).
 
 **Patch 131 (0.2.2): the signing key's guard (ledger item 2, R4-H1);
 Nexus's own firewall changes without --reload (item 13).** By Claude.
