@@ -46,6 +46,38 @@ std::string describeOffset(double seconds) {
     return words(static_cast<long>(s), "second");
 }
 
+std::optional<bool> chronyFollowsServer(const std::string& tracking) {
+    std::istringstream in(tracking);
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.rfind("Leap status", 0) != 0) continue;
+        const auto colon = line.find(':');
+        if (colon == std::string::npos) return std::nullopt;
+        const std::string value = line.substr(colon + 1);
+        if (value.find("Not synchronised") != std::string::npos) return false;
+        if (value.find("Normal") != std::string::npos ||
+            value.find("Insert second") != std::string::npos ||
+            value.find("Delete second") != std::string::npos) {
+            return true;
+        }
+        return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+std::optional<long long> parseRtcSinceEpoch(const std::string& text) {
+    std::string digits = text;
+    while (!digits.empty() &&
+           (digits.back() == '\n' || digits.back() == ' ' || digits.back() == '\r')) {
+        digits.pop_back();
+    }
+    if (digits.empty() || digits.size() > 18) return std::nullopt;
+    for (const char c : digits) {
+        if (c < '0' || c > '9') return std::nullopt;
+    }
+    return std::stoll(digits);
+}
+
 bool timezoneNotChosen(const std::string& zone, bool chosenMarkerExists) {
     return !chosenMarkerExists && zone == kInstallerDefaultTimezone;
 }

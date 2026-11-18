@@ -30,15 +30,33 @@ int commandGuide(bool useRpm) {
 Nexus decides and explains; )" << manager << R"( does the work.
 Every command reads by default. Only --apply changes anything.
 
+This page is nexus help (or nexus guide). Every command is on it;
+nexus --help lists them one per line, with their options. Two have
+a second name: nexus cybersecurity is nexus cyber, and
+nexus secureboot is nexus secure-boot.
+
 WHAT IS ON THIS MACHINE
 
+  nexus                         this machine in a few lines
   nexus doctor                  is anything wrong?
   nexus scan                    what is installed, in summary
   nexus hardware                what this machine is
+  nexus specs                   its parts: processor, memory, disks, screen
   nexus services                what starts when it boots
   nexus largest 20              what is taking up the room
   nexus largest 20 --unused     what is big and needed by nothing
   nexus history                 what Nexus has changed
+
+SECURITY AND PRIVACY
+
+  nexus security                audit: firewall, encryption, updates,
+                                kernel settings, what starts by itself
+  sudo nexus security harden --apply
+                                stricter kernel settings (undo: harden off)
+  nexus secure-boot             is Secure Boot on, and how to turn it on
+  nexus vpn                     is a VPN carrying the traffic; DNS and
+                                IPv6 leaks; the kill switch
+  nexus vpn keys                WireGuard keys, for your own VPN server
 
 INSTALLING AND REMOVING
 
@@ -51,6 +69,18 @@ INSTALLING AND REMOVING
   sudo nexus remove firefox --apply
 
   nexus source nmap             what building it from source costs
+
+  nexus app install org.videolan.VLC
+                                an app from Flathub: what it can reach
+                                first (sudo is not needed; add --apply)
+  nexus app permissions org.videolan.VLC
+                                only what it can reach
+  nexus app remove org.videolan.VLC --apply
+
+  nexus language                languages on this machine
+  nexus language list           every one that can be added
+  sudo nexus language add sr --apply
+  sudo nexus language set sr --apply
 
   --commands works on install, remove and setup. Nexus works out
   what to do and hands you the commands; nothing is hidden and
@@ -78,7 +108,11 @@ UPDATING
   what you added on top of the image. It never takes a build older
   than the one running, and what it stages is the build it showed.
 
-      sudo rpm-ostree rollback         make the previous one the default
+      nexus rollback                   go back to the previous system
+                                       version (says what you lose first)
+      nexus rebase                     switch edition, stay on one build,
+                                       or follow the newest again
+      nexus update notify off --apply  no daily "update available" note
 
   Not bootc upgrade: it refuses a machine with packages added on top,
   and it does not write to nexus history. Not dnf upgrade either: /usr
@@ -116,6 +150,51 @@ SETTING UP A MACHINE
 
   Several at once: nexus setup school,gaming
 
+  nexus profile list            every profile, and what is in each
+  nexus profile show gaming     one profile in full
+  nexus profile check gaming    what this machine still lacks for it
+
+GAMES
+
+  nexus gaming                  what this machine does for games
+  nexus gamecheck <game>        will it run here, and what it can see
+  nexus gamecheck --identifiers what a game could recognise this
+                                computer by
+
+SERVERS ON THIS MACHINE
+
+  nexus server                  what runs here, and how to reach it
+  sudo nexus server add minecraft --accept-eula --apply
+  sudo nexus server add website <folder> --apply
+  nexus server logs <name>      what it said last
+  sudo nexus server backup <name> --apply
+  sudo nexus server remove <name> --apply
+  sudo nexus server cockpit --apply
+                                manage the machine from a browser
+
+OTHER SYSTEMS ON THIS COMPUTER
+
+  sudo nexus dualboot           the other systems found on its disks
+  sudo nexus dualboot add --apply
+                                put them in the boot menu
+  sudo nexus dualboot 1 --apply restart into one of them, once
+  sudo nexus dualboot --disk /dev/sda
+                                also look at a USB disk
+
+PROGRAMMING
+
+  nexus dev                     languages on request, in a container
+  nexus dev help <topic>        how to work with one of them
+
+SECURITY TESTING (only on systems you own or may test)
+
+  nexus cyber                   Kali's tools in a container
+  nexus cyber create small --apply
+                                the toolbox (shares your home folder)
+  nexus cyber create medium --isolated --apply
+                                a toolbox that sees only its own folder
+  nexus cyber shell --isolated  work inside it
+
 BUILDING FROM SOURCE
 
   nexus source <package>        the build dependencies, and what
@@ -147,6 +226,15 @@ WHEN SOMETHING IS WRONG
   nexus conflicts               what collides with what
   nexus solve X --explain       why every component was chosen
   nexus services                anything failing or restarting
+
+FOR THE CURIOUS
+
+  nexus what-provides <need>    which packages could satisfy a need
+  nexus inspect <component>     everything known about one package
+  nexus gaps                    needs nothing here satisfies
+  nexus plan <need>             the full plan, before any install
+  nexus image <profile>         the package list a fresh machine with
+                                that profile would get
 
 WHAT NEXUS DOES NOT DO
 

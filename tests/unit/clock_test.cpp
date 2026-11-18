@@ -50,3 +50,37 @@ TEST(ClockTest, TimezoneNotChosenOnlyForTheInstallerDefault) {
     EXPECT_FALSE(timezoneNotChosen("Europe/Skopje", false));
     EXPECT_FALSE(timezoneNotChosen("", false));
 }
+
+// 0.2.4: whether chrony has a time server at all. The Asus, 18 November,
+// at start: no server yet, reference 00000000.
+TEST(ClockTest, ChronyWithNoServerIsNotFollowing) {
+    const std::string tracking =
+        "Reference ID    : 00000000 ()\n"
+        "Stratum         : 0\n"
+        "System time     : 0.000000000 seconds fast of NTP time\n"
+        "Leap status     : Not synchronised\n";
+    EXPECT_EQ(chronyFollowsServer(tracking), std::optional<bool>(false));
+}
+
+TEST(ClockTest, ChronyWithServerIsFollowing) {
+    const std::string tracking =
+        "Reference ID    : 5DBD5C4A (93.189.92.74)\n"
+        "Stratum         : 3\n"
+        "System time     : 0.002012345 seconds slow of NTP time\n"
+        "Leap status     : Normal\n";
+    EXPECT_EQ(chronyFollowsServer(tracking), std::optional<bool>(true));
+}
+
+TEST(ClockTest, ChronyUnreadableIsUnknown) {
+    EXPECT_FALSE(chronyFollowsServer("").has_value());
+    EXPECT_FALSE(chronyFollowsServer("506 Cannot talk to daemon\n").has_value());
+    EXPECT_FALSE(chronyFollowsServer("Leap status     : something new\n").has_value());
+}
+
+TEST(ClockTest, RtcSinceEpoch) {
+    EXPECT_EQ(parseRtcSinceEpoch("1763477165\n"), std::optional<long long>(1763477165));
+    EXPECT_FALSE(parseRtcSinceEpoch("").has_value());
+    EXPECT_FALSE(parseRtcSinceEpoch("-5\n").has_value());
+    EXPECT_FALSE(parseRtcSinceEpoch("12ab\n").has_value());
+    EXPECT_FALSE(parseRtcSinceEpoch("99999999999999999999999\n").has_value());
+}

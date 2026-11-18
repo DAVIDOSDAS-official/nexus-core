@@ -1,0 +1,20 @@
+#!/bin/sh
+# After a resume, ask the time servers at once (0.2.4).
+#
+# systemd runs every file in /usr/lib/systemd/system-sleep/ before
+# sleep ("pre") and after it ("post"). Asleep, the system clock stops;
+# on waking Linux adds the time asleep as the hardware clock measured
+# it. The Asus's hardware clock loses time (4 h 28 min behind at one
+# start, 18 November), so it woke hours behind, and chrony only
+# noticed at its next scheduled check -- up to 17 minutes later, or
+# never while it had no network.
+#
+# `chronyc burst 4/4` asks every server four times now. With the
+# image's `makestep 1.0 -1`, the first answer sets the clock straight.
+# If the network is not back yet, chrony asks when it is (Fedora's
+# NetworkManager hook tells it). Nothing else is changed, and a
+# failure here never holds up waking.
+[ "${1:-}" = post ] || exit 0
+command -v chronyc > /dev/null 2>&1 || exit 0
+timeout 5 chronyc -a burst 4/4 > /dev/null 2>&1 || true
+exit 0

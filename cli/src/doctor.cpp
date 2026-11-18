@@ -73,14 +73,43 @@ nexus::Finding checkClock() {
     // site. Images from 0.1.61 set it straight whenever it is off;
     // this says so on machines that are off now.
     std::optional<double> offset;
+    std::string tracking;
     if (ntp == "yes" && nexus::system::commandExists("chronyc")) {
         const std::string prefix =
             nexus::system::commandExists("timeout") ? "timeout 5 " : "";
-        const auto tracking = nexus::system::runCommand(
-            prefix + "chronyc -n tracking 2>/dev/null", false);
-        offset = nexus::system::parseChronyOffset(tracking.text);
+        tracking = nexus::system::runCommand(
+            prefix + "chronyc -n tracking 2>/dev/null", false).text;
+        offset = nexus::system::parseChronyOffset(tracking);
     }
     constexpr double kOffBy = 60.0;  // seconds: past drift, a wrong clock
+
+    // 0.2.4, the Asus (18 November): left on for days, the clock was
+    // hours behind, and doctor said "Right" -- network time was "on",
+    // and nothing asked whether a server had answered. With none, the
+    // clock runs on the hardware clock, which on the Asus loses time
+    // (it was 4 h 28 min behind at that boot, and still 5 minutes
+    // behind with chrony synchronised).
+    const std::optional<bool> following =
+        nexus::system::chronyFollowsServer(tracking);
+    // Minutes since start: just after a start (or a resume, where the
+    // network can take a minute) no answer yet is normal.
+    double uptime = 0;
+    {
+        std::ifstream in("/proc/uptime");
+        in >> uptime;
+    }
+    // The hardware clock against the system clock, in seconds:
+    // positive when the hardware clock is behind.
+    std::optional<long long> rtcBehind;
+    {
+        std::ifstream in("/sys/class/rtc/rtc0/since_epoch");
+        std::string text((std::istreambuf_iterator<char>(in)),
+                         std::istreambuf_iterator<char>());
+        if (const auto rtc = nexus::system::parseRtcSinceEpoch(text)) {
+            rtcBehind = static_cast<long long>(now) - *rtc;
+        }
+    }
+    constexpr long long kRtcOffBy = 120;  // seconds
     // `chronyc makestep` sets it straight now; only with chrony there.
     const std::string stepNow =
         nexus::system::commandExists("chronyc")
@@ -128,9 +157,43 @@ nexus::Finding checkClock() {
                    " changes.";
         f.suggestion = "sudo timedatectl set-local-rtc 0   (no Windows"
                        " on this machine)";
+    } else if (ntp == "yes" && (following == std::optional<bool>(false) || synced == "no") &&
+               uptime > 600) {
+        // An offset read with no server is chrony's last estimate, not
+        // a measurement: it says nothing about whether the clock is right.
+        f.health = nexus::Health::Warning;
+        f.detail = "Automatic time is on, but no time server has answered"
+                   " since this machine started " +
+                   nexus::system::describeOffset(uptime) +
+                   " ago. Until one does, the clock is only as right as"
+                   " the hardware clock, and nothing corrects it.";
+        if (rtcBehind && (*rtcBehind > kRtcOffBy || *rtcBehind < -kRtcOffBy)) {
+            f.examples.push_back("the hardware clock disagrees with the system"
+                                 " clock by " +
+                                 nexus::system::describeOffset(
+                                     static_cast<double>(*rtcBehind)));
+        }
+        f.examples.push_back("no network, or a network that blocks time"
+                             " servers (port 123), would do this");
+        f.suggestion = "chronyc -n sources   (any with ^* or ^+ is answering)";
     } else if (ntp == "yes" && synced == "no") {
         f.health = nexus::Health::Ok;
-        f.detail = "Automatic time is on, not synchronised yet (offline?).";
+        f.detail = "Automatic time is on, not synchronised yet (just started,"
+                   " or offline).";
+    } else if (ntp == "yes" && localRtc != "yes" && rtcBehind &&
+               (*rtcBehind > kRtcOffBy || *rtcBehind < -kRtcOffBy)) {
+        // Right now, wrong at the next start: the system clock is
+        // synchronised, the hardware clock is not.
+        f.health = nexus::Health::Warning;
+        f.detail = "Right now, but the hardware clock is " +
+                   nexus::system::describeOffset(static_cast<double>(*rtcBehind)) +
+                   (*rtcBehind > 0 ? " behind" : " ahead") +
+                   ". After a shutdown this machine starts from the hardware"
+                   " clock, so it starts wrong until a time server answers.";
+        f.examples.push_back("a hardware clock that keeps losing time while the"
+                             " machine is off is usually a weak CMOS battery");
+        f.suggestion = "sudo hwclock --systohc   (sets it; if it is behind again"
+                       " after a night off, the battery is the likely cause)";
     } else if (ntp == "yes") {
         f.health = nexus::Health::Ok;
         f.detail = "Right, and kept right automatically.";

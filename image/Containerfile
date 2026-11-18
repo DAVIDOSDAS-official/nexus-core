@@ -664,7 +664,12 @@ RUN chmod 0644 /etc/profile.d/nexus-dnf-hint.sh
 COPY image/clock/nexus-clock /usr/libexec/nexus/clock
 COPY image/clock/nexus-clock.service \
      /usr/lib/systemd/system/nexus-clock.service
+# 0.2.4: after every resume, ask the time servers at once rather
+# than at chrony's next check (image/clock/nexus-clock-resume).
+COPY image/clock/nexus-clock-resume \
+     /usr/lib/systemd/system-sleep/nexus-clock-resume
 RUN chmod 0755 /usr/libexec/nexus/clock \
+        /usr/lib/systemd/system-sleep/nexus-clock-resume \
     && systemctl enable nexus-clock.service
 
 # The clock catches up whenever it is wrong (0.1.61), not only just

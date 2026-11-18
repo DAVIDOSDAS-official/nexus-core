@@ -177,3 +177,9 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME NetworkHygiene
              COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/check-network-hygiene.py ${PROJECT_SOURCE_DIR})
 endif()
+
+# 0.2.4: nexus help names every command nexus accepts.
+add_test(NAME HelpListsEveryCommand
+         COMMAND bash ${PROJECT_SOURCE_DIR}/tests/help-lists-every-command.sh
+                 ${PROJECT_SOURCE_DIR}/cli/src/main.cpp
+                 ${PROJECT_SOURCE_DIR}/cli/src/guide.cpp)

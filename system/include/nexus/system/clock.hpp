@@ -24,6 +24,18 @@ std::optional<double> parseChronyOffset(const std::string& tracking);
 // down, for a sentence. The sign is ignored.
 std::string describeOffset(double seconds);
 
+// Whether chrony is following a time server, from `chronyc -n
+// tracking` (0.2.4). "Leap status : Not synchronised" -- and the
+// reference 00000000 that goes with it -- means no server has
+// answered: the clock runs on the hardware clock and the oscillator
+// alone. Empty when the text says neither (chrony not running).
+std::optional<bool> chronyFollowsServer(const std::string& tracking);
+
+// The hardware clock's time, from /sys/class/rtc/rtc0/since_epoch:
+// seconds since 1970 as the hardware clock reads, taken as universal
+// time (0.2.4). Readable without root. Empty when it is not a number.
+std::optional<long long> parseRtcSinceEpoch(const std::string& text);
+
 // What Fedora's installer leaves when no time zone is chosen.
 inline constexpr const char* kInstallerDefaultTimezone = "America/New_York";
 

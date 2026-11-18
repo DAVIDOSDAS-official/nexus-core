@@ -3,7 +3,7 @@
 Updated 15 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.2.3** (patches 1–132). **819 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
+**Version 0.2.4** (patches 1–133). **824 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -1493,6 +1493,31 @@ files that run most as root.** 814 tests. By Fable; notes as for 129.
 - Not verified here: the real rpm-ostree, dnf, firewalld, podman,
   systemd, GRUB. On the Asus: read-only commands before and after the
   update should print the same; the list is in the notes.
+
+**Patch 133 (0.2.4): `nexus help` names every command; the clock is
+checked properly and re-checked after sleep.** By Claude, 18 Nov.
+- `nexus help` (= `nexus guide`) named 15 of the 40 commands. Now all,
+  grouped by task: security (+ harden, secure-boot, vpn), apps from
+  Flathub (+ permissions), languages, rollback/rebase/notify, profiles,
+  games, servers, dual boot, dev, cyber (+ --isolated), and the
+  inspection commands. ctest `HelpListsEveryCommand` reads the command
+  list from main.cpp, so a command added there and not to the guide
+  fails. `nexus --help` gains app permissions, security harden and
+  --isolated.
+- doctor's Clock line: the Asus (18 Nov), left on for days, ran hours
+  behind while doctor said "Right" -- network time "on" was taken as
+  right. Now: a Warning when no time server has answered 10 minutes
+  after start (`chronyFollowsServer`: chrony's Leap status), and a
+  Warning when the system clock is right but the hardware clock is
+  more than 2 minutes off (/sys/class/rtc/rtc0/since_epoch, no root
+  needed; usually a weak CMOS battery). The Asus's hardware clock was
+  4 h 28 min behind at one start.
+- Image: /usr/lib/systemd/system-sleep/nexus-clock-resume runs
+  `chronyc burst 4/4` after every resume, so the clock is set straight
+  at the first answer rather than at chrony's next check.
+- Not verified here: the resume hook (needs real hardware: sleep the
+  Asus, wake it, `journalctl -b | grep -iE "stepped|wrong by"`), and
+  the image-only help text (needs /run/ostree-booted).
 
 **Patch 132 (0.2.3): an isolated Kali toolbox; ptrace and kexec in the
 hardening tier; kernel lockdown reported.** By Claude, 17 Nov.
