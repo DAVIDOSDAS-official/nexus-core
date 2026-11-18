@@ -202,16 +202,25 @@ int commandContainerInstall(
     std::vector<std::string> exported;
     std::vector<std::string> refused;
 
-    for (const std::string& path : binaries.paths) {
-        const auto result =
-            nexus::system::Containers::exportBinary(container, path);
+    // Kept off the PATH (0.2.6, audit NX-05): a name the system already
+    // has, or one that must only ever be the system's (sudo, ssh, ...).
+    std::vector<std::pair<std::string, std::string>> skipped;
 
+    for (const std::string& path : binaries.paths) {
         const std::size_t slash = path.rfind('/');
 
         const std::string command =
             slash == std::string::npos
                 ? path
                 : path.substr(slash + 1);
+
+        if (const std::string why = nexus::system::exportRefusal(command); !why.empty()) {
+            skipped.emplace_back(command, why);
+            continue;
+        }
+
+        const auto result =
+            nexus::system::Containers::exportBinary(container, path);
 
         if (result.ok) {
             exported.push_back(command);
@@ -222,6 +231,14 @@ int commandContainerInstall(
 
     for (const std::string& command : exported) {
         std::cout << "    " << command << "\n";
+    }
+
+    if (!skipped.empty()) {
+        std::cout << "\nNot put on your PATH (run them inside the container):\n";
+        for (const auto& [command, why] : skipped) {
+            std::cout << "    " << nexus::system::printable(command) << ": " << why << "\n";
+        }
+        std::cout << "    distrobox enter " << container << " -- <command>\n";
     }
 
     if (exported.empty()) {

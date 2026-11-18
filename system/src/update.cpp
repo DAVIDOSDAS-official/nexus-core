@@ -492,7 +492,18 @@ UpdateSigning judgeUpdateSigning(const std::string& origin,
     }
     // The prefix asks for a check; the policy says against which key
     // (0.1.76). Without the rule, signed: checks nothing of Nexus's own.
-    if (origin.find(std::string(kNexusImageScope) + "/") == std::string::npos) {
+    // The repository must start with Nexus's scope, right after the
+    // transport (0.2.6, audit NX-04): `find` anywhere said "Enforced" for
+    // docker://evil.example/ghcr.io/davidosdas-official/..., a registry
+    // the policy does not check at all.
+    std::string repository = origin.substr(std::string("ostree-image-signed:").size());
+    for (const char* transport : {"docker://", "registry:"}) {
+        if (repository.rfind(transport, 0) == 0) {
+            repository = repository.substr(std::string(transport).size());
+            break;
+        }
+    }
+    if (repository.rfind(std::string(kNexusImageScope) + "/", 0) != 0) {
         return UpdateSigning::OtherSigned;
     }
     return policyRequiresKey(policyJson, kNexusImageScope, kNexusPublicKey) && keyPresent

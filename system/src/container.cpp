@@ -8,6 +8,8 @@
 #include <sstream>
 #include <nexus/system/process.hpp>
 
+#include <sys/stat.h>
+
 namespace nexus::system {
 
 namespace {
@@ -316,6 +318,62 @@ ContainerResult Containers::query(
 
     return execute(
         "podman exec " + shellQuote(name) + " sh -c " + shellQuote(command));
+}
+
+bool protectedCommandName(const std::string& name) {
+    static const char* const names[] = {
+        "sudo", "sudoedit", "su", "doas", "pkexec", "run0", "passwd", "login",
+        "ssh", "ssh-add", "ssh-agent", "scp", "sftp", "gpg", "gpg2", "gpg-agent",
+        "nexus", "flatpak", "rpm-ostree", "bootc", "dnf", "rpm", "systemctl",
+        "distrobox", "podman", "sh", "bash", "zsh", "env", "python3", "python",
+    };
+    for (const char* n : names) {
+        if (name == n) return true;
+    }
+    return false;
+}
+
+std::string hostCommandPath(const std::string& name,
+                            const std::string& pathEnv,
+                            const std::string& skipDir,
+                            bool (*isCommand)(const std::string&)) {
+    if (name.empty() || name.find('/') != std::string::npos) return {};
+    auto bare = [](std::string d) {
+        while (d.size() > 1 && d.back() == '/') d.pop_back();
+        return d;
+    };
+    const std::string skip = bare(skipDir);
+    std::istringstream dirs(pathEnv);
+    std::string dir;
+    while (std::getline(dirs, dir, ':')) {
+        // An empty entry means the current folder: not a host command.
+        if (dir.empty() || dir.front() != '/') continue;
+        if (bare(dir) == skip) continue;
+        const std::string candidate = bare(dir) + "/" + name;
+        if (isCommand(candidate)) return candidate;
+    }
+    return {};
+}
+
+bool isExecutableFile(const std::string& path) {
+    struct stat st {};
+    return ::stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode) &&
+           (st.st_mode & 0111) != 0;
+}
+
+std::string exportRefusal(const std::string& name) {
+    if (protectedCommandName(name)) {
+        return "never exported: a copy in ~/.local/bin would be run instead of the system's";
+    }
+    const char* path = std::getenv("PATH");
+    const char* home = std::getenv("HOME");
+    const std::string found = hostCommandPath(
+        name, path ? path : "/usr/local/bin:/usr/bin",
+        home ? std::string(home) + "/.local/bin" : "", isExecutableFile);
+    if (!found.empty()) {
+        return "this system has its own (" + found + "); an export would replace it";
+    }
+    return {};
 }
 
 ContainerResult Containers::exportBinary(

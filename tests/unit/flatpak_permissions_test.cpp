@@ -57,7 +57,7 @@ TEST(FlatpakPermissionsTest, HomeAndKeysAndAutostartAreBroad) {
         "[Session Bus Policy]\norg.freedesktop.secrets=talk\n\n"
         "[System Bus Policy]\norg.freedesktop.NetworkManager=talk\n");
     EXPECT_TRUE(has(p, "your whole home folder (read only)", true));
-    EXPECT_TRUE(has(p, "files that make programs start by itself (~/.config/autostart)", true));
+    EXPECT_TRUE(has(p, "files that make programs start by themselves (~/.config/autostart)", true));
     EXPECT_TRUE(has(p, "the folder /srv/data", true));
     EXPECT_TRUE(has(p, "your SSH keys (the SSH agent)", true));
     EXPECT_TRUE(has(p, "every service of your desktop session (session bus)", true));
@@ -95,4 +95,59 @@ TEST(FlatpakPermissionsTest, VlcAsFlathubServesIt) {
     for (const auto& item : p.items) {
         EXPECT_EQ(item.text.find("share/vlc"), std::string::npos);
     }
+}
+
+// 0.2.6, outside audit NX-01: the audit's metadata. Every one of these
+// reaches outside the sandbox; until 0.2.6 none was marked, and three
+// bus names were left out of the list altogether.
+TEST(FlatpakPermissionsTest, EscapesNeedAYes) {
+    const auto p = parseFlatpakPermissions(
+        "[Context]\n"
+        "filesystems=xdg-config;xdg-data/applications;~/.local/bin;~/.ssh;"
+        "xdg-config/plasma-workspace/env:create;~/.zshrc;\n"
+        "devices=input;\nsockets=x11;\n\n"
+        "[Session Bus Policy]\norg.freedesktop.systemd1=talk\n"
+        "org.freedesktop.*=talk\norg.kde.plasmashell=talk\n");
+    for (const char* text : {
+             "every app's config folder (xdg-config)",
+             "files that make programs start by themselves (xdg-data/applications)",
+             "files that make programs start by themselves (~/.local/bin)",
+             "your keys, passwords or browser profile (~/.ssh)",
+             "files that make programs start by themselves (xdg-config/plasma-workspace/env)",
+             "files that make programs start by themselves (~/.zshrc)",
+             "every keyboard and mouse directly (it can read what you type)",
+             "starting programs outside its sandbox (org.freedesktop.systemd1)",
+             "every desktop service named org.freedesktop.*",
+             "controlling your desktop (org.kde.plasmashell)",
+         }) {
+        EXPECT_TRUE(has(p, text, true)) << text;
+    }
+}
+
+TEST(FlatpakPermissionsTest, EverySessionBusNameIsListed) {
+    const auto p = parseFlatpakPermissions(
+        "[Session Bus Policy]\norg.kde.StatusNotifierWatcher=talk\n"
+        "org.freedesktop.Notifications=talk\norg.mpris.MediaPlayer2.vlc=own\n"
+        "org.example.Thing=own\norg.example.Seen=see\n");
+    EXPECT_TRUE(has(p, "the desktop service org.kde.StatusNotifierWatcher", false));
+    EXPECT_TRUE(has(p, "the desktop service org.freedesktop.Notifications", false));
+    EXPECT_TRUE(has(p, "announcing itself as a media player (org.mpris.MediaPlayer2.vlc)", false));
+    EXPECT_TRUE(has(p, "offering the service org.example.Thing", false));
+    // "see" only lets it notice the name exists: not a permission.
+    EXPECT_EQ(p.items.size(), 4u);
+    EXPECT_FALSE(p.anyBroad());
+}
+
+TEST(FlatpakPermissionsTest, OrdinaryPlacesStayOrdinary) {
+    const auto p = parseFlatpakPermissions(
+        "[Context]\nfilesystems=xdg-music:ro;xdg-pictures/Screenshots;~/Games:create;"
+        "xdg-config/kdeglobals:ro;xdg-run/pipewire-0;xdg-cache/fontconfig:ro;"
+        "~/.config/MangoHud:ro;\n");
+    EXPECT_FALSE(p.anyBroad());
+    // Written: a hidden folder in home, a place in another app's data,
+    // or anywhere outside home.
+    const auto q = parseFlatpakPermissions(
+        "[Context]\nfilesystems=~/.config/something;xdg-data/otherapp;/opt/thing;\n");
+    for (const auto& item : q.items) EXPECT_TRUE(item.broad) << item.text;
+    EXPECT_EQ(q.items.size(), 3u);
 }

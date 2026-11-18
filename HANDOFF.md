@@ -3,7 +3,7 @@
 Updated 15 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.2.5** (patches 1–134). **825 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
+**Version 0.2.6** (patches 1–135). **830 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -1493,6 +1493,23 @@ files that run most as root.** 814 tests. By Fable; notes as for 129.
 - Not verified here: the real rpm-ostree, dnf, firewalld, podman,
   systemd, GRUB. On the Asus: read-only commands before and after the
   update should print the same; the list is in the notes.
+
+**Patch 135 (0.2.6): the outside audit's NX-01, NX-04, NX-05.** By Claude, 18 Nov.
+- NX-01: `parseFlatpakPermissions` defaults to needing a yes. Ordinary:
+  the user folders, a plain folder of the app's own in home, reading a
+  named place, caches and runtime sockets. Needs a yes: secrets (even
+  read), anything that starts programs (autostart, ~/.local/bin, .desktop
+  files, shell and login scripts, KDE env), dconf, the whole of
+  xdg-config/xdg-data, hidden places in home and anything outside it when
+  written, raw input devices. Every session-bus name is listed (only four
+  were); systemd1, Flatpak, desktop shells, keyrings and wildcards need a
+  yes. Apps that asked for these now show "!" and need a typed yes.
+- NX-04: the origin's repository must start with Nexus's scope.
+- NX-05: `nexus container` and `nexus cyber export` never put a name the
+  system already has, or sudo/su/ssh/gpg/nexus/shells, in ~/.local/bin.
+- Ledger: section 12 (the audit), open items 17 to 20 (NX-02, NX-03,
+  S-1, S-2..S-5). NX-02 is next.
+- Not verified here: the Shop's dialog with the new marks (Asus).
 
 **Patch 134 (0.2.5): doctor says when the hardware clock has stopped.**
 By Claude, 18 Nov.

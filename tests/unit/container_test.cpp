@@ -138,3 +138,26 @@ TEST(ContainerTest, OnlyPlainPathsAreExported) {
     EXPECT_FALSE(isPlainPath("/usr/bin/../../etc/shadow"));
     EXPECT_FALSE(isPlainPath("usr/bin/nmap"));
 }
+
+// 0.2.6, outside audit NX-05: a container's command never goes ahead of
+// the system's own on the PATH.
+namespace {
+bool fakeHost(const std::string& path) {
+    return path == "/usr/bin/sudo" || path == "/usr/bin/ls" || path == "/home/u/.local/bin/foo";
+}
+}  // namespace
+
+TEST(ContainerExportTest, NamesTheSystemHasAreNotExported) {
+    using namespace nexus::system;
+    const std::string path = "/home/u/.local/bin:/usr/local/bin:/usr/bin::.";
+    EXPECT_EQ(hostCommandPath("ls", path, "/home/u/.local/bin/", fakeHost), "/usr/bin/ls");
+    // Only in ~/.local/bin: an earlier export, not the system's.
+    EXPECT_EQ(hostCommandPath("foo", path, "/home/u/.local/bin", fakeHost), "");
+    EXPECT_EQ(hostCommandPath("msfconsole", path, "/home/u/.local/bin", fakeHost), "");
+    EXPECT_EQ(hostCommandPath("../bin/ls", path, "/home/u/.local/bin", fakeHost), "");
+    for (const char* name : {"sudo", "su", "pkexec", "ssh", "gpg", "nexus", "flatpak", "bash"}) {
+        EXPECT_TRUE(protectedCommandName(name)) << name;
+    }
+    EXPECT_FALSE(protectedCommandName("msfconsole"));
+    EXPECT_FALSE(exportRefusal("sudo").empty());
+}

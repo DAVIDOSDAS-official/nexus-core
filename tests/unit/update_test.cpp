@@ -651,3 +651,25 @@ TEST(UpdateSigningTest, OneAnswerForEveryCommand) {
               UpdateSigning::OtherSigned);
     EXPECT_EQ(judgeUpdateSigning("", kPolicyWithKey, true), UpdateSigning::NotAnImage);
 }
+
+// 0.2.6, outside audit NX-04: Nexus's scope must be where the
+// repository starts, not anywhere in the origin.
+TEST(UpdateSigningTest, TheScopeMustStartTheRepository) {
+    EXPECT_EQ(judgeUpdateSigning(
+                  "ostree-image-signed:docker://ghcr.io/davidosdas-official/nexus-core:kde",
+                  kPolicyWithKey, true),
+              UpdateSigning::Enforced);
+    EXPECT_EQ(judgeUpdateSigning(
+                  "ostree-image-signed:registry:ghcr.io/davidosdas-official/nexus-core:kde",
+                  kPolicyWithKey, true),
+              UpdateSigning::Enforced);
+    for (const char* origin : {
+             "ostree-image-signed:docker://evil.example/ghcr.io/davidosdas-official/nexus-core:kde",
+             "ostree-image-signed:docker://ghcr.io:443/davidosdas-official/nexus-core:kde",
+             "ostree-image-signed:docker://ghcr.io/davidosdas-official.evil/x:kde",
+             "ostree-image-signed:docker://GHCR.IO/davidosdas-official/nexus-core:kde",
+         }) {
+        EXPECT_EQ(judgeUpdateSigning(origin, kPolicyWithKey, true), UpdateSigning::OtherSigned)
+            << origin;
+    }
+}

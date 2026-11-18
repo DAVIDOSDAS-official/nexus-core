@@ -123,6 +123,28 @@ std::string containerImageFor(const std::string& distribution);
 // a shell could read as anything else.
 bool isPlainPath(const std::string& path);
 
+// Commands a container must never put on the PATH (0.2.6, audit NX-05).
+// ~/.local/bin comes before /usr/bin on Fedora, so a container's sudo
+// there would be the sudo every terminal runs: it would get the
+// password, and `sudo nexus ...` would run inside the container.
+bool protectedCommandName(const std::string& name);
+
+// Where the host already has `name`, in the PATH directories other than
+// `skipDir` (~/.local/bin, where exports go). Empty when it has none.
+// `isCommand` says whether a path is an executable file; a parameter so
+// that tests need no real files.
+std::string hostCommandPath(const std::string& name,
+                            const std::string& pathEnv,
+                            const std::string& skipDir,
+                            bool (*isCommand)(const std::string&));
+
+// The real check for hostCommandPath: a regular file with any x bit.
+bool isExecutableFile(const std::string& path);
+
+// Why an export of `name` is refused, or empty when it may go ahead
+// (protectedCommandName, then hostCommandPath with $PATH and $HOME).
+std::string exportRefusal(const std::string& name);
+
 std::string containerNameFor(const std::string& distribution);
 
 }

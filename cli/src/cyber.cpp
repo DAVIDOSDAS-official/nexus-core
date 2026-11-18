@@ -387,6 +387,14 @@ int commandCyber(
             return 2;
         }
         const std::string tool = words[1];
+        // 0.2.6, audit NX-05: never a command the system has, or sudo.
+        if (!asApp) {
+            if (const std::string why = exportRefusal(tool); !why.empty()) {
+                std::cout << tool << ": " << why << ".\n"
+                          << "Run it in the toolbox instead:  nexus cyber run " << tool << "\n";
+                return 1;
+            }
+        }
         std::cout << (asApp ? "Menu entry: " : "Command:    ") << tool
                   << (asApp ? " (runs in the toolbox)\n" : " in ~/.local/bin, running inside the toolbox\n");
         if (!apply) {
