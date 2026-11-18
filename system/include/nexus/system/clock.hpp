@@ -36,6 +36,14 @@ std::optional<bool> chronyFollowsServer(const std::string& tracking);
 // time (0.2.4). Readable without root. Empty when it is not a number.
 std::optional<long long> parseRtcSinceEpoch(const std::string& text);
 
+// Whether the hardware clock moved between two readings taken
+// `apartSeconds` apart (0.2.5). A stopped hardware clock reads the
+// same; one that runs has moved by about the time between them.
+// Empty when either reading is missing.
+std::optional<bool> rtcIsRunning(std::optional<long long> first,
+                                 std::optional<long long> second,
+                                 double apartSeconds);
+
 // What Fedora's installer leaves when no time zone is chosen.
 inline constexpr const char* kInstallerDefaultTimezone = "America/New_York";
 

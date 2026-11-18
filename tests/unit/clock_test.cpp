@@ -84,3 +84,13 @@ TEST(ClockTest, RtcSinceEpoch) {
     EXPECT_FALSE(parseRtcSinceEpoch("12ab\n").has_value());
     EXPECT_FALSE(parseRtcSinceEpoch("99999999999999999999999\n").has_value());
 }
+
+// 0.2.5: the Asus's hardware clock read 19:19:14 twice, 5 s apart.
+TEST(ClockTest, RtcThatDoesNotMoveIsStopped) {
+    EXPECT_EQ(rtcIsRunning(1795029554LL, 1795029554LL, 1.2), std::optional<bool>(false));
+    EXPECT_EQ(rtcIsRunning(1795029554LL, 1795029555LL, 1.2), std::optional<bool>(true));
+    EXPECT_FALSE(rtcIsRunning(std::nullopt, 1795029555LL, 1.2).has_value());
+    EXPECT_FALSE(rtcIsRunning(1795029554LL, std::nullopt, 1.2).has_value());
+    // Too short a wait proves nothing at a second's resolution.
+    EXPECT_FALSE(rtcIsRunning(1795029554LL, 1795029554LL, 0.5).has_value());
+}

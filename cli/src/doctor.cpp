@@ -5,6 +5,8 @@
 
 #include "cli.hpp"
 
+#include <thread>
+
 namespace nexus_cli {
 
 namespace {
@@ -110,6 +112,26 @@ nexus::Finding checkClock() {
         }
     }
     constexpr long long kRtcOffBy = 120;  // seconds
+
+    // 0.2.5, the Asus (18 November): the hardware clock had stopped.
+    // It read 19:19:14 twice, five seconds apart, and hwclock timed out
+    // waiting for its tick. Linux counts time asleep with it, so every
+    // sleep was lost whole: asleep 14:32 to 20:14, it woke at 14:32.
+    // Two readings 1.2 s apart; doctor waits that long for it.
+    std::optional<bool> rtcRunning;
+    {
+        auto read = [] {
+            std::ifstream in("/sys/class/rtc/rtc0/since_epoch");
+            std::string text((std::istreambuf_iterator<char>(in)),
+                             std::istreambuf_iterator<char>());
+            return nexus::system::parseRtcSinceEpoch(text);
+        };
+        const auto first = read();
+        if (first) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+            rtcRunning = nexus::system::rtcIsRunning(first, read(), 1.2);
+        }
+    }
     // `chronyc makestep` sets it straight now; only with chrony there.
     const std::string stepNow =
         nexus::system::commandExists("chronyc")
@@ -144,6 +166,20 @@ nexus::Finding checkClock() {
                    nexus::system::describeOffset(*offset) +
                    " ahead of network time and only catching up slowly.";
         f.suggestion = stepNow;
+    } else if (rtcRunning == std::optional<bool>(false)) {
+        f.health = nexus::Health::Problem;
+        f.detail = "The hardware clock has stopped: it reads the same time"
+                   " a second apart. Linux measures time asleep with it, so"
+                   " every sleep is lost whole -- the machine wakes at the"
+                   " time it went to sleep -- and after a shutdown it starts"
+                   " at whatever the hardware clock last held.";
+        f.examples.push_back("network time sets it straight once a time"
+                             " server answers, usually a few minutes after"
+                             " the network is back; never without network");
+        f.examples.push_back("a hardware fault, not a setting: most often the"
+                             " CMOS (RTC) battery, sometimes the firmware");
+        f.suggestion = "check the time in the firmware setup (does it move?);"
+                       " a firmware update, or a new CMOS battery";
     } else if (ntp == "no") {
         f.health = nexus::Health::Warning;
         f.detail = "Automatic time is off; the clock is only as right as"

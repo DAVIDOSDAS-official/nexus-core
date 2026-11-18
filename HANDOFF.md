@@ -3,7 +3,7 @@
 Updated 15 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.2.4** (patches 1–133). **824 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
+**Version 0.2.5** (patches 1–134). **825 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -1493,6 +1493,21 @@ files that run most as root.** 814 tests. By Fable; notes as for 129.
 - Not verified here: the real rpm-ostree, dnf, firewalld, podman,
   systemd, GRUB. On the Asus: read-only commands before and after the
   update should print the same; the list is in the notes.
+
+**Patch 134 (0.2.5): doctor says when the hardware clock has stopped.**
+By Claude, 18 Nov.
+- The Asus's hardware clock is stopped: /sys/class/rtc/rtc0/time read
+  19:19:14 twice, 5 s apart, and `hwclock --show` timed out waiting for
+  its tick. Linux measures time asleep with it, so each sleep is lost
+  whole (asleep 14:32 to 20:14, woke at 14:32; chrony stepped 20422 s
+  when a server answered, about 6 minutes after waking). A hardware or
+  firmware fault, not a setting.
+- doctor reads /sys/class/rtc/rtc0/since_epoch twice, 1.2 s apart
+  (`rtcIsRunning`), and reports a stopped clock as a Problem with what
+  it causes and what to check (firmware setup clock, firmware update,
+  CMOS battery). doctor waits 1.2 s only where a hardware clock exists.
+- Not verified here (the build box has no /dev/rtc0): the doctor line on
+  the Asus.
 
 **Patch 133 (0.2.4): `nexus help` names every command; the clock is
 checked properly and re-checked after sleep.** By Claude, 18 Nov.

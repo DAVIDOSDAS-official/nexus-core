@@ -78,6 +78,14 @@ std::optional<long long> parseRtcSinceEpoch(const std::string& text) {
     return std::stoll(digits);
 }
 
+std::optional<bool> rtcIsRunning(std::optional<long long> first,
+                                 std::optional<long long> second,
+                                 double apartSeconds) {
+    if (!first || !second || apartSeconds < 1.0) return std::nullopt;
+    // A second's resolution: over 1.2 s a running clock moves by 1 or 2.
+    return *second > *first;
+}
+
 bool timezoneNotChosen(const std::string& zone, bool chosenMarkerExists) {
     return !chosenMarkerExists && zone == kInstallerDefaultTimezone;
 }
