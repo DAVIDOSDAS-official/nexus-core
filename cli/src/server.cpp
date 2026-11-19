@@ -5,6 +5,8 @@
 
 #include "cli.hpp"
 
+#include <thread>
+
 namespace nexus_cli {
 
 namespace {
@@ -138,6 +140,7 @@ void serverUsage() {
            "     nexus server logs <name>\n"
            "     nexus server backup <name>\n"
            "     nexus server remove <name>          (the data stays)\n"
+           "     nexus server refresh <name>         its own uids, fewer rights (0.2.7)\n"
            "     nexus server cockpit                manage this machine from a browser\n"
            "Add --apply to do it; without it nothing changes.\n";
 }
@@ -194,6 +197,46 @@ bool openPorts(const std::vector<std::string>& ports, bool open) {
     return ok;
 }
 
+// The "containers" lines UserNS=auto takes its uids from (0.2.7). Nexus
+// adds them itself: on an image-based system /etc keeps the machine's
+// own /etc/subuid (changed when the first account was made), so a line
+// in the image would never arrive. Appended in place, so the file keeps
+// its owner, mode and SELinux label; a range already in use is not
+// touched, and that is said.
+bool ensureContainersSubids(std::string& error) {
+    for (const char* path : {"/etc/subuid", "/etc/subgid"}) {
+        std::ifstream in(path);
+        std::stringstream text;
+        text << in.rdbuf();
+        const auto plan = nexus::system::containersSubidPlan(text.str());
+        if (!plan.conflict.empty()) {
+            error = std::string(path) + " already gives part of the range to \"" +
+                    nexus::system::printable(plan.conflict) +
+                    "\"; nothing was changed there";
+            return false;
+        }
+        if (!plan.needed) continue;
+        std::ofstream out(path, std::ios::app);
+        out << plan.line;
+        out.flush();
+        if (!out) {
+            error = std::string("could not add the containers line to ") + path;
+            return false;
+        }
+    }
+    return true;
+}
+
+// /var/lib/nexus/servers: root's only (0.2.7, outside audit S-1). It was
+// 0755, so every account could read every world and site. Podman mounts
+// each server's own folder, so the server needs nothing above it.
+void lockServersFolder() {
+    std::error_code ec;
+    std::filesystem::create_directories("/var/lib/nexus/servers", ec);
+    std::filesystem::permissions("/var/lib/nexus/servers", std::filesystem::perms::owner_all,
+                                 std::filesystem::perm_options::replace, ec);
+}
+
 // Download, write, start: the part both kinds share.
 bool startServer(const std::string& name, const std::string& image,
                  const std::string& quadlet, const std::vector<std::string>& ports,
@@ -205,6 +248,9 @@ bool startServer(const std::string& name, const std::string& image,
         error = "the download did not finish (podman pull " + image + ")";
         return false;
     }
+
+    if (!ensureContainersSubids(error)) return false;
+    lockServersFolder();
 
     std::error_code ec;
     std::filesystem::create_directories("/etc/containers/systemd", ec);
@@ -410,6 +456,15 @@ int commandServer(
                       << std::setw(10) << unitState(nexus::system::serverUnit(name))
                       << "port " << ports << "\n";
         }
+        for (const std::string& name : names) {
+            std::ifstream in(nexus::system::serverQuadletPath(name));
+            std::stringstream text;
+            text << in.rdbuf();
+            if (!nexus::system::quadletIsHardened(text.str())) {
+                std::cout << "\n  " << name << " runs as root on this machine (made before 0.2.7):\n"
+                          << "    sudo nexus server refresh " << name << " --apply\n";
+            }
+        }
 
         std::cout << "\n  Address on your network: " << lanAddress() << "\n";
         std::cout << "  Firewall: "
@@ -499,6 +554,116 @@ int commandServer(
                      "network and log in with your normal user name and password. The\n"
                      "browser warns about the certificate the first time: Cockpit made\n"
                      "its own, which is expected on a home network.\n";
+        return 0;
+    }
+
+    // ------------------------------------------------------- refresh
+    // 0.2.7: a server made before 0.2.7 gets the same hardening as a new
+    // one. Its definition is rewritten and it is restarted; if it does
+    // not start, the old definition goes back and it is started again.
+    if (action == "refresh") {
+        if (words.size() != 2 || !nexus::system::validServerName(words[1])) {
+            std::cout << "Which server? nexus server refresh <name>   (`nexus server` lists them)\n";
+            return 2;
+        }
+        const std::string name = words[1];
+        const std::string path = nexus::system::serverQuadletPath(name);
+        std::string before;
+        {
+            std::ifstream in(path);
+            if (!in) {
+                std::cout << "There is no server called " << name << ". `nexus server` lists them.\n";
+                return 1;
+            }
+            std::stringstream text;
+            text << in.rdbuf();
+            before = text.str();
+        }
+        const ServerSeen seen = readServer(name);
+        if (seen.kind != "minecraft" && seen.kind != "website") {
+            std::cout << name << " is not a server Nexus made; nothing to do.\n";
+            return 1;
+        }
+        const std::string after = nexus::system::hardenQuadlet(before, seen.kind);
+        if (after == before) {
+            std::cout << name << " has it already: its own uids"
+                      << (seen.kind == "website" ? ", no capabilities but binding a port, read-only" : "")
+                      << ".\nNothing to do.\n";
+            return 0;
+        }
+        std::cout << "What Nexus will do\n"
+                  << "  Run " << name << " in its own user namespace: root inside it is an\n"
+                     "  unprivileged uid on this machine, not root\n"
+                  << "  Stop it from gaining privileges\n";
+        if (seen.kind == "website") {
+            std::cout << "  Take away every capability but binding a port; make its files read-only\n";
+        } else {
+            std::cout << "  Give its world folder to its own uids (podman does this at start)\n";
+        }
+        std::cout << "  Make /var/lib/nexus/servers readable by root only\n"
+                  << "  Add the \"containers\" lines to /etc/subuid and /etc/subgid if missing\n"
+                  << "  Restart " << nexus::system::serverUnit(name)
+                  << " (a few seconds off)\n"
+                  << "\nIt will not\n"
+                     "  Change its port, its files or its world\n"
+                     "  Keep the change if it does not start: the old definition goes back\n";
+        if (!apply) {
+            std::cout << "\nNothing has been changed. To do it:\n    sudo " << invocation << " --apply\n";
+            return 0;
+        }
+        if (!nexus::system::haveRootPrivileges()) {
+            return needRoot(invocation);
+        }
+        auto record = serverRecord("server refresh " + name, TransactionKind::Install,
+                                   nexus::system::serverUnit(name) + ": own uids, fewer rights",
+                                   seen.kind);
+        const std::string log = nexus::system::defaultTransactionLog();
+        const std::string marker = nexus::system::beginTransaction(log, record);
+
+        std::string error;
+        bool ok = ensureContainersSubids(error);
+        if (ok) {
+            lockServersFolder();
+            std::ofstream out(path, std::ios::trunc);
+            out << after;
+            out.flush();
+            ok = static_cast<bool>(out);
+            if (!ok) error = "could not write " + path;
+        }
+        bool restored = false;
+        if (ok) {
+            runProgram({"systemctl", "daemon-reload"}, mergedErrors());
+            const auto restarted = runProgram(
+                {"systemctl", "restart", nexus::system::serverUnit(name)}, mergedErrors());
+            // Started is not running: a container that exits at once
+            // shows a few seconds later.
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+            ok = restarted.ok && unitState(nexus::system::serverUnit(name)) == "active";
+            if (!ok) {
+                error = "it did not stay running with the change";
+                std::ofstream back(path, std::ios::trunc);
+                back << before;
+                back.flush();
+                runProgram({"systemctl", "daemon-reload"}, mergedErrors());
+                runProgram({"systemctl", "restart", nexus::system::serverUnit(name)}, mergedErrors());
+                restored = true;
+            }
+        }
+        record.outcome = ok ? "refreshed" : (restored ? "failed, old definition back" : "failed");
+        record.succeeded = ok;
+        record.exitCode = ok ? 0 : 1;
+        nexus::system::finishTransaction(log, marker, record);
+        if (!ok) {
+            std::cout << "\nNot done: " << error << ".\n";
+            if (restored) {
+                std::cout << "The old definition is back and " << name << " was started again.\n"
+                          << "What it said:  nexus server logs " << name << "\n";
+            }
+            return 1;
+        }
+        std::cout << "\nDone. " << name << " runs with its own uids. To see it:\n"
+                  << "    sudo podman top nexus-" << name << " user huser\n"
+                  << "(USER root, HUSER a large number: root inside, nobody here.)\n";
         return 0;
     }
 
@@ -923,6 +1088,12 @@ int commandServer(
 
         std::string error;
         bool ok = copyWebsite(folder, site, error);
+        // Caddy's certificates (0.2.7, outside audit S-2): podman does not
+        // make a missing folder for a Volume, so --domain never started.
+        if (ok && !options.domain.empty()) {
+            std::error_code dirError;
+            fs::create_directories(nexus::system::serverDataDir(options.name) + "/caddy", dirError);
+        }
         if (ok) {
             ok = startServer(options.name, pinnedImage("docker.io/library/caddy:2"),
                              nexus::system::websiteQuadlet(options), ports, error);

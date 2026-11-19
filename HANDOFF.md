@@ -3,7 +3,7 @@
 Updated 15 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.2.6** (patches 1–135). **830 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
+**Version 0.2.7** (patches 1–136). **833 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -1493,6 +1493,27 @@ files that run most as root.** 814 tests. By Fable; notes as for 129.
 - Not verified here: the real rpm-ostree, dnf, firewalld, podman,
   systemd, GRUB. On the Asus: read-only commands before and after the
   update should print the same; the list is in the notes.
+
+**Patch 136 (0.2.7): servers no longer run as root on the host.** By Claude, 19 Nov.
+- On the Asus, `podman top nexus-website user huser` gave root/root: the
+  Quadlets had no hardening at all (ledger item 7, audit S-1).
+- `hardenQuadlet` (system/src/server.cpp), used by both generators and
+  by refresh: `UserNS=auto`, `NoNewPrivileges=true`, `/data` volumes
+  `:Z,U`; the website also drops every capability but
+  NET_BIND_SERVICE, is read-only, tmpfs for /config (and /data with no
+  domain).
+- UserNS=auto needs "containers" lines in /etc/subuid and /etc/subgid;
+  Fedora writes none and the Asus had none. The image cannot add them
+  (/etc keeps the machine's changed file), so server add/refresh append
+  them in place; an overlapping range is refused and said.
+- `sudo nexus server refresh <name> --apply`: rewrites a pre-0.2.7
+  Quadlet, restarts, checks it is still active after 5 s, and otherwise
+  puts the old one back and restarts it. `nexus server` names servers
+  still running as root.
+- /var/lib/nexus/servers is 0700; a --domain website gets its caddy
+  folder (audit S-2).
+- Not verified here (no podman): all of it. First test: refresh the
+  Asus's website.
 
 **Patch 135 (0.2.6): the outside audit's NX-01, NX-04, NX-05.** By Claude, 18 Nov.
 - NX-01: `parseFlatpakPermissions` defaults to needing a yes. Ordinary:

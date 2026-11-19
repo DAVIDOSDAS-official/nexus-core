@@ -23,7 +23,7 @@ void printUsage() {
         << "    nexus app install|remove|permissions <flathub id> [--apply]\n"
         << "    nexus dualboot [add | remove | <number>] [--disk <path>] [--apply]  other systems on this disk\n"
         << "    nexus gaming [--apply]   what this machine does for games\n"
-        << "    nexus server [add | logs | backup | remove | cockpit]  Minecraft and websites here\n"
+        << "    nexus server [add | logs | backup | remove | refresh | cockpit]  Minecraft and websites here\n"
         << "    nexus scan\n"
         << "    nexus what-provides <capability>\n"
         << "    nexus why <component>\n"

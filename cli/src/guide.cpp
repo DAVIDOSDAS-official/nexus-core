@@ -169,6 +169,9 @@ SERVERS ON THIS MACHINE
   nexus server logs <name>      what it said last
   sudo nexus server backup <name> --apply
   sudo nexus server remove <name> --apply
+  sudo nexus server refresh <name> --apply
+                                a server made before 0.2.7: its own
+                                uids, so it is not root on this machine
   sudo nexus server cockpit --apply
                                 manage the machine from a browser
 

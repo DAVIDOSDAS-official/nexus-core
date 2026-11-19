@@ -2,6 +2,7 @@
 #include <nexus/system/pins.hpp>
 
 #include <algorithm>
+#include <sstream>
 
 namespace nexus::system {
 
@@ -99,9 +100,78 @@ std::string commonTail() {
 
 }  // namespace
 
+bool quadletIsHardened(const std::string& quadlet) {
+    std::istringstream in(quadlet);
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.rfind("UserNS=", 0) == 0) return true;
+    }
+    return false;
+}
+
+std::string hardenQuadlet(const std::string& quadlet, const std::string& kind) {
+    const std::string section = "[Container]\n";
+    const auto at = quadlet.find(section);
+    if (at == std::string::npos || quadletIsHardened(quadlet)) return quadlet;
+
+    std::string text = quadlet;
+    // Folders the server writes to: owned by its uids, not root's.
+    for (std::size_t pos = 0; (pos = text.find(":/data:Z\n", pos)) != std::string::npos;) {
+        text.replace(pos, 9, ":/data:Z,U\n");
+        pos += 11;
+    }
+    const bool dataVolume = text.find(":/data:Z,U\n") != std::string::npos;
+
+    std::string lines =
+        "# 0.2.7: its own uids; root in here is nobody on the host.\n"
+        "UserNS=auto\n"
+        "NoNewPrivileges=true\n";
+    if (kind == "website") {
+        lines +=
+            "DropCapability=ALL\n"
+            "AddCapability=NET_BIND_SERVICE\n"
+            "ReadOnly=true\n"
+            "Tmpfs=/config\n";
+        // Caddy's own storage: the certificates' folder with a domain,
+        // a scratch one without.
+        if (!dataVolume) lines += "Tmpfs=/data\n";
+    }
+    text.insert(at + section.size(), lines);
+    return text;
+}
+
+SubidPlan containersSubidPlan(const std::string& fileText) {
+    SubidPlan plan;
+    const long long start = kContainersSubidStart;
+    const long long end = start + kContainersSubidCount;  // exclusive
+    std::istringstream in(fileText);
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.rfind("containers:", 0) == 0) return plan;  // there already
+        const auto a = line.find(':');
+        const auto b = a == std::string::npos ? a : line.find(':', a + 1);
+        if (b == std::string::npos) continue;
+        try {
+            const long long s = std::stoll(line.substr(a + 1, b - a - 1));
+            const long long c = std::stoll(line.substr(b + 1));
+            if (s < end && start < s + c) {
+                plan.conflict = line;
+                return plan;
+            }
+        } catch (...) {
+            continue;
+        }
+    }
+    plan.needed = true;
+    plan.line = (!fileText.empty() && fileText.back() != '\n' ? "\n" : std::string()) +
+                "containers:" + std::to_string(start) + ":" +
+                std::to_string(kContainersSubidCount) + "\n";
+    return plan;
+}
+
 std::string minecraftQuadlet(const MinecraftOptions& options) {
     const std::string port = std::to_string(options.port);
-    return "# Written by nexus server add minecraft. Remove with\n"
+    return hardenQuadlet("# Written by nexus server add minecraft. Remove with\n"
            "# `sudo nexus server remove " + options.name + " --apply`;\n"
            "# the world stays in " + serverDataDir(options.name) + ".\n"
            "[Unit]\n"
@@ -116,7 +186,7 @@ std::string minecraftQuadlet(const MinecraftOptions& options) {
            "Environment=MEMORY=" + options.memory + "\n"
            "Volume=" + serverDataDir(options.name) + "/data:/data:Z\n"
            "PublishPort=" + port + ":25565/tcp\n" +
-           commonTail();
+           commonTail(), "minecraft");
 }
 
 std::string websiteQuadlet(const WebsiteOptions& options) {
@@ -147,7 +217,7 @@ std::string websiteQuadlet(const WebsiteOptions& options) {
                 "PublishPort=443:443/tcp\n";
     }
 
-    return text + commonTail();
+    return hardenQuadlet(text + commonTail(), "website");
 }
 
 }

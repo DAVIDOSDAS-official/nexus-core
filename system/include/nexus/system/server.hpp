@@ -80,4 +80,34 @@ struct WebsiteOptions {
 // The Quadlet for Caddy serving the files in serverDataDir(name)/site.
 std::string websiteQuadlet(const WebsiteOptions& options);
 
+// 0.2.7 (outside audit S-1, ledger item 7; on the Asus 19 Nov the
+// website's Caddy ran as root on the host): every server in its own
+// user namespace, so root in the container is an unprivileged uid on
+// the host, with no gaining of privileges. The website also loses every
+// capability but binding a port, and its file system is read-only.
+// Folders it writes to are given to its uids (",U").
+//
+// `kind` is "minecraft" or "website". A Quadlet that has UserNS= already
+// comes back unchanged; one with no [Container] section too.
+std::string hardenQuadlet(const std::string& quadlet, const std::string& kind);
+
+// Whether a Quadlet has had hardenQuadlet (it has a UserNS= line).
+bool quadletIsHardened(const std::string& quadlet);
+
+// UserNS=auto takes its uids from the "containers" lines of /etc/subuid
+// and /etc/subgid; Fedora writes none. The range podman's manual uses,
+// above every uid a person gets.
+inline constexpr long long kContainersSubidStart = 2147483647LL;
+inline constexpr long long kContainersSubidCount = 2147483648LL;
+
+struct SubidPlan {
+    bool needed = false;   // no "containers:" line yet
+    std::string line;      // what to append, with its newline
+    std::string conflict;  // a line whose range overlaps: nothing is added
+};
+
+// What /etc/subuid or /etc/subgid needs. A file that ends without a
+// newline gets one before the line.
+SubidPlan containersSubidPlan(const std::string& fileText);
+
 }
