@@ -58,6 +58,53 @@ std::string wrappedUnderLabel(const std::string& text) {
     return out;
 }
 
+// What an app's update would add, read from flatpak before anything
+// is updated (0.2.6, outside audit NX-02). The installed version's
+// permissions against the new one's, from the remote it came from.
+// Anything that cannot be read holds the update: unknown is not "safe".
+nexus::system::PermissionGain appUpdateGain(const std::string& id) {
+    nexus::system::PermissionGain held;
+    held.held = true;
+    if (!nexus::system::isFlatpakId(id)) {
+        held.why = "not an app id Nexus reads";
+        return held;
+    }
+    auto run = [](std::vector<std::string> argv) {
+        return runProgram(std::move(argv), nexus::system::ProgramOptions());
+    };
+    auto line = [](std::string text) {
+        while (!text.empty() && (text.back() == '\n' || text.back() == ' ')) text.pop_back();
+        return text;
+    };
+    // Nexus installs for the whole system; an app added with --user is
+    // found there instead.
+    std::string where = "--system";
+    auto ref = run({"flatpak", where, "info", "--show-ref", id});
+    if (!ref.ok) {
+        where = "--user";
+        ref = run({"flatpak", where, "info", "--show-ref", id});
+    }
+    const auto origin = run({"flatpak", where, "info", "--show-origin", id});
+    const auto installed = run({"flatpak", where, "info", "--show-metadata", id});
+    const std::string refText = line(ref.text);
+    const std::string remote = line(origin.text);
+    // app/<id>/<arch>/<branch>, and a remote name: nothing else goes on
+    // the next command line.
+    const bool refOk = ref.ok && refText.rfind("app/" + id + "/", 0) == 0 &&
+                       refText.find_first_of(" \t\n") == std::string::npos;
+    const bool remoteOk = origin.ok && !remote.empty() && remote.size() < 64 &&
+                          remote.find_first_not_of(
+                              "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.") ==
+                              std::string::npos &&
+                          remote.front() != '-';
+    if (!refOk || !remoteOk || !installed.ok) {
+        held.why = "what it may do now could not be read";
+        return held;
+    }
+    const auto offered = run({"flatpak", where, "remote-info", "--show-metadata", remote, refText});
+    return nexus::system::comparePermissions(installed.text, offered.text, offered.ok);
+}
+
 }  // namespace
 
 // nexus update: what is new for this machine, and taking it.
@@ -206,6 +253,17 @@ int commandUpdate(
                        nexus::system::ProgramOptions()).text);
     }
 
+    // Each app's new permissions against its present ones (0.2.6, NX-02).
+    // Not for the daily notification: it only counts.
+    std::map<std::string, std::vector<nexus::system::AppPermission>> gained;
+    if (!notify) {
+        for (auto& app : apps) {
+            const auto gain = appUpdateGain(app.id);
+            if (gain.held) app.held = gain.why;
+            gained[app.id] = gain.gained;
+        }
+    }
+
     const std::string summary = nexus::system::updateSummary(system, apps);
 
     if (lines) {
@@ -242,7 +300,8 @@ int commandUpdate(
             std::cout << "system\tnot-image\t\t\t\n";
         }
         for (const auto& app : apps) {
-            std::cout << "app\t" << app.id << "\t" << app.version << "\n";
+            std::cout << "app\t" << app.id << "\t" << app.version << "\t"
+                      << nexus::system::printable(app.held) << "\n";
         }
         return 0;
     }
@@ -383,6 +442,14 @@ int commandUpdate(
                 std::cout << "                 " << app.id
                           << (app.version.empty() ? "" : "  " + app.version)
                           << "\n";
+                for (const auto& item : gained[app.id]) {
+                    std::cout << "                   new: " << (item.broad ? "! " : "  ")
+                              << item.text << "\n";
+                }
+                if (!app.held.empty()) {
+                    std::cout << "                   waits for your yes: "
+                              << nexus::system::printable(app.held) << "\n";
+                }
             }
         }
     }
@@ -586,18 +653,52 @@ int commandUpdate(
         }
     }
 
-    if (!apps.empty()) {
+    // Apps whose new version would get more than they have now wait for
+    // a typed yes, each on its own (0.2.6, outside audit NX-02); the Shop
+    // (--yes) leaves them as they are and says so.
+    std::vector<std::string> go, left;
+    bool anyHeld = false;
+    for (const auto& app : apps) {
+        if (app.held.empty()) {
+            go.push_back(app.id);
+            continue;
+        }
+        anyHeld = true;
+        if (assumeYes) {
+            left.push_back(app.id);
+            continue;
+        }
+        std::cout << "\n" << app.id << ": " << nexus::system::printable(app.held) << ".\n"
+                  << "Type yes to update it anyway, anything else to leave it as it is: "
+                  << std::flush;
+        std::string answer;
+        std::getline(std::cin, answer);
+        (answer == "yes" ? go : left).push_back(app.id);
+    }
+    if (!left.empty()) {
+        std::cout << "\nLeft as they are (their new versions ask for more):\n";
+        for (const auto& id : left) std::cout << "    " << id << "\n";
+        std::cout << "In a terminal, to decide on each:  sudo nexus update --apply\n";
+        record.outcome = "kept back:";
+        for (const auto& id : left) record.outcome += " " + id;
+        record.outcome += "; ";
+    }
+    if (!go.empty()) {
         std::cout << "\nApps: handing over to flatpak.\n\n";
         std::cout << std::flush;
+        // With nothing held, everything, runtimes included, as before.
+        // With something held, only the apps that go ahead (and what
+        // they need); other runtimes follow at the next update.
+        std::vector<std::string> argv = {"flatpak", "update", "-y", "--noninteractive"};
+        if (anyHeld) argv.insert(argv.end(), go.begin(), go.end());
         // Not captured either, for the same reason as the system.
-        const int status = runProgram({"flatpak", "update", "-y", "--noninteractive"},
-                                      nexus::system::handedOver(true)).exitCode;
+        const int status = runProgram(argv, nexus::system::handedOver(true)).exitCode;
         std::cout << "\n";
         ok = ok && status == 0;
     }
 
-    record.outcome = ok ? (image && system.available ? "staged" : "applied")
-                        : "failed";
+    record.outcome = record.outcome +
+                     (ok ? (image && system.available ? "staged" : "applied") : "failed");
     // The record says what really happened (0.1.95).
     if (!systemNote.empty()) {
         record.outcome += ": " + systemNote;

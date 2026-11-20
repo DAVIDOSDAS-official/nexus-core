@@ -37,4 +37,21 @@ struct AppPermissions {
 // --show-metadata`) prints: an ini-style key file.
 AppPermissions parseFlatpakPermissions(const std::string& metadata);
 
+// What an app's update would add (0.2.6, outside audit NX-02). Until
+// then `flatpak update -y` took whatever a new version asked for, while
+// the Shop's update dialog said nothing unseen would change; with NX-01
+// that was the audit's Chain A: install clean, escape on an update.
+struct PermissionGain {
+    std::vector<AppPermission> gained;  // in the new version, not the installed one
+    bool held = false;                  // not updated without a yes
+    std::string why;                    // one line, for the person and the Shop
+};
+
+// `installed` and `offered` are the two metadata texts. An offered one
+// that could not be read holds the update: what it would get is not
+// known. Only a gained permission that needs a yes holds it; one that
+// does not is listed and let through.
+PermissionGain comparePermissions(const std::string& installed, const std::string& offered,
+                                  bool offeredRead);
+
 }  // namespace nexus::system

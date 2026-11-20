@@ -673,3 +673,17 @@ TEST(UpdateSigningTest, TheScopeMustStartTheRepository) {
             << origin;
     }
 }
+
+// 0.2.6, NX-02: the Shop learns which apps wait for a yes.
+TEST(UpdateLinesTest, HeldAppsCarryWhy) {
+    const auto lines = parseUpdateLines(
+        "app\torg.a.B\t2.0\t\n"
+        "app\torg.c.D\t3.1\tthe new version would also get: your saved passwords (the keyring)\n"
+        "app\torg.e.F\t1.0\n");
+    ASSERT_EQ(lines.apps.size(), 3u);
+    EXPECT_TRUE(lines.apps[0].held.empty());
+    EXPECT_EQ(lines.apps[1].held,
+              "the new version would also get: your saved passwords (the keyring)");
+    // Written by a Nexus before 0.2.6: no fourth field, not held.
+    EXPECT_TRUE(lines.apps[2].held.empty());
+}

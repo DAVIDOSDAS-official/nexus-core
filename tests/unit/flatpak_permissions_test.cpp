@@ -151,3 +151,39 @@ TEST(FlatpakPermissionsTest, OrdinaryPlacesStayOrdinary) {
     for (const auto& item : q.items) EXPECT_TRUE(item.broad) << item.text;
     EXPECT_EQ(q.items.size(), 3u);
 }
+
+// 0.2.6, outside audit NX-02 (Chain A): an update that gains a way out
+// of the sandbox waits for a yes; one that gains only ordinary things
+// goes ahead, listed.
+TEST(FlatpakPermissionsTest, AnUpdateThatGainsAnEscapeIsHeld) {
+    const std::string v1 =
+        "[Application]\nname=org.example.Notes\n\n[Context]\nshared=ipc;\nsockets=wayland;\n";
+    const std::string v2 = v1 +
+        "filesystems=xdg-documents;\n\n[Session Bus Policy]\norg.freedesktop.systemd1=talk\n";
+    using nexus::system::comparePermissions;
+    const auto gain = comparePermissions(v1, v2, true);
+    EXPECT_TRUE(gain.held);
+    ASSERT_EQ(gain.gained.size(), 2u);
+    EXPECT_NE(gain.why.find("org.freedesktop.systemd1"), std::string::npos);
+    // The ordinary gain is listed but does not hold it on its own.
+    EXPECT_EQ(gain.why.find("Documents"), std::string::npos);
+
+    const auto calm = comparePermissions(
+        v1, v1 + "filesystems=xdg-documents;\n", true);
+    EXPECT_FALSE(calm.held);
+    EXPECT_EQ(calm.gained.size(), 1u);
+
+    // The same permissions: nothing gained, nothing held.
+    const auto same = comparePermissions(v2, v2, true);
+    EXPECT_FALSE(same.held);
+    EXPECT_TRUE(same.gained.empty());
+    // Already had it: an escape it already had is not new (it got a yes then).
+    EXPECT_FALSE(comparePermissions(v2, v2 + "\n", true).held);
+}
+
+TEST(FlatpakPermissionsTest, AnUpdateThatCannotBeReadIsHeld) {
+    using nexus::system::comparePermissions;
+    const std::string v1 = "[Application]\nname=a.b.C\n\n[Context]\nsockets=wayland;\n";
+    EXPECT_TRUE(comparePermissions(v1, "", false).held);
+    EXPECT_TRUE(comparePermissions(v1, "error: no such ref\n", true).held);
+}

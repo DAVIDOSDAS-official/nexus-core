@@ -173,6 +173,36 @@ AppPermission sessionBusName(const std::string& name, bool owns) {
 
 }  // namespace
 
+PermissionGain comparePermissions(const std::string& installed, const std::string& offered,
+                                  bool offeredRead) {
+    PermissionGain gain;
+    const AppPermissions now = parseFlatpakPermissions(installed);
+    const AppPermissions next = parseFlatpakPermissions(offered);
+    if (!offeredRead || !next.read) {
+        gain.held = true;
+        gain.why = "what the new version asks for could not be read";
+        return gain;
+    }
+    std::string broad;
+    for (const auto& item : next.items) {
+        bool had = false;
+        for (const auto& old : now.items) {
+            if (old.text == item.text) {
+                had = true;
+                break;
+            }
+        }
+        if (had) continue;
+        gain.gained.push_back(item);
+        if (item.broad) {
+            gain.held = true;
+            broad += (broad.empty() ? "" : "; ") + item.text;
+        }
+    }
+    if (gain.held) gain.why = "the new version would also get: " + broad;
+    return gain;
+}
+
 bool AppPermissions::anyBroad() const {
     for (const auto& item : items) {
         if (item.broad) return true;

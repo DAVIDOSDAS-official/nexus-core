@@ -549,6 +549,9 @@ void Shop::checkUpdates() {
                 const QString id = q(app.id);
                 row["id"] = id;
                 row["version"] = q(app.version);
+                // Waits for a yes in a terminal (0.2.6, NX-02): the
+                // Shop's update leaves it as it is.
+                row["held"] = q(app.held);
                 row["name"] = id;
                 row["icon"] = QString();
                 if (const ShopEntry* entry = find(id.toLower())) {

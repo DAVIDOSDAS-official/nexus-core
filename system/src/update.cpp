@@ -600,7 +600,7 @@ UpdateLines parseUpdateLines(const std::string& text) {
             result.day = field(3);
             result.diff = field(4);
         } else if (fields[0] == "app" && !field(1).empty()) {
-            result.apps.push_back(AppUpdate{field(1), field(2)});
+            result.apps.push_back(AppUpdate{field(1), field(2), field(3)});
         }
     }
     return result;

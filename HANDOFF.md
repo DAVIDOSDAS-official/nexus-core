@@ -3,7 +3,7 @@
 Updated 15 November 2026. Paste this at the start of a new session; it is
 written for someone picking the project up cold.
 
-**Version 0.2.7** (patches 1–136). **833 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
+**Version 0.2.8** (patches 1–137). **836 automated tests**, all passing. The newest work is the last entries of "Since Preview 3" below; the full project record is NEXUS-CORE-MASTER.md (kept outside the repo).
 **Preview 3 released 18 Oct 2026** (KDE 0.1.50, minimal 0.1.49).
 Preview 2: 8 Oct (0.1.34). Since Preview 3, see "Since Preview 3" just
 below.
@@ -1493,6 +1493,21 @@ files that run most as root.** 814 tests. By Fable; notes as for 129.
 - Not verified here: the real rpm-ostree, dnf, firewalld, podman,
   systemd, GRUB. On the Asus: read-only commands before and after the
   update should print the same; the list is in the notes.
+
+**Patch 137 (0.2.8): app updates that gain permissions wait for a yes (audit NX-02).** By Claude, 20 Nov.
+- `nexus update` reads each app's installed and offered metadata and
+  compares them (`comparePermissions`, through the 0.2.6 check). New
+  permissions are listed under the app; one that needs a yes, or
+  metadata that cannot be read, holds it. A terminal asks a typed `yes`
+  per held app; `--yes` (the Shop) leaves held apps and says so; the
+  Updates page shows why, and the update dialog counts them.
+- `--lines`: `app <id> <version> <held why>` (fourth field; empty or
+  missing = goes ahead).
+- With something held, `flatpak update` is given the other apps' ids,
+  so runtimes not needed by them wait for the next update.
+- Ledger: item 2 closed (run #111), item 7's website part verified on the
+  Asus, item 17 closed in code.
+- Not verified here: flatpak commands (no flatpak), the Shop page.
 
 **Patch 136 (0.2.7): servers no longer run as root on the host.** By Claude, 19 Nov.
 - On the Asus, `podman top nexus-website user huser` gave root/root: the

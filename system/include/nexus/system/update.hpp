@@ -194,6 +194,9 @@ inline constexpr const char* kContainersPolicy = "/etc/containers/policy.json";
 struct AppUpdate {
     std::string id;       // org.mozilla.firefox
     std::string version;  // may be empty
+    // Not updated without a yes, and why (0.2.6, NX-02): the new version
+    // would get a permission that needs one. Empty when it goes ahead.
+    std::string held;
 };
 
 // Reads `flatpak remote-ls --updates --app --columns=application,version`.
@@ -209,7 +212,7 @@ std::string updateSummary(const SystemUpdate& system,
 //   running <version> <day>
 //   staged  <version>
 //   system  new|current|unreachable|not-image <version> <day> <diff>
-//   app     <id> <version>
+//   app     <id> <version> [held: why it waits for a yes (0.2.6)]
 // Unknown kinds are skipped, so a newer nexus can add lines without
 // breaking an older Shop.
 struct UpdateLines {

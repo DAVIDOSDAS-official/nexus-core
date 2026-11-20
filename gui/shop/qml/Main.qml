@@ -75,7 +75,10 @@ ApplicationWindow {
         const u = shop.updates
         const will = []
         if (u.system === "new") will.push("Download Nexus " + u.version + " and set it up for the next restart; the version running now stays in the boot menu")
-        if ((u.apps || []).length > 0) will.push("Update " + u.apps.length + " app(s); they are ready at once")
+        const apps = u.apps || []
+        const held = apps.filter(function(a) { return (a.held || "").length > 0 })
+        if (apps.length > held.length) will.push("Update " + (apps.length - held.length) + " app(s); they are ready at once")
+        if (held.length > 0) will.push("Leave " + held.length + " app(s) as they are: their new versions ask for more (shown on the Updates page)")
         will.push("Write it in History")
         confirm.ask({
             title: "Update everything?",

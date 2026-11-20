@@ -163,11 +163,12 @@ Flickable {
             model: root.apps
             Rectangle {
                 Layout.fillWidth: true
-                implicitHeight: 64
+                implicitHeight: Math.max(64, rowContent.implicitHeight + 20)
                 radius: 12
                 color: Theme.panel
                 border.color: Theme.line
                 RowLayout {
+                    id: rowContent
                     anchors.fill: parent
                     anchors.leftMargin: 16
                     anchors.rightMargin: 16
@@ -178,6 +179,16 @@ Flickable {
                         Layout.fillWidth: true
                         Text { textFormat: Text.PlainText; text: modelData.name; color: Theme.bright; font.pixelSize: 14; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
                         Text { textFormat: Text.PlainText; text: modelData.id; color: Theme.dim; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
+                        // 0.2.6, NX-02: not updated from here; why, and where to decide.
+                        Text {
+                            textFormat: Text.PlainText
+                            visible: (modelData.held || "").length > 0
+                            text: "Waits for your yes: " + (modelData.held || "") + ". In a terminal: sudo nexus update --apply"
+                            color: Theme.accent
+                            font.pixelSize: 12
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
                     }
                     Text {
                         textFormat: Text.PlainText
